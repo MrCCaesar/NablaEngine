@@ -142,10 +142,12 @@ def cache_dir():
 
 def sources_sha256():
     """sha256 over the package files the library is generated from (SOURCES, sorted by path) and the default model
-    files (fixtures/mjlab: the .mjb and its meta.json) where they are installed."""
+    files (the .mjb and its meta.json of $DK_FIXTURES, else of the checkout's fixtures/mjlab or the packaged copy)
+    where they are installed."""
+    from nablaengine import _paths
     root = Path(__file__).resolve().parent
     files = sorted({f for pat in SOURCES for f in root.glob(pat)})
-    fix = Path(os.environ.get("DK_FIXTURES") or root.parent.parent / "fixtures" / "mjlab")
+    fix = Path(os.environ.get("DK_FIXTURES") or _paths.default_fixtures())
     files += [f for f in (fix / "g1_train.mjb", fix / "g1_meta.json") if f.exists()]
     h = hashlib.sha256()
     for f in files:

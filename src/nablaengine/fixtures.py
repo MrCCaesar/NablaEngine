@@ -7,10 +7,12 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-CHECKOUT = Path(__file__).resolve().parents[2]
+from nablaengine import _paths
+
+CHECKOUT = _paths.CHECKOUT
 ROOT = CHECKOUT / "fixtures"
-DEFAULT = ROOT / "mjlab"
-BENCH_DATA = CHECKOUT / "benchmarks" / "data"
+DEFAULT = _paths.default_fixtures()
+BENCH_DATA = _paths.default_bench()
 BENCH_PATTERN = "mf_s*.npz"
 MJW_REFERENCE = "mjw317_{name}.npz"
 MAIN_CORPORA = ("mf_s0", "mf_s1")
@@ -58,9 +60,9 @@ def meta(d=None):
         return json.loads(path.read_text())
     except FileNotFoundError:
         raise FileNotFoundError(
-            f"no fixtures model at {path.parent} ({path.name} missing). The default, fixtures/mjlab next to src/, "
-            "exists only in a source checkout (PYTHONPATH=src, a .pth file or pip install -e): set "
-            "DK_FIXTURES=<checkout>/fixtures/mjlab, or give the JAX interface the model itself, "
+            f"no fixtures model at {path.parent} ({path.name} missing). The default is fixtures/mjlab of a source "
+            "checkout, else the copy packaged with the nablaengine wheel: set DK_FIXTURES=<checkout>/fixtures/mjlab "
+            "(or unset it to use the default), or give the JAX interface the model itself, "
             "nablaengine.jax_ffi.init(model=<MjModel>, foot_pairs=<its foot-floor pair indices>)") from None
 
 

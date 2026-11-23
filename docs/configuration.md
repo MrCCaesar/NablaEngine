@@ -24,8 +24,8 @@ knobs. There are two kinds of `DK_*` knobs:
 | `XDG_CACHE_HOME` | `~/.cache` | see `DK_CACHE_DIR` | no |
 | `DK_TORCH_ARTIFACT` | the cache's `torch_<arch>_current.json` | PyTorch artifact to load | no |
 | `CUDA_VISIBLE_DEVICES` | all GPUs | GPUs a process uses; `DK_ARCH` follows the first | no (one GPU type) |
-| `DK_FIXTURES` | `<checkout>/fixtures/mjlab` | fixtures directory (default model and references) | selects data |
-| `DK_BENCH_DATA` | `<checkout>/benchmarks/data` | where benchmark state sets are read from | selects data |
+| `DK_FIXTURES` | `<checkout>/fixtures/mjlab`, else the packaged copy (model only) | fixtures directory (default model and references) | selects data |
+| `DK_BENCH_DATA` | `<checkout>/benchmarks/data`, else the packaged copy (`mf_s0` only) | where benchmark state sets are read from | selects data |
 | `DK_KEEP_WORK` | unset | `1` keeps the scripts' temporary work directories | no |
 | `TMPDIR` | `/tmp` | where work directories are made | no |
 | `JAX_PLATFORMS` | JAX's | some scripts set `cpu` | no |

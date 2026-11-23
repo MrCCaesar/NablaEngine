@@ -6,20 +6,21 @@
 
 ## News
 
+- **2026-11-23, 1.0.2:** on PyPI: `pip install nablaengine`.
 - **2026-11-23, 1.0.1:** Pollen Robotics' Microduck with BAM servo checks (#3), and an overview of the supported
   scenes.
 - **2026-11-22, 1.0.0:** the forest engine (several trees, motors, meshes, equality constraints, tendons, noslip),
   per-world parameters, dynamics queries, the BAM servo model, and DeepMind Control Suite / Brax tasks.
-- **2026-11-07, 0.2.0:** other legged robots (Unitree Go1, Go2, A1 and H1, ANYbotics ANYmal C, Boston Dynamics Spot,
-  Booster T1, ROBOTIS OP3, Berkeley Humanoid; `docs/robots.md`) and terrain: boxes, heightfields and a height scan
-  (`docs/terrain.md`). The G1's results are unchanged.
+- **2026-11-07, 0.2.0:** other legged robots (Unitree Go1, Go2, A1 and H1 (#1), ANYbotics ANYmal C, Boston Dynamics
+  Spot, Booster T1, ROBOTIS OP3, Berkeley Humanoid; `docs/robots.md`) and terrain: boxes, heightfields and a height
+  scan (`docs/terrain.md`). The G1's results are unchanged.
 - **2026-10-31, 0.1.0:** first release: the Unitree G1.
 
-All release notes: [Releases](https://github.com/sailab-ai/NablaEngine/releases), [`CHANGELOG.md`](CHANGELOG.md).
+All release notes: [Releases](https://github.com/sailab-ai/NablaEngine/releases), [`CHANGELOG.md`](https://github.com/sailab-ai/NablaEngine/blob/main/CHANGELOG.md).
 
-<p align="center"><img src="docs/assets/speed_fwd.png" alt="Forward step: NablaEngine 1.21 ms per control step, against MuJoCo Warp, Genesis, Isaac Lab, MJX and MuJoCo C" width="820"></p>
-<p align="center"><img src="docs/assets/speed_bwd.png" alt="A step and its gradient: NablaEngine 1.78 ms, MuJoCo Warp with its adjoint pull request 20.5 ms" width="820"></p>
-<p align="center"><img src="docs/assets/speed_ppo.png" alt="Time per PPO iteration: NablaEngine 0.123 s, MuJoCo Warp 0.355 s" width="820"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/sailab-ai/NablaEngine/main/docs/assets/speed_fwd.png" alt="Forward step: NablaEngine 1.21 ms per control step, against MuJoCo Warp, Genesis, Isaac Lab, MJX and MuJoCo C" width="820"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/sailab-ai/NablaEngine/main/docs/assets/speed_bwd.png" alt="A step and its gradient: NablaEngine 1.78 ms, MuJoCo Warp with its adjoint pull request 20.5 ms" width="820"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/sailab-ai/NablaEngine/main/docs/assets/speed_ppo.png" alt="Time per PPO iteration: NablaEngine 0.123 s, MuJoCo Warp 0.355 s" width="820"></p>
 
 <sub>One 20 ms control step for 4096 Unitree G1 worlds on one NVIDIA RTX PRO 6000 (forward, and forward with the
 gradient from the input state), and one PPO iteration (4096 environments x 24 steps, plus 20 gradient steps) with the
@@ -81,6 +82,17 @@ Requirements: Linux x86_64, an NVIDIA GPU of compute capability 7.0 or newer (te
 
 ## Installation
 
+From PyPI (Linux, Python 3.12, an NVIDIA GPU):
+
+```bash
+pip install "nablaengine[jax,cuda]"   # the JAX interface, with JAX's CUDA 12 plugin
+pip install "nablaengine[torch]"      # the PyTorch interface (on a V100 the cu126 wheels of torch)
+```
+
+The CUDA library is compiled on first use, so a CUDA 12.x toolkit is needed as well (`nvcc` on `PATH`, or
+`NVCC=/path/to/cuda-12.x/bin/nvcc`). The package includes the G1 model and the corpus of the quick start; the checks,
+the scripts and the other robot models need a checkout:
+
 ```bash
 git clone https://github.com/sailab-ai/NablaEngine.git NablaEngine && cd NablaEngine
 scripts/setup_env.sh               # a Python 3.12 environment in .dk_env/ with the tested versions
@@ -95,7 +107,7 @@ pip install torch                  # a CUDA 12 build; on a V100 the cu126 wheels
 python -m nablaengine.torch_ffi build
 ```
 
-Options, a PyTorch-only environment, a manual installation and use outside the checkout: `docs/install.md`.
+Options, a PyTorch-only environment, a manual installation and the packaged files: `docs/install.md`.
 
 ## Quick start
 

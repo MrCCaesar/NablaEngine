@@ -1,0 +1,3 @@
+# the default fixtures packaged into the wheel by setup.py
+include fixtures/mjlab/g1_train.mjb fixtures/mjlab/g1_meta.json fixtures/mjlab/LICENSE fixtures/mjlab/README.md
+include benchmarks/data/mf_s0.npz

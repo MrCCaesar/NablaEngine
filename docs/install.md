@@ -1,5 +1,22 @@
 # Installation
 
+## From PyPI
+
+```bash
+python3.12 -m venv .venv && . .venv/bin/activate
+pip install "nablaengine[jax,cuda]"         # JAX 0.12 with its CUDA 12 plugin
+pip install "nablaengine[torch]"            # or: the PyTorch interface (on a V100 torch from https://download.pytorch.org/whl/cu126)
+export NVCC=/path/to/cuda-12.x/bin/nvcc     # unless nvcc is on PATH; the pip wheel nvidia-cuda-nvcc-cu12 has only ptxas
+```
+
+Extras: `jax` (the JAX interface), `cuda` (JAX on NVIDIA GPUs), `torch` (the PyTorch interface), `manip` and `checks`
+(as in `pyproject.toml`). The wheel includes the default fixtures: the G1 model (`fixtures/mjlab`: `g1_train.mjb`,
+`g1_meta.json`, its licence and README) and the corpus `mf_s0`, so the quick start of `README.md` runs as is. The
+fixtures are looked up in this order: `DK_FIXTURES` / `DK_BENCH_DATA`, then `fixtures/mjlab` / `benchmarks/data` of a
+source checkout, then the packaged copy. The references of the checks, the other corpora, the terrain models, the
+other robots (`fixtures/robots`) and the scripts are only in the repository: clone it as below, or point `DK_FIXTURES`
+/ `DK_BENCH_DATA` into a checkout.
+
 ## With `setup_env.sh`
 
 ```bash
@@ -30,9 +47,9 @@ export PYTHONPATH=$PWD/src
 ```
 
 The package needs no build step: `PYTHONPATH=<checkout>/src`, a `.pth` file or `pip install -e <checkout>`. The model
-and the reference data are found in the checkout (`fixtures/mjlab`, `benchmarks/data`); outside a source checkout set
-`DK_FIXTURES=<checkout>/fixtures/mjlab`, or pass the model: `jax_ffi.init(model=<MjModel>, foot_pairs=<foot-floor pair
-indices>)`.
+and the reference data are found in the checkout (`fixtures/mjlab`, `benchmarks/data`); a package installed from a
+wheel uses its packaged copy of the model and of `mf_s0` (above), `DK_FIXTURES=<checkout>/fixtures/mjlab` selects
+another directory, and `jax_ffi.init(model=<MjModel>, foot_pairs=<foot-floor pair indices>)` passes a model directly.
 
 ## PyTorch only
 

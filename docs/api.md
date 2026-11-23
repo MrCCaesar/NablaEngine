@@ -30,7 +30,8 @@ Loads (or builds) the library for a model and registers the FFI targets. Idempot
 traced call. One library per process.
 
 - `model` / `foot_pairs`: an `MjModel` and the indices of the contact pairs that take the per-world `friction` input.
-  Without `model`, the bundled fixtures (`model_dir`, default `$DK_FIXTURES`) are used.
+  Without `model`, the bundled fixtures (`model_dir`, default `$DK_FIXTURES`, else `fixtures/mjlab` of the checkout,
+  else the copy packaged with the wheel) are used.
 - `com_body`: the body that takes the per-world COM offset `com` (default `torso_link` on a G1-class model; the forest
   engine has no default for other models).
 - The other arguments are build options described in the sections below (`terrain`: `docs/terrain.md`).

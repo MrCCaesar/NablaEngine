@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+
+- Available on PyPI: `pip install nablaengine`; the wheel includes the default fixtures (the G1 model and the corpus
+  `mf_s0`), so the quick start runs without a checkout.
+
 ## 1.0.1
 
 - Pollen Robotics' Microduck (20 dofs, XL330 servos) as an engine model, with BAM servo checks
