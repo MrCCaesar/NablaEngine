@@ -13,6 +13,7 @@ third-party software that the checks compare with but that the repository does n
 | mjlab | Apache-2.0 | 2025, The mjlab Developers | `fixtures/mjlab/g1_train.mjb` (parameter values) |
 | BAM (Better Actuator Models, <https://github.com/Rhoban/bam>) | Apache-2.0 | Marc Duclusaud, Grégoire Passault (Rhoban) | `src/nablaengine/actuators/bam_params/xl330/m6.json` (copied unchanged from `bam/params/xl330/m6.json` of Rhoban/bam@ea216102c0624f313d0ca6c0ec8f384008ff56c6), licence text in `src/nablaengine/actuators/bam_params/LICENSE`; `src/nablaengine/actuators/bam.py`, `src/nablaengine/g1_engine/bam_hooks.py`, `src/nablaengine/forest_engine/bam_hooks.py` (the M6 model reimplemented, no code copied) |
 | Livox MID-360 scan pattern (Livox-SDK livox_laser_simulation) | MIT | 2021 livox | `src/nablaengine/sensors/data/livox_mid360.npz` (`scan_mode/mid360.csv`: its 800000 firing directions, converted to npz), licence in `src/nablaengine/sensors/data/LIVOX_MID360_LICENSE` |
+| Pollen Robotics Microduck (microduck_rl), MJCF | Apache-2.0 | 2026 Pollen Robotics | `fixtures/robots/microduck/` (the robot's model, derived), `scripts/robots/microduck/fit_results.json` (the feet's sphere fit). Its 3D model files are CC BY-NC-SA 4.0 and are not included |
 
 ## 1. MuJoCo Warp
 
@@ -157,3 +158,19 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - `src/nablaengine/fixtures.py`: the closest distance between two segments, reimplemented in numpy after C. Ericson,
   *Real-Time Collision Detection* (2005), section 5.1.9.
+
+## 7. Microduck (`fixtures/robots/microduck/`, `scripts/robots/microduck/`)
+
+- **Pollen Robotics, microduck_rl**, <https://github.com/pollen-robotics/microduck_rl>, commit bae39f5
+  (`src/mjlab_microduck/robot/microduck/`).
+  - The MJCF robot descriptions and configurations: Apache License 2.0, Copyright 2026 Pollen Robotics
+    (`fixtures/robots/microduck/LICENSE` is a verbatim copy of the repository's `LICENSE`). The 3D model files
+    (`assets/*.stl`): CC BY-NC-SA 4.0 (the repository's `LICENSE-MODELS.md`). **No mesh file is included here.**
+  - `fixtures/robots/microduck/` holds an engine model derived from the walk model's MJCF: the Velocity task's
+    simulation options, explicit floor-foot contact pairs, the visual geoms and the collision geoms without a contact
+    pair dropped, the sole meshes replaced by four spheres per foot. It references no mesh.
+  - `scripts/robots/microduck/fit_results.json`: the centres and radii of those spheres (and of 6- and 8-sphere fits),
+    fitted to the sole meshes' convex hulls by `fit_feet.py`; no mesh data.
+
+Pollen Robotics does not endorse this project.
+

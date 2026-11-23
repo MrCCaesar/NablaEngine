@@ -91,7 +91,8 @@ on MuJoCo C, median relative error 9.5e-7.
 ## Checks
 
 - `scripts/bam_check.py`: the forward against `bam.Reference` (the same servo model on MuJoCo C in float64);
-  `--backend torch`, `--max-current none`.
+  `--backend torch`, `--max-current none`; `--model microduck`: Pollen Robotics' Microduck, the robot with these
+  servos, standing on the floor (`fixtures/robots/microduck`, `fixtures/robots/README.md`).
 - `scripts/bam_grad_check.py`: the adjoint against float64 central differences of the reference, including
   backpropagation through several control steps; same options.
 - `scripts/motor_check.py`: torque-speed limits.

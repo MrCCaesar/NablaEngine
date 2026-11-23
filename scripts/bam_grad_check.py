@@ -17,7 +17,10 @@ from nablaengine import provenance
 from nablaengine.actuators import Bam, bam
 import bam_check
 
-GATES = {"g1": dict(one_med=1e-3, one_p90=1e-2, roll_med=1e-2, f32_med=2e-2)}
+GATES = {"g1": dict(one_med=1e-3, one_p90=1e-2, roll_med=1e-2, f32_med=2e-2),
+         # microduck (bam_check.py's docstring): the G1's gates until a CUDA run sets them (the Mac port's Metal build
+         # without the current limit, 32 states: medians 3e-7 .. 5e-6 against the same float64 central differences)
+         "microduck": dict(one_med=1e-3, one_p90=1e-2, roll_med=1e-2, f32_med=2e-2)}
 
 
 def groups(m):
@@ -134,7 +137,7 @@ def compare(G, FD, keep, gnames, sel=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="g1", choices=("g1",))
+    ap.add_argument("--model", default="g1", choices=tuple(GATES))
     ap.add_argument("--backend", default="jax", choices=("jax", "torch"))
     ap.add_argument("--max-current", default="firmware")
     ap.add_argument("--worlds", type=int, default=24)

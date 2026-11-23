@@ -8,3 +8,9 @@ dist/
 .dk_env/
 *.so
 MUJOCO_LOG.TXT
+
+# scripts/robots/microduck: the local copy of the robot's source (meshes CC BY-NC-SA 4.0) and its outputs
+scripts/robots/microduck/model/
+scripts/robots/microduck/scenes.json
+scripts/robots/microduck/compare_results.json
+scripts/robots/microduck/drops_results.json

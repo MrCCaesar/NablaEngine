@@ -37,6 +37,7 @@ V100 (sm_70); `regress.py` gates on it (its docstring). The PyTorch interface gi
 | Google Barkour vB (`barkour_vb`) | MuJoCo Menagerie `google_barkour_vb/scene_mjx.xml` with MuJoCo Playground's Barkour joystick changes (`--fusestatic`) | Apache 2.0, DeepMind Technologies (Menagerie `google_barkour_vb`) |
 | Boston Dynamics Spot with arm (`spot_arm`) | MuJoCo Menagerie `boston_dynamics_spot/scene_arm.xml` (`--fusestatic`) | BSD 3-Clause, Clearpath Robotics (Menagerie `boston_dynamics_spot`) |
 | Unitree G1 with hands (`g1_with_hands`) | MuJoCo Menagerie `unitree_g1/scene_with_hands.xml` (45 bodies, nv 49) | BSD 3-Clause, Unitree Robotics (Menagerie `unitree_g1`) |
+| Pollen Robotics Microduck (`microduck`) | pollen-robotics/microduck_rl @ bae39f5, `robot/microduck/scene_walk.xml` with the Velocity task's options, the sole meshes replaced by 4 spheres per foot (below) | MJCF: Apache 2.0, Pollen Robotics. Meshes: CC BY-NC-SA 4.0, not distributed |
 
 mjlab and MuJoCo Playground, whose scene files and settings the exports follow, are Apache 2.0
 ([mjlab](https://github.com/mujocolab/mjlab), [MuJoCo Playground](https://github.com/google-deepmind/mujoco_playground));
@@ -60,3 +61,26 @@ actuators as shipped; no gain is chosen here. All are feet-only exports (`--feet
 unnamed one, spot_arm's `arm_link_hr0`); no geom's contact inverse
 weight changes (`geom_invweight` false), so `spot_arm` takes `--invweight converted` with the same values.
 `--drop-unpaired-meshes` drops the collision meshes in no contact pair (no body's inertia changes).
+
+## Microduck
+
+Pollen Robotics' Microduck, the robot the BAM servo model (`init(actuator="bam")`, `docs/actuators.md`) is for: 20 dofs,
+14 Dynamixel XL330 servos. One model, `microduck/microduck_spheres4.{xml,json}`, instead of a `<r>_flat` with
+`ref.npz` (not in `results.json` / `regress.py` yet):
+
+- **Feet.** The sole meshes are replaced by 4 spheres per foot, fitted to their convex hulls, with one explicit
+  floor-sphere pair each (8 pairs). The three collision geoms in no contact pair (trunk and shins) and their meshes are
+  removed (masses, inertias and the pairs do not change). The model references no mesh file: the robot's meshes are
+  CC BY-NC-SA 4.0 and not in this repository. `scripts/robots/microduck/README.md` has the fit and its comparison with
+  the meshes in MuJoCo C (a standing robot's trunk within 0.5 mm of the mesh model's over 8 s).
+- **Servos.** The description's position servos: kp 0.55 N m/rad, force limit 0.96 N m, damping 0.053, armature 0.0018,
+  frictionloss 0.0048, BAM's nominal XL330 values at 7.4 V rounded to two significant digits. `init(actuator="bam")` prepares the
+  model itself (`bam.prepare`: 0.554, 0.963, 0.0530, 0.00181, 0.00477 here) and checks it (`bam.check_model`: passes).
+- **Standing.** With these servo values the robot does not stand when `init_qpos` (the description's STAND keyframe) is
+  held as the servo target: it falls within about 1 s (MuJoCo C 3.17.0); with kp 2.0 it stands (5 s tested). At
+  `init_qpos` the feet's lowest point is 2.8 mm above the floor. Only the feet collide: a fallen robot passes through
+  the floor.
+- **Provenance.** `scripts/robots/microduck/make_fixtures.py` writes both files (scene, `export_robot.py`, the unpaired
+  geoms removed); `--check` regenerates them and compares. The json's `provenance` has the source's commit and file
+  hashes, the export command and the MuJoCo versions.
+

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Pollen Robotics' Microduck** (20 dofs, 14 XL330 servos) as an engine model, `fixtures/robots/microduck/`: the sole
+  meshes replaced by 4 spheres per foot (the robot's meshes are CC BY-NC-SA 4.0 and not distributed), with the
+  scripts that fit the spheres and write the model (`scripts/robots/microduck/`). `scripts/bam_check.py` and
+  `scripts/bam_grad_check.py` take `--model microduck`: the BAM servo model on the robot it is for, on the floor.
+
 ## 1.0.0
 
 - **Forest engine**, now the default for every model: several kinematic trees, hinge and slide roots, motors and

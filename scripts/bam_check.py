@@ -1,5 +1,9 @@
 """The BAM servo model's forward on the tree engine (init(actuator=Bam(...))) against the same model on MuJoCo C in float64
-(nablaengine.actuators.bam.Reference)."""
+(nablaengine.actuators.bam.Reference).
+
+--model g1: the mjlab G1 with an XL330 on every hinge, lifted 3 m (free flight, no contacts);
+--model microduck: Pollen Robotics' Microduck, the robot these servos are in (fixtures/robots/microduck, 4 spheres per
+foot), standing on the floor from its STAND keyframe, the model's own solver settings."""
 import argparse
 import json
 import os
@@ -16,11 +20,19 @@ sys.path.insert(0, str(ROOT / "src"))
 from nablaengine import fixtures, provenance
 from nablaengine.actuators import Bam, bam
 
-GATES = {"g1": dict(qvel_med=1e-5, qvel_max=1e-3, torque_max=1e-3, roll1_max=1e-3)}
+GATES = {"g1": dict(qvel_med=1e-5, qvel_max=1e-3, torque_max=1e-3, roll1_max=1e-3),
+         # microduck: the G1's gates until a CUDA run sets them (the Mac port's Metal build of the same model and servo
+         # model without the current limit, 1024 states: qvel median 5.7e-7, max 3.9e-6)
+         "microduck": dict(qvel_med=1e-5, qvel_max=1e-3, torque_max=1e-3, roll1_max=1e-3)}
+MICRODUCK = ROOT / "fixtures" / "robots" / "microduck" / "microduck_spheres4"
 
 
 def load(name):
     """(raw MjModel, foot pairs, COM body, initial qpos, substeps per control step)."""
+    if name == "microduck":
+        mt = json.loads(Path(f"{MICRODUCK}.json").read_text())
+        m = mujoco.MjModel.from_xml_path(f"{MICRODUCK}.xml")
+        return m, mt["foot_pairs"], mt["com_body"], np.array(mt["init_qpos"], float), int(mt["substeps_per_control_step"])
     m, mt = fixtures.load_model(None, check=None)
     q0 = m.key_qpos[0].copy() if m.nkey else m.qpos0.copy()
     if not m.nkey:
@@ -86,7 +98,7 @@ def corpus(ref, q0, sub, n, rng):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="g1", choices=("g1",))
+    ap.add_argument("--model", default="g1", choices=tuple(GATES))
     ap.add_argument("--backend", default="jax", choices=("jax", "torch"))
     ap.add_argument("--max-current", default="firmware")
     ap.add_argument("--worlds", type=int, default=64)
