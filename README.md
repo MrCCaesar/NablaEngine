@@ -6,6 +6,8 @@
 
 ## News
 
+- **2026-11-23, 1.0.1:** Pollen Robotics' Microduck with BAM servo checks (#3), and an overview of the supported
+  scenes.
 - **2026-11-22, 1.0.0:** the forest engine (several trees, motors, meshes, equality constraints, tendons, noslip),
   per-world parameters, dynamics queries, the BAM servo model, and DeepMind Control Suite / Brax tasks.
 - **2026-11-07, 0.2.0:** other legged robots (Unitree Go1, Go2, A1 and H1, ANYbotics ANYmal C, Boston Dynamics Spot,
@@ -62,6 +64,20 @@ rejected with an error that names the missing features.
 
 Requirements: Linux x86_64, an NVIDIA GPU of compute capability 7.0 or newer (tested: V100, RTX 3090, H100, RTX PRO
 6000), Python 3.12, and a CUDA 12.x toolkit (nvcc) for the one-time build of the CUDA library (about 15 s, cached).
+
+## What you can simulate
+
+- **Humanoids on mixed terrain**: the Unitree G1 and other humanoids on stairs, steps, boxes and rough heightfields,
+  with a height scan and moving platforms (`docs/terrain.md`, `docs/robots.md`). Motion tracking built on the engine:
+  [∇Mimic](https://github.com/sailab-ai/NablaMimic).
+- **Humanoid-object interaction and loco-manipulation**: humanoids and arms with free objects in one scene (forest
+  engine): contacts with boxes and convex meshes, per-world objects, contact forces and distance queries with gradients
+  (`docs/engines.md`, `docs/api.md`; example scene `scripts/forest/models/g1box.xml`).
+- **Legged robots**: Unitree Go1, Go2, A1 and H1, ANYmal C, Spot, Booster T1, OP3, Microduck and others
+  (`docs/robots.md`, `scripts/robots/`).
+- **Control benchmarks**: DeepMind Control Suite and Brax tasks (`nablaengine.envs`, `docs/envs.md`).
+- **Actuator models**: the BAM servo model and torque-speed limits (`docs/actuators.md`).
+- **Experimental**: models with up to 128 dofs, spatial tendons and muscles (`docs/engines.md`, `docs/equality.md`).
 
 ## Installation
 

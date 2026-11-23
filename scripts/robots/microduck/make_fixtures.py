@@ -60,7 +60,7 @@ def main():
         print(f"warning: the checkout is at {head[:7]}, the fixture was made from {COMMIT}")
     if not (scenes / SCENE).exists():
         sys.exit(f"{scenes / SCENE} not found: run build_scenes.py first (README.md)")
-    sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()  # noqa: E731
+    sha = lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
     env = dict(os.environ, PYTHONPATH=str(REPO / "src"))
     with tempfile.TemporaryDirectory(prefix="microduck_fixtures_") as tmp:
         new = Path(tmp)

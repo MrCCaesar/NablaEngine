@@ -1,16 +1,4 @@
-"""Build the comparison scenes from model/scene_walk.xml (the Velocity task's robot).
-
-Every scene gets the settings the Velocity task trains with in mjlab 1.3.0
-(make_velocity_env_cfg + microduck FULL_COLLISION):
-  timestep 0.005, implicitfast, Newton, pyramidal cone, iterations 10, ls_iterations 20,
-  ccd_iterations 50, feet condim 3 / friction 1.0 / priority 1.
-
-  scene_mesh.xml            the sole meshes (convex hulls): the reference
-  scene_spheresK.xml        K spheres per foot, contype/conaffinity contacts (drop-in for mjlab
-                            if FULL_COLLISION's regex also matches the new names)
-  scene_spheresK_pairs.xml  the NablaEngine form: no contype contacts at all, one explicit
-                            <pair> per floor-sphere, self-collision meshes switched off
-"""
+"""Build the comparison scenes from model/scene_walk.xml (the Velocity task's robot)."""
 import json
 import re
 from pathlib import Path
@@ -68,7 +56,7 @@ def add_spheres(spec, fits, K):
             g.type = mujoco.mjtGeom.mjGEOM_SPHERE
             g.size = [r, 0, 0]
             g.pos = c
-            g.mass = 0.0          # the visual/inertial stay as exported; collision geoms carry no mass
+            g.mass = 0.0
             g.density = 0.0
             g.rgba = [1.0, 0.4, 0.1, 0.6]
             for k, v in ref.items():
@@ -80,7 +68,7 @@ def contact_params(m):
     """Combined floor-foot parameters MuJoCo uses (read from a live contact)."""
     d = mujoco.MjData(m)
     mujoco.mj_resetDataKeyframe(m, d, mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_KEY, "STAND"))
-    for z in np.linspace(0.13, 0.0, 400):           # lower the robot until a foot touches
+    for z in np.linspace(0.13, 0.0, 400):
         d.qpos[2] = z
         mujoco.mj_forward(m, d)
         if d.ncon:
@@ -114,7 +102,7 @@ def write(spec, name):
     xml = spec.to_xml()
     path = MODEL / name
     path.write_text(xml)
-    m = mujoco.MjModel.from_xml_path(str(path))      # must recompile from the written file
+    m = mujoco.MjModel.from_xml_path(str(path))
     return m
 
 

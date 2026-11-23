@@ -1,15 +1,4 @@
-"""Fit K spheres per foot to the convex hull of Microduck's sole mesh.
-
-MuJoCo collides a mesh through its convex hull, and against a plane only the hull's
-support function matters: for a floor whose upward normal is u (in the foot body's
-frame), the deepest point of the foot along d = -u is h(d) = max_v v.d. A union of
-spheres has h_s(d) = max_i (c_i.d + r_i). We fit centers c_i and radii r_i so that
-h_s matches h over every foot tilt up to THETA_MAX, weighting the tilts seen in
-walking (<= 30 deg) more.
-
-Output: fit_results.json with, per foot and per K, the spheres in the ankle body's
-frame and the fit errors.
-"""
+"""Fit K spheres per foot to the convex hull of Microduck's sole mesh."""
 import json
 import sys
 from pathlib import Path
@@ -40,9 +29,9 @@ def foot_hull(m, name):
     R = quat2mat(m.geom_quat[g])
     vb = v @ R.T + m.geom_pos[g]
     hv = vb[ConvexHull(vb).vertices]
-    down = R @ np.array([-1.0, 0, 0])      # sole normal, out of the sole (measured: geom -x)
-    along = R @ np.array([0, 0, 1.0])      # 54 mm axis
-    across = R @ np.array([0, 1.0, 0])     # 41 mm axis
+    down = R @ np.array([-1.0, 0, 0])
+    along = R @ np.array([0, 0, 1.0])
+    across = R @ np.array([0, 1.0, 0])
     return dict(geom=g, body=int(m.geom_bodyid[g]), hull=hv, down=down, along=along, across=across)
 
 
@@ -65,7 +54,7 @@ def support_spheres(C, r, D, tau=None):
     s = D @ C.T + r[None, :]
     if tau is None:
         return s.max(1)
-    mx = s.max(1, keepdims=True)                       # smooth max for the optimizer
+    mx = s.max(1, keepdims=True)
     return (mx + tau * np.log(np.exp((s - mx) / tau).sum(1, keepdims=True)))[:, 0]
 
 
@@ -73,14 +62,14 @@ def init_layout(f, K, r0=0.010):
     """Spheres on the sole's footprint corners/edges, centers r0 inside the sole."""
     hv, dn, al, ac = f["hull"], f["down"], f["along"], f["across"]
     h = hv @ dn
-    bot = hv[h > h.max() - 0.002]                      # near-bottom hull points
+    bot = hv[h > h.max() - 0.002]
     pa, pc = bot @ al, bot @ ac
     a0, a1, c0, c1 = pa.min(), pa.max(), pc.min(), pc.max()
     ia = {4: [0, 1], 6: [0, 0.5, 1], 8: [0, 1 / 3, 2 / 3, 1]}[K]
     pts = [(a0 + s * (a1 - a0), c) for s in ia for c in (c0, c1)]
     C = []
     for pa_, pc_ in pts:
-        base = h.max() * dn + pa_ * al + pc_ * ac      # point on the lowest plane
+        base = h.max() * dn + pa_ * al + pc_ * ac
         C.append(base - r0 * dn)
     return np.array(C), np.full(K, r0)
 
@@ -98,18 +87,17 @@ def fit(f, K):
         return x[:3 * K].reshape(K, 3), x[3 * K:]
 
     x = x0
-    for tau in (1e-3, 3e-4, 1e-4, 3e-5):               # anneal the smooth max
+    for tau in (1e-3, 3e-4, 1e-4, 3e-5):
         res = least_squares(lambda x: w * (support_spheres(*unpack(x), D, tau) - target),
                             x, bounds=(lo, hi), x_scale=1e-3, max_nfev=4000)
         x = res.x
     C, r = unpack(x)
-    err = support_spheres(C, r, D) - target            # > 0: spheres reach lower than the sole
+    err = support_spheres(C, r, D) - target
     out = dict(K=K, centers=C.tolist(), radii=r.tolist())
     for lim in (10, 20, 30, 45, 60):
         s = T <= np.radians(lim) + 1e-9
         out[f"maxabs_mm_le{lim}"] = float(np.abs(err[s]).max() * 1e3)
         out[f"rms_mm_le{lim}"] = float(np.sqrt((err[s] ** 2).mean()) * 1e3)
-    # flat stance: which spheres touch within 0.3 mm, and the area they span vs the hull's flat patch
     hs = (C @ f["down"]) + r
     touching = hs > hs.max() - 3e-4
     out["flat_touching"] = int(touching.sum())

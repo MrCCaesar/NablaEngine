@@ -18,9 +18,7 @@ from nablaengine.actuators import Bam, bam
 import bam_check
 
 GATES = {"g1": dict(one_med=1e-3, one_p90=1e-2, roll_med=1e-2, f32_med=2e-2),
-         # microduck (bam_check.py's docstring): the G1's gates until a CUDA run sets them (the Mac port's Metal build
-         # without the current limit, 32 states: medians 3e-7 .. 5e-6 against the same float64 central differences)
-         "microduck": dict(one_med=1e-3, one_p90=1e-2, roll_med=1e-2, f32_med=2e-2)}
+         "microduck": dict(one_med=3e-4, one_p90=1e-3, roll_med=1e-4, f32_med=2e-2)}
 
 
 def groups(m):

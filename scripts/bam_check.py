@@ -1,9 +1,5 @@
 """The BAM servo model's forward on the tree engine (init(actuator=Bam(...))) against the same model on MuJoCo C in float64
-(nablaengine.actuators.bam.Reference).
-
---model g1: the mjlab G1 with an XL330 on every hinge, lifted 3 m (free flight, no contacts);
---model microduck: Pollen Robotics' Microduck, the robot these servos are in (fixtures/robots/microduck, 4 spheres per
-foot), standing on the floor from its STAND keyframe, the model's own solver settings."""
+(nablaengine.actuators.bam.Reference)."""
 import argparse
 import json
 import os
@@ -21,9 +17,7 @@ from nablaengine import fixtures, provenance
 from nablaengine.actuators import Bam, bam
 
 GATES = {"g1": dict(qvel_med=1e-5, qvel_max=1e-3, torque_max=1e-3, roll1_max=1e-3),
-         # microduck: the G1's gates until a CUDA run sets them (the Mac port's Metal build of the same model and servo
-         # model without the current limit, 1024 states: qvel median 5.7e-7, max 3.9e-6)
-         "microduck": dict(qvel_med=1e-5, qvel_max=1e-3, torque_max=1e-3, roll1_max=1e-3)}
+         "microduck": dict(qvel_med=1e-5, qvel_max=1e-4, torque_max=1e-4, roll1_max=2e-5)}
 MICRODUCK = ROOT / "fixtures" / "robots" / "microduck" / "microduck_spheres4"
 
 

@@ -1,17 +1,4 @@
-"""Dynamic comparison of the sole mesh against the sphere fits (MuJoCo C, CPU).
-
-Test A (foot drops): the ankle body alone (its own collision geoms, mass set to half the
-robot) dropped on the floor from random orientations / velocities; compare its trajectory
-and its rest pose with the mesh foot's.
-
-Test B (walking policy): the official alpha_walking.onnx (pollen-robotics/microduck-policies)
-on the whole robot through microduck_rl's scripts/infer_policy.py PolicyInference, headless,
-for a set of velocity commands; compare velocity tracking, falls, trunk height, foot contact
-timing. Actuator: the XML position servos (infer_policy --no-bam), NOT the BAM servo model the
-policy was made with (bam not installed), the same in every scene.
-
-Usage: python compare.py <microduck_rl checkout> <alpha_walking.onnx>
-"""
+"""Dynamic comparison of the sole mesh against the sphere fits (MuJoCo C, CPU)."""
 import importlib.util
 import json
 import sys
@@ -31,7 +18,6 @@ def quat_tilt_deg(q):
     return float(np.degrees(np.arccos(np.clip(m[8], -1, 1))))
 
 
-# --------------------------------------------------------------------------- test A
 def foot_only_model(scene, side="left", mass=0.37):
     """World with the floor + one free body holding the ankle body's collision geoms."""
     src = mujoco.MjSpec.from_file(str(MODEL / scene))
@@ -63,12 +49,11 @@ def foot_only_model(scene, side="left", mass=0.37):
                 ms = src.mesh(g.meshname)
                 nm = spec.add_mesh(); nm.name = ms.name; nm.file = ms.file
         pts.append(np.array(g.pos))
-    # common inertia for every variant: same mass/inertia, at the ankle body's own COM
     m0 = src.compile()
     bid = mujoco.mj_name2id(m0, mujoco.mjtObj.mjOBJ_BODY, body_name)
     b.ipos = m0.body_ipos[bid]
     b.mass = mass
-    b.inertia = [mass * 0.03 ** 2 / 3] * 3                 # ~ a 6 cm solid block
+    b.inertia = [mass * 0.03 ** 2 / 3] * 3
     explicit = [(p.geomname1, p.geomname2) for p in src.pairs if p.geomname2 in [g.name for g in geoms]]
     for g1, g2 in explicit:
         sp = next(p for p in src.pairs if p.geomname2 == g2)
@@ -80,7 +65,6 @@ def foot_only_model(scene, side="left", mass=0.37):
 
 
 def _sole_down_quat():
-    """Rotation taking the left sole's normal (ankle frame, from fit_results.json) to world -z."""
     dn = np.array(json.loads((HERE / "fit_results.json").read_text())["left"]["down"])
     tgt = np.array([0, 0, -1.0])
     ax = np.cross(dn, tgt); s = np.linalg.norm(ax); c = float(dn @ tgt)
@@ -102,20 +86,18 @@ def foot_drops(n=200, seed=0, T=1.0):
         ax = rng.normal(size=3); ax[2] = 0; ax /= np.linalg.norm(ax)
         ang = np.radians(rng.uniform(0, 30))
         qt = np.zeros(4); mujoco.mju_axisAngle2Quat(qt, ax, ang)
-        q = np.zeros(4); mujoco.mju_mulQuat(q, qt, Q_SOLE_DOWN)   # sole down, then tilted
+        q = np.zeros(4); mujoco.mju_mulQuat(q, qt, Q_SOLE_DOWN)
         v = np.concatenate([rng.normal(0, 0.15, 2), [rng.uniform(-0.4, 0)]])
         w = rng.normal(0, 2.0, 3)
         inits.append((q, v, w, rng.uniform(0.0, 0.01)))
     out = {}
     for scene in SCENES:
         m = foot_only_model(scene); d = mujoco.MjData(m)
-        # rest height reference: drop flat, slowly
         trajs, rest, ncon = [], [], []
         for q, v, w, h0 in inits:
             mujoco.mj_resetData(m, d)
             d.qpos[3:7] = q
             mujoco.mj_forward(m, d)
-            # put the lowest point h0 above the floor
             lowest = min(d.contact[i].dist for i in range(d.ncon)) if d.ncon else None
             d.qpos[2] = 0.05; mujoco.mj_forward(m, d)
             zlow = _lowest_point(m, d)
@@ -152,8 +134,7 @@ def summarize_drops(res):
     ref = res["scene_mesh.xml"]
     rows = {}
     for scene, r in res.items():
-        dp = np.linalg.norm(r["trajs"][:, :, :3] - ref["trajs"][:, :, :3], axis=2) * 1e3       # mm
-        # orientation difference
+        dp = np.linalg.norm(r["trajs"][:, :, :3] - ref["trajs"][:, :, :3], axis=2) * 1e3
         qa, qb = r["trajs"][:, :, 3:7], ref["trajs"][:, :, 3:7]
         dq = np.degrees(2 * np.arccos(np.clip(np.abs((qa * qb).sum(-1)), 0, 1)))
         rows[scene] = dict(
@@ -165,7 +146,6 @@ def summarize_drops(res):
     return rows
 
 
-# --------------------------------------------------------------------------- test B
 def load_infer(repo):
     spec = importlib.util.spec_from_file_location("infer_policy", Path(repo) / "scripts" / "infer_policy.py")
     mod = importlib.util.module_from_spec(spec)
@@ -196,7 +176,7 @@ def walk(ip, onnx, scene, cmd, T=10.0, push=None, seed=0):
     f6 = np.zeros(6)
     for k in range(n):
         a = pol.infer(); pol.apply_action(a)
-        if push is not None and k % 100 == 50:            # lateral/fwd shove every 2 s, 0.1 s long
+        if push is not None and k % 100 == 50:
             d.xfrc_applied[trunk, :2] = rng.normal(0, push, 2)
         if push is not None and k % 100 == 55:
             d.xfrc_applied[trunk, :2] = 0
@@ -223,9 +203,8 @@ def walk(ip, onnx, scene, cmd, T=10.0, push=None, seed=0):
             fell = k * 4 * m.opt.timestep
             break
     L = {k: np.array(v) for k, v in log.items()}
-    s = slice(len(L["z"]) // 5, None)                    # skip the first 20 %
+    s = slice(len(L["z"]) // 5, None)
     cont = L["contact"][s]
-    # stance/swing switching: touchdowns per foot per second
     td = (np.diff(cont.astype(int), axis=0) == 1).sum(0) / (len(cont) * 4 * m.opt.timestep)
     return dict(fell_at=fell, v_mean=L["v"][s].mean(0).tolist(), v_err=(L["v"][s].mean(0) - np.array(cmd)).tolist(),
                 z_mean_mm=float(L["z"][s].mean() * 1e3), tilt_mean=float(L["tilt"][s].mean()),
@@ -234,12 +213,9 @@ def walk(ip, onnx, scene, cmd, T=10.0, push=None, seed=0):
                 selfcon_frac=float((L["selfcon"][s] > 0).mean()))
 
 
-# --------------------------------------------------------------------------- test C
-# Whole robot, our own PD at the policies' DEFAULT_POSE (numbers from microduck_rl's
-# scripts/infer_policy.py), scripted squat + sway, then random pushes. No policy, no BAM.
 DEFAULT_POSE = np.array([0.0, -0.0873, -0.4579, -0.0049, 0.4530, 0.3491, 0.3491, 0.0, 0.0,
                          0.0, 0.0873, 0.4579, 0.0049, -0.4530])
-KP = 2.0   # infer_policy's standby stiffness (XML kp 0.55 ~ kp_fw 200; standby 2.0)
+KP = 2.0
 
 
 def scripted(scene, seed=0, T=14.0, push_n=1.5):
@@ -264,9 +240,9 @@ def scripted(scene, seed=0, T=14.0, push_n=1.5):
     for k in range(int(T / dt)):
         t = k * dt
         u = DEFAULT_POSE.copy()
-        if 2.0 <= t < 8.0:                                   # squat 0.5 Hz + sway 0.8 Hz
+        if 2.0 <= t < 8.0:
             s = 0.06 * np.sin(2 * np.pi * 0.5 * (t - 2)); r = 0.06 * np.sin(2 * np.pi * 0.8 * (t - 2))
-            u[[2, 3, 4]] += [s, -s, -s]; u[[11, 12, 13]] -= [s, -s, -s]   # signs found by test: trunk bobs, no fall
+            u[[2, 3, 4]] += [s, -s, -s]; u[[11, 12, 13]] -= [s, -s, -s]
             u[1] += r; u[10] -= r
         d.ctrl[:] = u
         if t >= 8.0 and k % int(1.0 / dt) == 0:
@@ -283,7 +259,6 @@ def scripted(scene, seed=0, T=14.0, push_n=1.5):
             sd = side_of[g]; nc[sd] += 1
             mujoco.mj_contactForce(m, d, i, f6); fz[sd] += f6[0]
             mujoco.mj_objectVelocity(m, d, mujoco.mjtObj.mjOBJ_GEOM, g, vel6, 0)
-            # contact-point tangential speed
             p = c.pos - d.geom_xpos[g]
             v = vel6[3:] + np.cross(vel6[:3], p)
             sl.append(np.linalg.norm(v[:2]))

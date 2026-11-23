@@ -1,11 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.0.1
 
-- **Pollen Robotics' Microduck** (20 dofs, 14 XL330 servos) as an engine model, `fixtures/robots/microduck/`: the sole
-  meshes replaced by 4 spheres per foot (the robot's meshes are CC BY-NC-SA 4.0 and not distributed), with the
-  scripts that fit the spheres and write the model (`scripts/robots/microduck/`). `scripts/bam_check.py` and
-  `scripts/bam_grad_check.py` take `--model microduck`: the BAM servo model on the robot it is for, on the floor.
+- Pollen Robotics' Microduck (20 dofs, XL330 servos) as an engine model, with BAM servo checks
+  (`scripts/bam_check.py --model microduck`). Contributed by @ryougi1201 in #3.
+- README: an overview of the supported scenes.
 
 ## 1.0.0
 
