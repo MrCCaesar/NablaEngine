@@ -1,34 +1,13 @@
 """Parts `mjw_pr1535`, `mjw_pr1535_fix`: MuJoCo Warp forward and adjoint per control step with the analytic adjoint
 of the unmerged google-deepmind/mujoco_warp pull request #1535, through nablaengine.reference.warp_physics._Sim (4 x
-mjw.step per control step, the per-world DR of the benchmark problem, every capacity overflow warning masked).
-
-PR #1535 as published (etaoxing/mujoco_warp @ 357a75d, the head of the pull request) and with etaoxing/mujoco_warp#1
-(@ 4af093f, two public fixes): the tree on PYTHONPATH of a venv with mujoco 3.17.0 + warp-lang 1.18.0 and no
-mujoco_warp installed (scripts/paper_bench/setup.sh).
-
-Per corpus (one process per nworld; the inputs are copied into the graphs' source arrays), CUDA graphs captured once
-(capture timed), then common.timeit rounds of graph replays + one synchronize:
-  forward_graph       _Sim.forward: DR kernel, copies, 4 x mjw.step
-  adjoint_graph       _Sim.backward: the taped forward recompute (wp.Tape over 4 x mjw.step under the PR's
-                      backward_context) + tape.backward: the PR's adjoint-graph pattern
-Cotangents: the corpus's stored cotangent 0 (ones where a corpus has none). --split: on the first corpus, the GPU time
-(wp.timing) of the adjoint's taped forward and of tape.backward alone. --phase-graphs: the two halves of adjoint_graph
-as two more graphs, timed like the others (same calls in the same order; the second replays on the tape of the first):
-  adjoint_taped_forward   DR kernel, copies, wp.Tape over 4 x mjw.step under the PR's backward_context
-  adjoint_tape_backward   tape.zero, the cotangent copies, tape.backward, the gradient copies and the ctrl sum
-
-main(ext=...) takes an optional extension (more graphs on the same _Sim): an object with add_arguments(ap),
-setup(sim, mjm, args, res) and graphs(sim, arrays, args) -> {name: (fn, name of a graph to run before it or None)}.
-
-  PYTHONPATH=<tree>:src python scripts/paper_bench/mjw_adjoint.py --label mjw_pr1535 --out <dir>/x.json
-"""
+mjw.step per control step, the per-world DR of the benchmark problem, every capacity overflow warning masked)."""
 import argparse
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common as C  # noqa: E402
+import common as C
 
 
 def main(argv=None, ext=None):
@@ -61,7 +40,7 @@ def main(argv=None, ext=None):
                    mujoco_warp_file=C.rel(mjw.__file__), warp_version=wp.config.version)
     try:
         res.data["warp_cuda_toolkit"] = ".".join(map(str, wp.get_cuda_toolkit_version()))
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     mjm, mt = fixtures.load_model(C.FIXTURES)
     mjm.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_SENSOR)
@@ -78,7 +57,7 @@ def main(argv=None, ext=None):
             if ext is not None:
                 ext.setup(sim, mjm, a, res)
             res.data["setup_s"] = round(time.perf_counter() - t0, 3)
-            z = lambda k: wp.zeros((n, k), dtype=float)  # noqa: E731
+            z = lambda k: wp.zeros((n, k), dtype=float)
             a_q, a_v, a_w, a_u = z(mjm.nq), z(mjm.nv), z(mjm.nv), z(mjm.nu)
             fr, com = wp.zeros(n, dtype=float), z(3)
             o_q, o_v, o_w = z(mjm.nq), z(mjm.nv), z(mjm.nv)
@@ -86,7 +65,7 @@ def main(argv=None, ext=None):
             gq, gv, gu = z(mjm.nq), z(mjm.nv), z(mjm.nu)
             fns = {"forward_graph": lambda: sim.forward(a_q, a_v, a_w, a_u, fr, com, o_q, o_v, o_w),
                    "adjoint_graph": lambda: sim.backward(a_q, a_v, a_w, a_u, fr, com, g_q, g_v, gq, gv, gu)}
-            before = {}  # graph -> the graph run (eagerly) before its first call and before its timing
+            before = {}
             if a.phase_graphs:
                 fns.update(phase_fns(sim, mjw, wp, SUBSTEPS, _accum, a_q, a_v, a_w, a_u, fr, com, g_q, g_v, gq, gv, gu))
                 before["adjoint_tape_backward"] = "adjoint_taped_forward"
@@ -117,12 +96,12 @@ def main(argv=None, ext=None):
                         g_v.fill_(1.0)
                     cell = dict(corpus=st["_source"], cotangent="corpus cot 0" if st["cot_qpos"] is not None else "ones")
                     for op in ops:
-                        if op in before:  # the state this graph reads (for example stored per-substep data)
+                        if op in before:
                             fns[before[op]]()
                             wp.synchronize()
                         if op not in graphs:
                             t = time.perf_counter()
-                            fns[op]()  # kernel compile (or Warp cache load) + first run, eager
+                            fns[op]()
                             wp.synchronize()
                             first_s[op] = round(time.perf_counter() - t, 3)
                             t = time.perf_counter()
@@ -130,7 +109,7 @@ def main(argv=None, ext=None):
                                 fns[op]()
                             capture_s[op] = round(time.perf_counter() - t, 3)
                             graphs[op] = cp.graph
-                        if op in before:  # this corpus's state for the graph
+                        if op in before:
                             fns[before[op]]()
                         g = graphs[op]
                         cell[op] = C.timeit(lambda: wp.capture_launch(g), wp.synchronize,
@@ -154,12 +133,12 @@ def main(argv=None, ext=None):
                         cell["adjoint_split_gpu_ms"] = split_ms(sim, mjw, wp, SUBSTEPS, a_q, a_v, a_w, a_u, fr,
                                                                 com, g_q, g_v)
                     res.cell(key, cell)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     if C.is_oom(e):
                         C.record_oom(res, key, e, n, corpus=st["_source"])
                         break
                     res.error(key, e)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         if C.is_oom(e):
             C.record_oom(res, f"nw{n}", e, n)
         else:

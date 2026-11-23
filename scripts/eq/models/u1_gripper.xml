@@ -1,0 +1,35 @@
+<!-- U1: a slide-finger gripper pair coupled by a joint equality (right = left, polycoef 0 1), one finger servo, closing
+     on a free box on the floor (each finger is a tree of its own under the world: the equality couples two trees) -->
+<mujoco model="eq_u1_gripper">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default>
+    <geom friction="1 0.005 0.0001" solref="0.01 1"/>
+    <joint damping="2" armature="0.01"/>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="1 1 0.1"/>
+    <body name="left" pos="0 0.06 0.03">
+      <joint name="left" type="slide" axis="0 -1 0" range="-0.01 0.05" limited="true"/>
+      <geom name="left_pad" type="box" size="0.02 0.005 0.02" mass="0.1"/>
+    </body>
+    <body name="right" pos="0 -0.06 0.03">
+      <joint name="right" type="slide" axis="0 1 0" range="-0.01 0.05" limited="true"/>
+      <geom name="right_pad" type="box" size="0.02 0.005 0.02" mass="0.1"/>
+    </body>
+    <body name="box" pos="0 0 0.02">
+      <freejoint name="box"/>
+      <geom name="box" type="box" size="0.015 0.025 0.02" mass="0.05"/>
+    </body>
+  </worldbody>
+  <contact>
+    <exclude body1="left" body2="right"/>
+    <exclude body1="world" body2="left"/>
+    <exclude body1="world" body2="right"/>
+  </contact>
+  <equality>
+    <joint name="mimic" joint1="right" joint2="left" polycoef="0 1 0 0 0" solref="0.005 1" solimp="0.95 0.99 0.001"/>
+  </equality>
+  <actuator>
+    <position name="grip" joint="left" kp="200" kv="5" ctrlrange="-0.01 0.05" forcerange="-20 20"/>
+  </actuator>
+</mujoco>

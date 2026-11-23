@@ -2,15 +2,7 @@
 environment, with a per-part timeout and a whole-job time budget, samples the GPU with a separate nvidia-smi process
 during each part, and writes <out>/paper_bench.json (every part's status, time, log, clocks, its result JSON embedded,
 the headline table) plus <out>/parts/<part>.json and <out>/logs/<part>.log. A failing part is recorded with its error
-and the job goes on; the exit status is 1 if any part failed (2 if nothing ran).
-
-Run by run.sh in the main environment (NablaEngine's dependencies, JAX with CUDA and mujoco-mjx; src/ of this checkout
-on PYTHONPATH):
-  python scripts/paper_bench/orchestrate.py --out <out_dir>
-
-A local_parts.py next to this file (common.LOCAL), when present, may add parts: its extend(ctx) is called with the
-part list and the environments before the part selection (PAPER_BENCH_PARTS); this kit has no such file.
-"""
+and the job goes on; the exit status is 1 if any part failed (2 if nothing ran)."""
 import argparse
 import datetime
 import json
@@ -23,7 +15,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-import common as C  # noqa: E402
+import common as C
 
 REPO = C.REPO
 ENV_DOC = ("PAPER_BENCH_PREFIX", "PAPER_BENCH_QUICK", "PAPER_BENCH_PARTS", "PAPER_BENCH_CORPORA", "PAPER_BENCH_SWEEP",
@@ -136,7 +128,7 @@ def main():
     ap.add_argument("--setup-status", default="ok", help="run.sh: ok, skipped, or failed:<code>")
     a = ap.parse_args()
     t_job = time.perf_counter()
-    try:  # the job started before the setup (run.sh): the budget covers the setup too
+    try:
         t_job -= max(0.0, time.time() - float(os.environ.get("PAPER_BENCH_JOB_START") or time.time()))
     except ValueError:
         pass
@@ -157,8 +149,6 @@ def main():
     dev_py = sys.executable
     mjw_py = os.environ.get("PAPER_BENCH_MJW_PYTHON") or str(prefix / "venv_mjw" / "bin" / "python")
     pr_py = os.environ.get("PAPER_BENCH_PR_PYTHON") or str(prefix / "venv_pr" / "bin" / "python")
-    # Genesis (part genesis): its own environment (benchmarks/envs/setup.sh --envs genesis); the part is skipped
-    # and recorded as not set up when no interpreter is found
     gen_py = os.environ.get("PAPER_BENCH_GENESIS_PYTHON") or next(
         (str(x) for x in (prefix / "venv_genesis" / "bin" / "python",
                           Path(os.environ.get("DK_BENCH_ENV_PREFIX") or REPO / "runs" / "bench" / "envs")
@@ -169,7 +159,7 @@ def main():
     base_env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "PYTHONHOME")}
     base_env.update(PYTHONNOUSERSITE="1", XLA_PYTHON_CLIENT_PREALLOCATE="false", DK_FIXTURES=str(C.FIXTURES),
                     PAPER_BENCH_PREFIX=str(prefix))
-    base_env.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")  # CUDA device i = nvidia-smi -i i (the GPU sampler)
+    base_env.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
     src = str(REPO / "src")
     envs = {"dev": dict(base_env, PYTHONPATH=src), "mjw": dict(base_env),
             "triton": dict(base_env, PYTHONPATH=src, XLA_FLAGS=" ".join(
@@ -178,8 +168,6 @@ def main():
             "pr4af": dict(base_env, PYTHONPATH=f"{trees['4af093f']}{os.pathsep}{src}"),
             "genesis": dict(base_env, PYTHONPATH=str(REPO))}
     pys = {"dev": dev_py, "triton": dev_py, "mjw": mjw_py, "pr357": pr_py, "pr4af": pr_py, "genesis": gen_py}
-    # one Warp kernel cache per interpreter: two builds of the same warp-lang release (NVIDIA's +cu12 wheel and the
-    # default CUDA 13 wheel) share a cache key, and a module cached by one can fail to link in the other
     wcache = Path(base_env.get("WARP_CACHE_PATH") or prefix / "warp_cache")
 
     def warp_cache(py):
@@ -188,11 +176,11 @@ def main():
         envs[env]["WARP_CACHE_PATH"] = warp_cache(py)
     need = {"mjw": [mjw_py], "pr357": [pr_py, trees["357a75d"]], "pr4af": [pr_py, trees["4af093f"]], "dev": [],
             "triton": [], "genesis": [gen_py]}
-    S = lambda name: str(HERE / name)  # noqa: E731
-    P = lambda part: str(out / "parts" / f"{part}.json")  # noqa: E731
+    S = lambda name: str(HERE / name)
+    P = lambda part: str(out / "parts" / f"{part}.json")
     cflag = ["--corpora", corp]
     sw_other = [n for n in sweep if n != 4096]
-    parts = []  # (name, env, argv, timeout_s, minimum_s)
+    parts = []
     parts.append(("ours", "dev", [S("ours.py"), "--out", P("ours"), *cflag, "--sweep", ",".join(map(str, sweep))],
                   900, 60))
     parts.append(("ours_bare", "dev", [S("ours_bare.py"), "--out", P("ours_bare"), "--corpus", first], 600, 60))
@@ -202,7 +190,6 @@ def main():
                                                    first, "--nworld", str(n), "--capacity", "procedure,matched"],
                       300, 30))
     common_adj = ["--iterations", "10", "--nconmax", "64", "--njmax", "192", *cflag]
-    # PR #1535: its forward and its adjoint-graph pattern, as published (357a75d) and with the two public fixes
     parts.append(("mjw_pr1535", "pr357", [S("mjw_adjoint.py"), "--label", "mjw_pr1535", "--out", P("mjw_pr1535"),
                                           *common_adj, "--split"], 900, 60))
     parts.append(("mjw_pr1535_fix", "pr4af", [S("mjw_adjoint.py"), "--label", "mjw_pr1535_fix", "--out",
@@ -211,11 +198,8 @@ def main():
     parts.append(("mjx", "dev", [S("mjx_native.py"), "--out", P("mjx"), *cflag, "--jac-batches", jb], 1500, 120))
     parts.append(("mjc", "dev", [S("mjc.py"), "--out", P("mjc"), *cflag], 900, 60))
     parts.append(("genesis", "genesis", [S("genesis_native.py"), "--out", P("genesis"), *cflag], 900, 60))
-    # MJX with XLA's Triton GEMM for every matmul (MJX's forward under the other XLA GEMM setting): forward only
     parts.append(("mjx_triton", "triton", [S("mjx_native.py"), "--out", P("mjx_triton"), "--corpora", first,
                                            "--parts", "mjlab"], 600, 60))
-    # P = 3 processes for the headline cells (4096 worlds, 10 iterations, the headline corpora): two more processes per
-    # engine with only those cells (process-to-process variation), last in the job (the budget skips them first)
     head = [c for c in corp.split(",") if c in C.HEADLINE] or [first]
     hflag = ["--corpora", ",".join(head)]
     for r in (2, 3):
@@ -234,7 +218,7 @@ def main():
             (f"rep{r}_mjc", "dev", [S("mjc.py"), "--out", P(f"rep{r}_mjc"), *hflag, "--no-fd"], 300, 30),
             (f"rep{r}_genesis", "genesis", [S("genesis_native.py"), "--out", P(f"rep{r}_genesis"), *hflag], 600, 60)]
     job_extra = {}
-    if C.LOCAL is not None and hasattr(C.LOCAL, "extend"):  # local additions (module docstring)
+    if C.LOCAL is not None and hasattr(C.LOCAL, "extend"):
         C.LOCAL.extend(dict(parts=parts, envs=envs, pys=pys, need=need, base_env=base_env, src=src, prefix=prefix,
                             warp_cache=warp_cache, script=S, result=P, corpora=corp, first=first, sweep=sweep,
                             headline=head, quick=quick, job=job_extra))
@@ -243,7 +227,7 @@ def main():
         want = sel.split(",")
         parts = [p for p in parts if p[0] in want or p[0].split("_nw")[0] in want
                  or (p[0].startswith("rep") and ("reps" in want or p[0].split("_", 1)[1] in want))]
-    nrep = int(os.environ.get("PAPER_BENCH_REPEATS") or (1 if quick else 2))  # extra processes per headline cell
+    nrep = int(os.environ.get("PAPER_BENCH_REPEATS") or (1 if quick else 2))
     parts = [p for p in parts if not p[0].startswith("rep") or int(p[0][3:].split("_")[0]) <= nrep + 1]
 
     job = dict(schema="paper-bench/1", kit="scripts/paper_bench", started=now(), quick=quick, out_dir=C.rel(out),
@@ -257,12 +241,12 @@ def main():
     try:
         from nablaengine import provenance
         job["provenance"] = provenance.provenance()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         job["provenance"] = dict(error=repr(e)[:300])
     job["system"] = C.basic_env(("jax", "jaxlib", "mujoco", "mujoco-mjx", "warp-lang", "mujoco-warp", "numpy"))
     sj = prefix / "setup.json"
     job["setup"] = json.loads(sj.read_text()) if sj.exists() else None
-    try:  # the release rule: the default (CUDA 13) warp wheel where the driver supports it
+    try:
         drv = int(str((job["system"].get("gpu") or {}).get("driver", "0")).split(".")[0])
         if job["setup"] and job["setup"].get("warp_wheel") == "cu12" and drv >= 580:
             job["warp_wheel_note"] = (f"the native venvs use the +cu12 warp wheel on driver {drv} (>= 580: the "
@@ -281,7 +265,7 @@ def main():
         try:
             from nablaengine import provenance as pv
             job["trees"][k]["tree_sha256"] = pv.tree_sha256(tp / "mujoco_warp") if (tp / "mujoco_warp").is_dir() else None
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     path = out / "paper_bench.json"
 
@@ -290,7 +274,7 @@ def main():
         try:
             import summarize
             job["table"] = summarize.table(job)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             job["table_error"] = repr(e)[:500]
         tmp = path.with_suffix(".tmp")
         tmp.write_text(C.scrub_text(json.dumps(job, indent=1, default=str)))
@@ -324,7 +308,7 @@ def main():
         with open(out / "logs" / f"{name}.log", "w") as log:
             p = subprocess.Popen([pys[env], *argv], cwd=str(REPO), env=envs[env], stdout=log, stderr=subprocess.STDOUT,
                                  start_new_session=True)
-            try:  # after a few seconds (the worker has its CUDA context): who else uses the GPU
+            try:
                 rc = p.wait(timeout=min(15.0, timeout))
             except subprocess.TimeoutExpired:
                 rc = None
@@ -344,7 +328,6 @@ def main():
                 rec["status"] = "timeout"
                 rec["returncode"] = None
         rec["seconds"] = round(time.perf_counter() - t0, 1)
-        # and right after the part (short parts end before the first look): contention evidence for every part
         rec["other_gpu_processes_after"] = other_gpu_processes(gidx, p.pid)
         if "other_gpu_processes" not in rec:
             rec["other_gpu_processes"] = rec["other_gpu_processes_after"]

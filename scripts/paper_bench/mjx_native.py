@@ -1,25 +1,5 @@
 """Parts `mjx`, `mjx_triton`: native MJX 3.17 (mujoco-mjx, impl='jax') per control step, its forward-mode
-Jacobian, and the reverse-mode error text.
-
-Everything is MJX's public API as its users run it: mujoco.MjModel -> mjx.put_model(m, impl='jax') -> mjx.make_data ->
-jax.jit(jax.vmap(control_step)), control_step = jax.lax.scan of `substeps` x mjx.step (ctrl held, MuJoCo Playground's
-pattern), all state outputs (qpos', qvel', qacc_warmstart') returned. No monkeypatch, no contact cap the model does not
-declare. Per-world DR on mjlab (pair_friction[foot_pairs, 0:2] = friction, body_ipos[torso] += com) is the standard MJX
-pattern: the randomized Model fields carry a leading world axis (vmap in_axes 0 on them).
-  mjlab      fixtures/mjlab/g1_train.mjb, iterations 10, sensors disabled, 4 x 5 ms substeps, corpus states
-  menagerie  MuJoCo Menagerie unitree_g1/scene_mjx.xml (MJX's own G1, $PAPER_BENCH_PREFIX/menagerie) at its native
-             options (4 ms, Newton 5 / ls 8, sensors as declared), 5 substeps = 20 ms; states from MuJoCo C float64
-             rollouts from the "home" keyframe with noise (native_states, seed 0)
-Forward: AOT compile (lower + compile timed), then common.timeit rounds of N calls + block_until_ready.
-Jacobian (mjlab, the first corpus): MJX's native forward mode, jax.jvp of the control step vmapped over input
-directions (= jax.jacfwd), the 99 directions of x = (qpos tangent 35, qvel 35, ctrl 29) mapped to qpos by
-dqpos/dtangent at the world's state (free joint: 1/2 q (x) (0, e_i)), outputs (qpos' 36, qvel' 35) = the 71 x 99
-Jacobian; chunked over directions (--jac-chunk), worlds vmapped; per-world time = time of all chunks / B, at each B of
---jac-batches that fits the time budget (--jac-budget-s, estimated from the previous B). Reverse mode: jax.vjp + the
-pullback at B = 2; its exception text is recorded (MJX's solver uses lax.while_loop).
-
-  PYTHONPATH=src XLA_PYTHON_CLIENT_PREALLOCATE=false python scripts/paper_bench/mjx_native.py --out <dir>/mjx.json
-"""
+Jacobian, and the reverse-mode error text."""
 import argparse
 import json
 import os
@@ -28,7 +8,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common as C  # noqa: E402
+import common as C
 
 STATE = ("qpos", "qvel", "qacc_warmstart", "ctrl")
 
@@ -135,7 +115,7 @@ def main():
             ma = c.memory_analysis()
             return dict(temp=ma.temp_size_in_bytes, argument=ma.argument_size_in_bytes,
                         output=ma.output_size_in_bytes)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
 
     def peak():
@@ -172,7 +152,7 @@ def main():
                 cell["finite"] = bool(np.isfinite(np.asarray(out[1])).all())
                 cell["peak_bytes"] = peak()
                 res.cell(key, cell)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 res.error(key, e)
         del compiled
     if "menagerie" in parts:
@@ -201,7 +181,7 @@ def main():
             cell["finite"] = bool(np.isfinite(np.asarray(out[1])).all())
             res.cell(key, cell)
             del c
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             res.error(key, e)
     if "jac" in parts:
         first = next(iter(C.corpora(a.corpora)))
@@ -209,7 +189,7 @@ def main():
         K = a.jac_chunk
         nchunk = -(-99 // K)
 
-        def jac_chunk(m, q, v, w, u, tq, tv, tu):  # one world, K directions
+        def jac_chunk(m, q, v, w, u, tq, tv, tu):
             def one(dq, dv, du):
                 return jax.jvp(lambda q, v, u: mj.f1(m, q, v, w, u)[:2], (q, v, u), (dq, dv, du))[1]
             return jax.vmap(one)(tq, tv, tu)
@@ -223,7 +203,7 @@ def main():
                     res.cell(key, dict(skipped="time", estimate_s=round(est * B * 6, 1)))
                     continue
                 args = mj.args(st, B)
-                T = directions(np.asarray(args[1]), np.float32)  # (B, 99, 36 + 35 + 29)
+                T = directions(np.asarray(args[1]), np.float32)
                 T = np.concatenate([T, np.zeros((B, nchunk * K - 99, T.shape[2]), T.dtype)], 1)
                 chunks = []
                 for i in range(nchunk):
@@ -246,7 +226,7 @@ def main():
                 est = r["ms"]["median"] / 1e3 / B
                 res.cell(key, cell)
                 del c, box
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 msg = str(e)
                 if "RESOURCE_EXHAUSTED" in msg or "out of memory" in msg.lower():
                     res.cell(key, dict(skipped="oom", message=msg[:300]))
@@ -263,11 +243,11 @@ def main():
                 prim, pull = jax.vjp(lambda q, v, u: f(m, q, v, w, u)[:2], q, v, u)
                 g = jax.jit(pull)((jnp.ones_like(prim[0]), jnp.ones_like(prim[1])))
                 out = dict(supported=True, finite=bool(all(np.isfinite(np.asarray(x)).all() for x in g)))
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 out = dict(supported=False, type=type(e).__name__, message=str(e).split("\n")[0][:600], B=2,
                            call="jax.vjp(control step) then its pullback under jax.jit")
             res.cell(key, out)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             res.error(key, e)
     return 1 if res.data["errors"] else 0
 

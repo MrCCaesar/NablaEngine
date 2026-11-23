@@ -1,27 +1,4 @@
-"""The benchmark corpus file format (benchmarks/data/<name>.npz) and its deterministic writer.
-
-A corpus holds S independent states, each the input of one control step, with stored output cotangents, the
-generator's metadata and per-state labels. Keys (nq, nv, nu of the model; every array is C-contiguous):
-
-  qpos (S, nq), qvel (S, nv), qacc_warmstart (S, nv), ctrl (S, nu)  float32  inputs of one control step
-  friction (S,), com (S, 3)                                         float32  per-state domain randomization (only for
-                                                                             a model with DR: Track A): foot-floor
-                                                                             pair friction, torso COM offset (m)
-  cot_qpos (S, C, nq), cot_qvel (S, C, nv)                          float32  C output cotangents per state (C = 3)
-  metadata                                                          0-d str  JSON (format, generator, seed, options,
-                                                                             model and its sha256, physics, labels:
-                                                                             a description of every label_ key, ...)
-  label_<name> (S,)                                                 bool or int32, per-state labels (metadata.labels)
-
-The file is a zip written with fixed member timestamps, so that re-running a generator that reproduces the arrays bit
-for bit also reproduces the file's sha256 (as long as zlib compresses alike); content_digest() hashes the arrays
-themselves, independent of the zip and of zlib. np.load reads the file without pickle.
-
-  from benchmarks.bench.corpus import format as corpus_format
-  z = corpus_format.read("benchmarks/data/mf_s0.npz")   # dict of arrays; z["metadata"] is the parsed dict
-  corpus_format.write(path, arrays, metadata)          # validate(), then write; returns the file's sha256
-  corpus_format.sha256(path), corpus_format.content_digest(path)
-"""
+"""The benchmark corpus file format (benchmarks/data/<name>.npz) and its deterministic writer."""
 
 import hashlib
 import io
@@ -37,7 +14,7 @@ INPUTS = ("qpos", "qvel", "qacc_warmstart", "ctrl")
 DR_KEYS = ("friction", "com")
 COT_KEYS = ("cot_qpos", "cot_qvel")
 LABEL_PREFIX = "label_"
-MAX_BYTES = 8 * 2**20  # the size budget of one corpus file (<= 8 MiB per corpus)
+MAX_BYTES = 8 * 2**20
 
 
 def data_provenance():
@@ -57,7 +34,7 @@ def data_provenance():
     try:
         from benchmarks.bench import prov
         cpu = (prov.cpu() or {}).get("model")
-    except Exception:  # noqa: BLE001  (best effort)
+    except Exception:
         pass
     return dict(date=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 python=platform.python_version(), packages=pk, cpu=cpu)

@@ -1,0 +1,187 @@
+<mujoco model="op3 scene">
+  <compiler angle="radian" meshdir="../../../../mujoco_menagerie/robotis_op3/assets"/>
+
+  <option timestep="0.004" integrator="implicitfast" iterations="1" ls_iterations="5">
+    <flag eulerdamp="disable"/>
+  </option>
+
+  <size nkey="4"/>
+
+  <statistic extent="0.8" center="0 0 0.1"/>
+
+  <visual>
+    <global azimuth="120" elevation="-20"/>
+    <quality shadowsize="8192"/>
+    <headlight ambient="0.2 0.2 0.2" diffuse="0.8 0.8 0.8" specular="1 1 1"/>
+    <map force="0.01"/>
+    <scale forcewidth="0.3" contactwidth="0.5" contactheight="0.2"/>
+    <rgba force="1 0 0 1"/>
+  </visual>
+
+  <default>
+    <mesh scale="0.001 0.001 0.001"/>
+    <joint armature="0.045" damping="1.084" frictionloss="0.03"/>
+    <geom type="mesh" contype="0" conaffinity="0" friction="0.6"/>
+    <site group="5"/>
+    <general ctrlrange="-3.14159 3.14159" forcerange="-5 5" input="pos" biastype="affine" gainprm="21.1" biasprm="0 -21.1"/>
+    <default class="collision">
+      <geom group="3"/>
+      <default class="foot">
+        <geom type="box" contype="1" conaffinity="1" friction="0.8 0.02 0.01"/>
+      </default>
+    </default>
+    <default class="visual">
+      <geom group="2" material="black"/>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" colorspace="auto" builtin="gradient" rgb1="1 1 1" rgb2="1 1 1" width="800" height="4800"/>
+    <texture type="2d" colorspace="auto" name="groundplane" builtin="checker" mark="edge" rgb1="1 1 1" rgb2="1 1 1" width="300" height="300"/>
+    <material name="black" rgba="0.2 0.2 0.2 1"/>
+    <material name="groundplane" texture="groundplane" texrepeat="5 5" texuniform="true"/>
+  </asset>
+
+  <worldbody>
+    <geom name="floor" size="0 0 0.01" type="plane" material="groundplane"/>
+    <light name="spotlight" target="body_link" pos="3 0 2" mode="targetbodycom"/>
+    <body name="body_link" pos="0 0 0.3">
+      <inertial pos="-0.01501 0.00013 0.06582" quat="0.704708 0.704003 0.0667707 -0.0575246" mass="1.34928" diaginertia="0.00341264 0.00316574 0.00296931"/>
+      <joint type="free" armature="0" damping="0" frictionloss="0"/>
+      <site name="imu"/>
+      <camera name="track" quat="0.660222 0.564407 0.321995 0.376657" pos="0.759 -0.496 0.1" mode="trackcom"/>
+      <body name="head_pan_link" pos="-0.001 0 0.1365">
+        <inertial pos="0.00233 0 0.00823" quat="0.663575 0.663575 0.244272 -0.244272" mass="0.01176" diaginertia="4.23401e-06 3.60599e-06 1.65e-06"/>
+        <joint name="head_pan" actuatorfrcrange="-5 5" actuatorfrclimited="true"/>
+        <body name="head_tilt_link" pos="0.01 0.019 0.0285">
+          <inertial pos="0.0023 -0.01863 0.0277" quat="0.997312 0.00973825 0.0726131 -0.00102702" mass="0.13631" diaginertia="0.000107452 8.72266e-05 4.39413e-05"/>
+          <joint name="head_tilt" actuatorfrcrange="-5 5" axis="0 -1 0" actuatorfrclimited="true"/>
+          <camera name="egocentric" quat="0.5 0.5 -0.5 -0.5" pos="0.01425 -0.019 0.04975" fovy="43.3"/>
+        </body>
+      </body>
+      <body name="l_sho_pitch_link" pos="-0.001 0.06 0.111">
+        <inertial pos="0 0.00823 -0.00233" quat="0.244272 0.663575 0.244272 0.663575" mass="0.01176" diaginertia="4.23401e-06 3.60599e-06 1.65e-06"/>
+        <joint name="l_sho_pitch" actuatorfrcrange="-5 5" axis="0 1 0" actuatorfrclimited="true"/>
+        <body name="l_sho_roll_link" pos="0.019 0.0285 -0.01">
+          <inertial pos="-0.01844 0.04514 0.00028" quat="0.501853 0.50038 -0.498173 0.499588" mass="0.17758" diaginertia="0.000234742 0.00022804 3.04183e-05"/>
+          <joint name="l_sho_roll" actuatorfrcrange="-5 5" axis="-1 0 0" actuatorfrclimited="true"/>
+          <body name="l_el_link" pos="0 0.0904 -0.0001">
+            <inertial pos="-0.019 0.07033 0.0038" quat="0.483289 0.51617 -0.51617 0.483289" mass="0.04127" diaginertia="6.8785e-05 6.196e-05 1.2065e-05"/>
+            <joint name="l_el" actuatorfrcrange="-5 5" axis="1 0 0" actuatorfrclimited="true"/>
+            <site name="left_hand" pos="-0.02 0.14 0" rgba="1 0 0 1"/>
+          </body>
+        </body>
+      </body>
+      <body name="r_sho_pitch_link" pos="-0.001 -0.06 0.111">
+        <inertial pos="0 -0.00823 -0.00233" quat="-0.244272 0.663575 -0.244272 0.663575" mass="0.01176" diaginertia="4.23401e-06 3.60599e-06 1.65e-06"/>
+        <joint name="r_sho_pitch" actuatorfrcrange="-5 5" axis="0 -1 0" actuatorfrclimited="true"/>
+        <body name="r_sho_roll_link" pos="0.019 -0.0285 -0.01">
+          <inertial pos="-0.01844 -0.04514 0.00028" quat="0.50038 0.501853 -0.499588 0.498173" mass="0.17758" diaginertia="0.000234742 0.00022804 3.04183e-05"/>
+          <joint name="r_sho_roll" actuatorfrcrange="-5 5" axis="-1 0 0" actuatorfrclimited="true"/>
+          <body name="r_el_link" pos="0 -0.0904 -0.0001">
+            <inertial pos="-0.019 -0.07033 0.0038" quat="0.51617 0.483289 -0.483289 0.51617" mass="0.04127" diaginertia="6.8785e-05 6.196e-05 1.2065e-05"/>
+            <joint name="r_el" actuatorfrcrange="-5 5" axis="1 0 0" actuatorfrclimited="true"/>
+            <site name="right_hand" pos="-0.02 -0.14 0" rgba="1 0 0 1"/>
+          </body>
+        </body>
+      </body>
+      <body name="l_hip_yaw_link" pos="0 0.035 0">
+        <inertial pos="-0.00157 0 -0.00774" quat="0.499041 0.500957 0.500957 0.499041" mass="0.01181" diaginertia="4.3e-06 4.12004e-06 1.50996e-06"/>
+        <joint name="l_hip_yaw" actuatorfrcrange="-5 5" axis="0 0 -1" actuatorfrclimited="true"/>
+        <body name="l_hip_roll_link" pos="-0.024 0 -0.0285">
+          <inertial pos="0.00388 0.00028 -0.01214" quat="0.502657 0.490852 0.498494 0.507842" mass="0.17886" diaginertia="0.000125243 0.000108598 4.65693e-05"/>
+          <joint name="l_hip_roll" actuatorfrcrange="-5 5" axis="-1 0 0" actuatorfrclimited="true"/>
+          <body name="l_hip_pitch_link" pos="0.0241 0.019 0">
+            <inertial pos="0.00059 -0.01901 -0.08408" quat="0.999682 0.0246915 0.00447825 -0.002482" mass="0.11543" diaginertia="0.000104996 9.63044e-05 2.47492e-05"/>
+            <joint name="l_hip_pitch" actuatorfrcrange="-5 5" axis="0 1 0" actuatorfrclimited="true"/>
+            <body name="l_knee_link" pos="0 0 -0.11015">
+              <inertial pos="0 -0.02151 -0.055" mass="0.04015" diaginertia="3.715e-05 2.751e-05 1.511e-05"/>
+              <joint name="l_knee" actuatorfrcrange="-5 5" axis="0 1 0" actuatorfrclimited="true"/>
+              <body name="l_ank_pitch_link" pos="0 0 -0.11">
+                <inertial pos="-0.02022 -0.01872 0.01214" quat="0.490852 0.502657 0.507842 0.498494" mass="0.17886" diaginertia="0.000125243 0.000108598 4.65693e-05"/>
+                <joint name="l_ank_pitch" actuatorfrcrange="-5 5" axis="0 -1 0" actuatorfrclimited="true"/>
+                <body name="l_ank_roll_link" pos="-0.0241 -0.019 0">
+                  <inertial pos="0.02373 0.01037 -0.0276" quat="0.0078515 0.707601 0.0113965 0.706477" mass="0.06934" diaginertia="0.000115818 7.87135e-05 4.03389e-05"/>
+                  <joint name="l_ank_roll" actuatorfrcrange="-5 5" axis="1 0 0" actuatorfrclimited="true"/>
+                  <geom name="l_foot1" class="foot" size="0.0635 0.028 0.004" pos="0.024 0.013 -0.0265" contype="0" conaffinity="0" mass="0"/>
+                  <geom name="l_foot2" class="foot" size="0.057 0.039 0.004" pos="0.024 0.0125 -0.0265" contype="0" conaffinity="0" mass="0"/>
+                  <site name="left_foot" pos="0.04 0 -0.025" rgba="1 0 0 1"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="r_hip_yaw_link" pos="0 -0.035 0">
+        <inertial pos="-0.00157 0 -0.00774" quat="0.499041 0.500957 0.500957 0.499041" mass="0.01181" diaginertia="4.3e-06 4.12004e-06 1.50996e-06"/>
+        <joint name="r_hip_yaw" actuatorfrcrange="-5 5" axis="0 0 -1" actuatorfrclimited="true"/>
+        <body name="r_hip_roll_link" pos="-0.024 0 -0.0285">
+          <inertial pos="0.00388 -0.00028 -0.01214" quat="0.507842 0.498494 0.490852 0.502657" mass="0.17886" diaginertia="0.000125243 0.000108598 4.65693e-05"/>
+          <joint name="r_hip_roll" actuatorfrcrange="-5 5" axis="-1 0 0" actuatorfrclimited="true"/>
+          <body name="r_hip_pitch_link" pos="0.0241 -0.019 0">
+            <inertial pos="0.00059 0.01901 -0.08408" quat="0.999682 -0.0246915 0.00447825 0.002482" mass="0.11543" diaginertia="0.000104996 9.63044e-05 2.47492e-05"/>
+            <joint name="r_hip_pitch" actuatorfrcrange="-5 5" axis="0 -1 0" actuatorfrclimited="true"/>
+            <body name="r_knee_link" pos="0 0 -0.11015">
+              <inertial pos="0 0.02151 -0.055" mass="0.04015" diaginertia="3.715e-05 2.751e-05 1.511e-05"/>
+              <joint name="r_knee" actuatorfrcrange="-5 5" axis="0 -1 0" actuatorfrclimited="true"/>
+              <body name="r_ank_pitch_link" pos="0 0 -0.11">
+                <inertial pos="-0.02022 0.01872 0.01214" quat="0.498494 0.507842 0.502657 0.490852" mass="0.17886" diaginertia="0.000125243 0.000108598 4.65693e-05"/>
+                <joint name="r_ank_pitch" actuatorfrcrange="-5 5" axis="0 1 0" actuatorfrclimited="true"/>
+                <body name="r_ank_roll_link" pos="-0.0241 0.019 0">
+                  <inertial pos="0.02373 -0.01037 -0.0276" quat="-0.0078515 0.707601 -0.0113965 0.706477" mass="0.06934" diaginertia="0.000115818 7.87135e-05 4.03389e-05"/>
+                  <joint name="r_ank_roll" actuatorfrcrange="-5 5" axis="1 0 0" actuatorfrclimited="true"/>
+                  <geom name="r_foot1" class="foot" size="0.0635 0.028 0.004" pos="0.024 -0.013 -0.0265" contype="0" conaffinity="0" mass="0"/>
+                  <geom name="r_foot2" class="foot" size="0.057 0.039 0.004" pos="0.024 -0.0125 -0.0265" contype="0" conaffinity="0" mass="0"/>
+                  <site name="right_foot" pos="0.04 0 -0.025" rgba="1 0 0 1"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <pair geom1="floor" geom2="l_foot1" name="p0_floor__l_foot1" friction="0.8 0.8 0.02 0.01 0.01"/>
+    <pair geom1="floor" geom2="l_foot2" name="p1_floor__l_foot2" friction="0.8 0.8 0.02 0.01 0.01"/>
+    <pair geom1="floor" geom2="r_foot1" name="p2_floor__r_foot1" friction="0.8 0.8 0.02 0.01 0.01"/>
+    <pair geom1="floor" geom2="r_foot2" name="p3_floor__r_foot2" friction="0.8 0.8 0.02 0.01 0.01"/>
+    <pair geom1="l_foot1" geom2="r_foot1" name="p4_l_foot1__r_foot1" friction="0.8 0.8 0.02 0.01 0.01"/>
+    <pair geom1="l_foot1" geom2="r_foot2" name="p5_l_foot1__r_foot2" friction="0.8 0.8 0.02 0.01 0.01"/>
+    <pair geom1="l_foot2" geom2="r_foot1" name="p6_l_foot2__r_foot1" friction="0.8 0.8 0.02 0.01 0.01"/>
+    <pair geom1="l_foot2" geom2="r_foot2" name="p7_l_foot2__r_foot2" friction="0.8 0.8 0.02 0.01 0.01"/>
+    <exclude body1="l_hip_yaw_link" body2="l_hip_pitch_link"/>
+    <exclude body1="r_hip_yaw_link" body2="r_hip_pitch_link"/>
+  </contact>
+
+  <actuator>
+    <general name="head_pan_act" joint="head_pan" forcelimited="false" forcerange="0 0"/>
+    <general name="head_tilt_act" joint="head_tilt" forcelimited="false" forcerange="0 0"/>
+    <general name="l_sho_pitch_act" joint="l_sho_pitch" forcelimited="false" forcerange="0 0"/>
+    <general name="l_sho_roll_act" joint="l_sho_roll" forcelimited="false" forcerange="0 0"/>
+    <general name="l_el_act" joint="l_el" forcelimited="false" forcerange="0 0"/>
+    <general name="r_sho_pitch_act" joint="r_sho_pitch" forcelimited="false" forcerange="0 0"/>
+    <general name="r_sho_roll_act" joint="r_sho_roll" forcelimited="false" forcerange="0 0"/>
+    <general name="r_el_act" joint="r_el" forcelimited="false" forcerange="0 0"/>
+    <general name="l_hip_yaw_act" joint="l_hip_yaw" forcelimited="false" forcerange="0 0"/>
+    <general name="l_hip_roll_act" joint="l_hip_roll" forcelimited="false" forcerange="0 0"/>
+    <general name="l_hip_pitch_act" joint="l_hip_pitch" forcelimited="false" forcerange="0 0"/>
+    <general name="l_knee_act" joint="l_knee" forcelimited="false" forcerange="0 0"/>
+    <general name="l_ank_pitch_act" joint="l_ank_pitch" forcelimited="false" forcerange="0 0"/>
+    <general name="l_ank_roll_act" joint="l_ank_roll" forcelimited="false" forcerange="0 0"/>
+    <general name="r_hip_yaw_act" joint="r_hip_yaw" forcelimited="false" forcerange="0 0"/>
+    <general name="r_hip_roll_act" joint="r_hip_roll" forcelimited="false" forcerange="0 0"/>
+    <general name="r_hip_pitch_act" joint="r_hip_pitch" forcelimited="false" forcerange="0 0"/>
+    <general name="r_knee_act" joint="r_knee" forcelimited="false" forcerange="0 0"/>
+    <general name="r_ank_pitch_act" joint="r_ank_pitch" forcelimited="false" forcerange="0 0"/>
+    <general name="r_ank_roll_act" joint="r_ank_roll" forcelimited="false" forcerange="0 0"/>
+  </actuator>
+
+  <keyframe>
+    <key name="stand_bent_knees" qpos="0 0 0.243584 1 0 0 0 0 0 -0.534072 0.879648 -0.62832 0.534072 -0.879648 0.62832 0 0 -0.596904 1.13098 0.534072 0 0 0 0.596904 -1.13098 -0.534072 0" ctrl="0 0 -0.534072 0.879648 -0.62832 0.534072 -0.879648 0.62832 0 0 -0.596904 1.13098 0.534072 0 0 0 0.596904 -1.13098 -0.534072 0"/>
+    <key name="stand" qpos="0 0 0.2789 0.999201 0 0.039968 0 0 0 -0.089 0.7931 -0.79 0.0874 -0.7946 0.7855 -0.0015 -0.046 -0.1626 0.2316 0.1565 -0.023 0 0.0445 0.1611 -0.2332 -0.158 0.0215" ctrl="0 0 -0.089 0.7931 -0.79 0.0874 -0.7946 0.7855 -0.0015 -0.046 -0.1626 0.2316 0.1565 -0.023 0 0.0445 0.1611 -0.2332 -0.158 0.0215"/>
+    <key name="handstand" qpos="0 0 0.327 0 1 0 0 0 0 -3.14 0.723 -0.785 3.14 -0.723 0.785 0 0 0 0 0 0 0 0 0 0 0 0" ctrl="0 0 -3.14 0.723 -0.785 3.14 -0.723 0.785 0 0 0 0 0 0 0 0 0 0 0 0"/>
+    <key name="stand_on_right" qpos="0 0 0.2789 1 0 0 0 0 0 0 1.01 0 0 -1.01 0 0 0 -1.57 1.57 0 0 0 0 0 0 0 0" ctrl="0 0 0 1.01 0 0 -1.01 0 0 0 -1.57 1.57 0 0 0 0 0 0 0 0"/>
+  </keyframe>
+</mujoco>

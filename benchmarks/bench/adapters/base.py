@@ -1,123 +1,5 @@
 """The interface every engine adapter implements, and the shared tangent-space helpers. Standard library and numpy
-only: this module is imported in every engine environment.
-
-Writing an adapter
-------------------
-Add one file benchmarks/bench/adapters/<name>.py (nothing else to edit) that defines Adapter subclasses and, at top
-level, a dict literal with string-literal keys
-
-    ADAPTERS = {"mjw": MjwAdapter, "mjw_tol6": MjwTol6Adapter}
-
-The registry (adapters/__init__.py) reads these keys from the source without importing the module, so the worker
-imports only the one module whose engine it runs, inside that engine's interpreter (benchmarks/envs/envs.toml maps the
-engine id to the environment). Import heavy dependencies (jax, warp, mujoco_warp, nablaengine) at module top level or
-lazily, as you like: the module is only imported where they exist. The class attribute `id` equals its ADAPTERS key.
-
-Class attributes
-    id        engine id, also the cell ids' first part (the comparison's engines: dk, dk_jac, mjw, mjw_pr1535,
-              mjw_pr1535_fix, mjx, mjc)
-    label     the public label, e.g. "MuJoCo Warp 3.17.0 (PyPI)", "MuJoCo Warp + unmerged PR #1535 @357a75d"
-    native    'native' (an official release through its public API), 'ours' (NablaEngine), 'unmerged-upstream'
-              (published but unmerged upstream code, unmodified), 'labelled' (anything else, never a headline row)
-    device    'gpu' | 'cpu' (where the timed work runs; decides the minimum repetitions per round)
-    tracks    the problem tracks it supports, ("A",) or ("A", "B")
-    variants  {variant name: setup options}: named configurations of one engine that are separate rows (e.g.
-              {"default": {}, "triton": {"xla_triton": True}}, {"matched": {"capacity": "matched"}}); "default" must
-              exist. Cell ids carry a non-default variant as <engine>~<variant>.
-
-Lifecycle (the worker, one fresh process per unit = engine, variant, problem, corpus, subset, nworld, iterations)
-    a = Cls()
-    a.setup(problem, states, nworld, iterations, **opts) -> {name: seconds}
-        problem  benchmarks.bench.problem.Problem: problem.load_model(problem, iterations) gives the MjModel with
-                 the problem's options; problem.DR(m, problem) applies or batches the per-world DR (Track A; a no-op
-                 for Track B); problem.substeps substeps per control step, ctrl held, qfrc_applied 0.
-        states   problem.States with nworld rows: qpos (nworld, nq), qvel, qacc_warmstart (nworld, nv), ctrl
-                 (nworld, nu), friction (nworld,), com (nworld, 3) (None for Track B), cot_qpos (nworld, 3, nq),
-                 cot_qvel (nworld, 3, nv) (the stored output cotangents; None if the corpus has none), all float32
-                 as stored. states.inputs(np.float64) converts exactly.
-        iterations  Newton iterations per substep (int), or None = the model's own (Track B native rows only).
-        opts     the variant's options merged with the user's (`run --opt <engine>.<key>=<value>`); raise
-                 TypeError / ValueError for an option you do not know.
-        Build the model, upload the states to the device and keep them resident there (the timed ops never copy
-        from the host), build or load kernels. Return the seconds of the parts you can separate, with these keys
-        where they apply: build_s (model / library build), compile_s (JIT or kernel compile), capture_s (CUDA graph
-        capture), load_s (state upload). The worker also records the wall time of setup as a whole.
-    a.ops() -> {op: callable}
-        Enqueue-only callables without arguments for the ops this engine supports natively (schema.OPS):
-          fwd        one control step from the loaded states (inference)
-          fwd_train  the forward a backward needs (e.g. with the tape / residuals); omit it when it is just fwd
-          bwd        the backward alone: pullback of the stored cotangent 0 (states.cotangent(0)) through residuals
-                     of a fwd_train made in prepare("bwd")
-          vjp        fwd_train + bwd of cotangent 0, every call from the loaded states
-          jac        the full Jacobian (nworld, nq + nv, 2 nv + nu) of the control step (rows qpos' in qpos form,
-                     then qvel'; columns qpos tangent, qvel, ctrl), however the engine computes it natively
-        Every call does the same work: it starts from the loaded input states, never from a previous call's output.
-        A call enqueues the work and returns without waiting for it (no host sync, no device-to-host copy); it may
-        return its outputs, but keep whatever sync() needs (e.g. the last JAX outputs) on self. A CPU engine whose
-        call is synchronous simply runs it. The same callable object for two ops (e.g. ops()["fwd_train"] is
-        ops()["fwd"]) is timed once and recorded as alias_of.
-    a.not_supported() -> {op: message}
-        For each op absent from ops(): why, quoted from the engine where possible (e.g. MJX's reverse-mode
-        ValueError, "no backward in any MuJoCo Warp release (docs FAQ, issue #500)"). Ops neither in ops() nor
-        here are recorded as not_supported with a generic message.
-    a.prepare(op) -> {name: seconds}
-        Optional (default: nothing): compile / capture what op needs before it is timed (e.g. a CUDA graph, an AOT
-        compile, the residuals for bwd); return {compile_s, capture_s, ...}. The worker then runs one call + sync
-        (first_call_s), a warm-up (>= warmup_calls calls and >= warmup_s seconds), and the timed rounds.
-    a.sync()
-        Block until everything enqueued so far has finished (jax: block_until_ready on the last outputs; warp:
-        wp.synchronize_device(); CPU: nothing).
-    a.timing_hints(op) -> dict
-        Optional protocol overrides for one op, recorded with the cell: reps (calls per round), rounds,
-        warmup_calls, warmup_s (e.g. MuJoCo C FD at 4096: {"reps": 1, "rounds": 3, "warmup_calls": 1}).
-    a.outputs() -> {"qpos": (nworld, nq), "qvel": (nworld, nv), "qacc_warmstart": (nworld, nv)}
-        float64 host arrays of one fwd from the loaded states (run one if needed; not timed). Called after timing.
-    a.gradient(cot_qpos, cot_qvel) -> {"qpos": (nworld, nv), "qvel": (nworld, nv), "ctrl": (nworld, nu)}
-        float64 host arrays: the native VJP of one control step from the loaded states for output cotangents
-        cot_qpos (nworld, nq) (qpos form) and cot_qvel (nworld, nv); the qpos gradient in the 35-dimensional tangent
-        form (convert a qpos-form gradient with qpos_tangent below; an FD Jacobian gives it directly). Raise
-        NotSupported(message) when the engine has no native gradient. Not timed (accuracy dumps). An engine whose
-        native gradient covers only some input blocks returns only those keys (the same ones for every cotangent);
-        the dump records which (grad_blocks) and gradient_not_supported()'s reasons for the others, and the scorers
-        report those blocks as not supported, never as non-finite.
-    a.gradient_not_supported() -> {block: message}
-        Optional, with a partial gradient: why each missing block is not supported, from the engine where possible.
-        Called after the gradients of every cotangent.
-    a.gradient_report() -> dict
-        Optional: anything the gradients learned that belongs with the dump (e.g. backward passes the engine aborted
-        and how they were retried), recorded in the dump cell.
-    a.jacobian() -> (nworld, nq + nv, 2 nv + nu) float64 (Track A: (B, 71, 99)), layout as op "jac"; or raise
-        NotSupported(message).
-    a.diagnostics() -> dict, of the forward outputs() ran, every key optional (None: not available):
-        ncon_mean, ncon_max, nefc_mean, nefc_max (per world, over the substeps the engine reports), niter_mean,
-        niter_max, niter_hist (list: count of worlds per iteration count 0..max), overflow (worlds or events that
-        exceeded a capacity; any overflow makes the cell an error), unsupported (worlds the engine flags as outside
-        its scope), nonfinite_worlds (computed by the worker from outputs() when absent), extra (dict, anything
-        engine-specific).
-    a.memory() -> dict
-        Optional: alloc_peak_bytes (the allocator's own high-water mark), tape_bytes, ... (the worker adds the
-        process's NVML MiB and peak RSS).
-    a.provenance() -> dict
-        Engine-specific: versions, git commit / tree hash of a source tree, wheel tag, effective options (e.g.
-        problem.options(m) plus engine options such as nconmax / njmax / graph_conditional / warn_overflow), the
-        switch set and environment. Repository-relative paths only (benchmarks.bench.prov.rel).
-    a.semantics() -> dict
-        Optional: one-line statements recorded with the engine, e.g. {"gradient": "analytic adjoint at the converged
-        solution, discrete decisions frozen", "solver_exit": "per batch (graph_conditional)"}.
-    a.close()
-        Optional: release thread pools, files.
-    Cls.check_env() -> dict  (classmethod)
-        Optional, for env-check: verify the environment without a model (e.g. the Warp device is CUDA, not a silent
-        CPU fallback); return facts to print, raise on a problem.
-
-Errors: raise NotSupported for things the engine cannot do natively (recorded as status not_supported with the
-message), MemoryError or the engine's own out-of-memory error for OOM (recognised by is_oom: status skipped:oom), and
-anything else for real failures (status error, with the message). Never catch and hide errors to produce a number.
-
-Fairness rules: run every engine other than ours as natively as possible (official releases, public
-APIs, documented settings, no monkeypatches, none of our optimisations); the only settings an adapter chooses are the
-problem's (model, iterations, substeps, DR) and documented user settings that it records in provenance().
-"""
+only: this module is imported in every engine environment."""
 
 import re
 
@@ -126,7 +8,7 @@ import numpy as np
 NATIVE_KINDS = ("native", "ours", "unmerged-upstream", "labelled")
 DEVICES = ("gpu", "cpu")
 OPS = ("fwd", "fwd_train", "bwd", "vjp", "jac")
-GRAD_BLOCKS = ("qpos", "qvel", "ctrl")  # the input blocks of gradient(), in the Jacobian's column order
+GRAD_BLOCKS = ("qpos", "qvel", "ctrl")
 DIAG_KEYS = ("ncon_mean", "ncon_max", "nefc_mean", "nefc_max", "niter_mean", "niter_max", "niter_hist", "overflow",
              "unsupported", "nonfinite_worlds", "extra")
 SETUP_KEYS = ("build_s", "compile_s", "capture_s", "load_s")
@@ -233,9 +115,6 @@ def validate_class(cls, engine_id=None):
     return out
 
 
-# ------------------------------------------------------------------------------------------------- tangent helpers
-# The G1 layout: one free joint first (qpos[0:3] position, qpos[3:7] quaternion w, x, y, z; qvel[0:6] linear and
-# angular velocity, the angular one in the body frame), then hinges (one qpos and one qvel entry each): nq = nv + 1.
 
 def check_layout(nq, nv):
     if nq != nv + 1:

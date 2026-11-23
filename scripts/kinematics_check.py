@@ -1,53 +1,6 @@
 """The kinematics outputs of nablaengine.jax_ffi, step(..., kinematics=True) and jax_ffi.kinematics, against MuJoCo
 MJX (mjx.kinematics + smooth.com_pos + smooth.com_vel with the per-world torso COM offset added to
-body_ipos[torso]), float32 with jax.default_matmul_precision("highest"), on corpus states.
-
-Corpora: --corpora (default mf_s0, mf_s1: benchmarks/data, nablaengine.fixtures), their input states and the
-output states of their MuJoCo Warp reference (out_qpos / out_qvel, with the corpus's com); the step, batch and timing
-sections use the first corpus.
-
-Sections (--sections, default all; each in its own process):
-  mjx        jax_ffi.kinematics_forward against MJX on every corpus's input and output states: xpos / subtree_com max
-             abs error, xquat max abs error (and how many quaternions are closer to -q than to q: sign flips), cvel
-             relative error per world (|d| / |ref| over the world's nbody x 6, rel_rows) median / p99 / max and per
-             body row p99, qpos_n against MJX's written-back qpos (the quaternion's max abs error; the other entries
-             bitwise). Gates (GATES): xpos, subtree_com <= 1e-5 m, xquat <= 1e-6, cvel median <= 1e-6 and p99 <= 1e-5,
-             qpos_n's quaternion <= 1e-6 and its other entries bitwise. Context (not gated): both against a float64
-             truth (section f64) on a subset of the states
-  vjp        jax.vjp through jax_ffi.kinematics against jax.vjp of the same MJX map, random N(0, 1) cotangents on each
-             output block alone and on all five together: g_qpos, g_qvel relative error per world median / p99 / max
-             (a world whose reference row is zero must be zero too); the quaternion gradient's radial part |g . q| / |g|
-             (MJX's normalization removes it). Gates: median <= 1e-5, p99 <= 1e-4
-  f64        (context, in a process with JAX_ENABLE_X64) the same MJX map in float64 on --f64-worlds states per corpus:
-             forward outputs and the VJPs of section vjp's cotangents, to which mjx and vjp compare both the engine and
-             MJX float32 (the rounding level)
-  step       step(..., kinematics=True) (interface defaults; 4096 states): q', v', warm' bitwise equal to
-             step(kinematics=False) (primal: dk_step_kin against dk_step; under jax.vjp: dk_fwd_kin against dk_fwd); its
-             kinematics outputs bitwise equal to jax_ffi.kinematics(q', v', com); jax.vjp with cotangents on all eight
-             outputs bitwise equal to the composition of step's VJP and kinematics' VJP (for clamp_kv 0 and the soft
-             clamp 2), and against the composition with MJX's kinematics VJP (rounding level, reported); remat: a scan of
-             H steps with a loss on the kinematics outputs, plain / jax.checkpoint(body) / jax.checkpoint(body,
-             policy=remat_policy()): forward FFI calls counted (the library's counters: H, 2 H, H) and the policy's
-             gradients bitwise the plain scan's
-  batch      B in {1, 40, 160, 4096}: per-world rows of kinematics_forward / its VJP and of step(kinematics=True) / its
-             VJP bitwise those of B = 4096; repeated calls with the same B compile nothing (jax.monitoring's
-             backend-compile events) and trace once; jax.grad of a scalar loss through step(kinematics=True) inside jit
-             and inside lax.scan (the next state is the step's qpos_n) finite and bitwise equal to the same loss
-             unrolled in Python
-  timing     B = 4096 (10 iterations, jit, warm, medians over --timing-repeats interleaved repeats of --reps calls):
-             the extra cost of kinematics=True in the step's forward (dk_step_kin - dk_step, dk_fwd_kin - dk_fwd) and
-             backward (dk_bwd_kin - dk_bwd) and in jax.vjp; jax_ffi.kinematics forward and forward + VJP against MJX's
-             three steps forward and forward + VJP (outputs and gradients returned, so XLA drops nothing); the bare
-             kernels k_kin and k_kin_vjp (the library's shims through ctypes, default stream)
---kinematics-scan adds scans whose carried state advances through jax_ffi.kinematics alone (the next qpos is
-qpos_n + theta_t): in step, their remat modes (the compiled HLO's dk_kin custom calls: 1, 2, 1; gradients bitwise), and
-in batch, their gradient against the unrolled loss.
-
-  CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src XLA_PYTHON_CLIENT_PREALLOCATE=false \\
-      python scripts/kinematics_check.py --out runs/kinematics_check.json
-
-Exit status: 0 when every section passes, 1 otherwise (the JSON is written either way).
-"""
+body_ipos[torso]), float32 with jax.default_matmul_precision("highest"), on corpus states."""
 
 import argparse
 import json
@@ -61,12 +14,12 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 SECTIONS = ("f64", "mjx", "vjp", "step", "batch", "timing")
-CORPORA = []  # --corpora (set in main)
+CORPORA = []
 OUTS = ("qpos_n", "xpos", "xquat", "cvel", "subtree_com")
 GATES = dict(xpos=1e-5, subtree_com=1e-5, xquat=1e-6, cvel_median=1e-6, cvel_p99=1e-5, qpos_n_quat=1e-6,
              vjp_median=1e-5, vjp_p99=1e-4)
 
-from nablaengine import fixtures, provenance, workdir  # noqa: E402
+from nablaengine import fixtures, provenance, workdir
 
 
 def same_bits(a, b):
@@ -92,7 +45,7 @@ def stats(e):
 def states(corpus):
     """{"in": (qpos, qvel, com), "out": (out_qpos, out_qvel, com)} float32 of the corpus."""
     z = fixtures.load_corpus(corpus)
-    f = lambda k: np.asarray(z[k], np.float32)  # noqa: E731
+    f = lambda k: np.asarray(z[k], np.float32)
     return {"in": (f("qpos"), f("qvel"), f("com")), "out": (f("out_qpos"), f("out_qvel"), f("com"))}
 
 
@@ -128,7 +81,6 @@ def _f64_path(args):
 
 
 def _vjp_cases():
-    """(name, the output blocks with a cotangent): each block alone, then all five."""
     return [(n, (i,)) for i, n in enumerate(OUTS)] + [("all", tuple(range(5)))]
 
 
@@ -136,7 +88,6 @@ def _case_cots(c, blocks):
     return [x if i in blocks else np.zeros_like(x) for i, x in enumerate(c)]
 
 
-# ---------------------------------------------------------------- f64 (context)
 
 def sec_f64(args):
     """(JAX_ENABLE_X64) MJX in float64 on the first --f64-worlds states of each corpus and state set: forward and the
@@ -158,7 +109,7 @@ def sec_f64(args):
         for si, (src, (q, v, c)) in enumerate(states(corpus).items()):
             n = min(args.f64_worlds, len(q))
             x = [jnp.asarray(a[:n], jnp.float64) for a in (q, v, c)]
-            cots = cotangents(list(K.shapes(m, len(q)).values()), seed=100 + 10 * ci + si)  # as sec_vjp
+            cots = cotangents(list(K.shapes(m, len(q)).values()), seed=100 + 10 * ci + si)
             for case, blocks in _vjp_cases():
                 outs, g = fn(*x, *(jnp.asarray(a[:n], jnp.float64) for a in _case_cots(cots, blocks)))
                 res[f"{corpus}_{src}_g_{case}_qpos"], res[f"{corpus}_{src}_g_{case}_qvel"] = (np.asarray(g[0]),
@@ -175,10 +126,8 @@ def _f64(args):
     return np.load(p) if p.exists() else None
 
 
-# ---------------------------------------------------------------- mjx
 
 def _forward_errors(ours, ref):
-    """The mjx section's statistics of ours against ref (both (qpos_n, xpos, xquat, cvel, subtree_com))."""
     qn, xp, xq, cv, sc = (np.asarray(x, np.float64) for x in ours)
     rqn, rxp, rxq, rcv, rsc = (np.asarray(x, np.float64) for x in ref)
     dq, dqn = np.abs(xq - rxq), np.abs(xq + rxq)
@@ -221,7 +170,7 @@ def sec_mjx(args):
                                                                                                   (len(q), 1)))),
                                        cvel_zero=bool(not ours[3][:, 0].any()),
                                        subtree_com_is_root=same_bits(ours[4][:, 0], ours[4][:, 1]))
-            if f64 is not None:  # context: both against float64 MJX on its subset
+            if f64 is not None:
                 n = len(f64[f"{corpus}_{src}_xpos"])
                 tr = [f64[f"{corpus}_{src}_{name}"] for name in OUTS]
                 e["vs_float64"] = dict(worlds=n, engine=_forward_errors([o[:n] for o in ours], tr),
@@ -245,7 +194,6 @@ def sec_mjx(args):
     return res
 
 
-# ---------------------------------------------------------------- vjp
 
 def sec_vjp(args):
     import jax
@@ -271,7 +219,7 @@ def sec_vjp(args):
     res, ok = {}, True
     for ci, corpus in enumerate(CORPORA):
         for si, (src, (q, v, c)) in enumerate(states(corpus).items()):
-            cots = cotangents(list(K.shapes(m, len(q)).values()), seed=100 + 10 * ci + si)  # as sec_f64
+            cots = cotangents(list(K.shapes(m, len(q)).values()), seed=100 + 10 * ci + si)
             x = [jnp.asarray(a) for a in (q, v, c)]
             r = {}
             for case, blocks in _vjp_cases():
@@ -293,7 +241,7 @@ def sec_vjp(args):
                     gq = gg[:, 3:7].astype(np.float64)
                     e[f"radial_part_{who}"] = float((np.abs((gq * u).sum(1)) / np.maximum(np.linalg.norm(gq, axis=1),
                                                                                             1e-30)).max())
-                if f64 is not None:  # context: both against float64 MJX on its subset
+                if f64 is not None:
                     e["vs_float64"] = {}
                     for who, gg in (("engine", g), ("mjx_float32", gr)):
                         e["vs_float64"][who] = {}
@@ -313,7 +261,6 @@ def sec_vjp(args):
     return res
 
 
-# ---------------------------------------------------------------- step
 
 def _inputs(corpus, B=None):
     import jax.numpy as jnp
@@ -334,7 +281,6 @@ def sec_step(args):
     F.init()
     a = _inputs(CORPORA[0])
     res, ok = {}, True
-    # q', v', warm' unchanged; the kinematics outputs those of jax_ffi.kinematics
     o0 = jax.jit(lambda *x: F.step(*x))(*a)
     o1 = jax.jit(lambda *x: F.step(*x, kinematics=True))(*a)
     kin = jax.jit(F.kinematics_forward)(o1[0], o1[1], a[5])
@@ -348,7 +294,6 @@ def sec_step(args):
     res["outputs"] = r
     ok &= r["pass"]
     print("step outputs", json.dumps(r), flush=True)
-    # the VJP: fused against the composition (engine kinematics: bitwise; MJX kinematics: rounding)
     fk = mjx_kinematics()
     rng = np.random.default_rng(7)
     shapes = [x.shape for x in o1]
@@ -395,8 +340,6 @@ def sec_step(args):
 
 
 def _remat_step(args, a):
-    """A scan of H steps (B worlds) with a loss on the kinematics outputs, three remat modes: forward calls (the
-    library's counters) and the gradients (against the plain scan's, bitwise)."""
     import jax
     import jax.numpy as jnp
     from nablaengine import jax_ffi as F
@@ -410,7 +353,7 @@ def _remat_step(args, a):
         q, v, w = c
         q1, v1, w1, qn, xp, xq, cv, sc = F.step(q, v, w, u0 + th, fr, com, kinematics=True)
         loss = (jnp.sum(xp * cw[0]) + 1e-2 * jnp.sum(cv * cw[1]) + jnp.sum(xq * cw[2]) + jnp.sum(sc[:, 1] ** 2)
-                + jnp.sum((xp[:, 16, 2] - 0.9) ** 2))  # a nonlinear term on the torso height
+                + jnp.sum((xp[:, 16, 2] - 0.9) ** 2))
         return (qn, v1, w1), loss / B
 
     def window(theta, mode):
@@ -425,7 +368,7 @@ def _remat_step(args, a):
     out = {}
     for mode in ("none", "checkpoint", "policy"):
         fn = jax.jit(jax.value_and_grad(lambda th, mode=mode: window(th, mode)))
-        jax.block_until_ready(fn(theta))  # compile
+        jax.block_until_ready(fn(theta))
         F.read_diagnostics(reset=True)
         val, g = fn(theta)
         jax.block_until_ready(g)
@@ -445,9 +388,6 @@ def _remat_step(args, a):
 
 
 def _remat_kin(args, a):
-    """jax_ffi.kinematics in a scan (the carried state advances through it alone: the next qpos is qpos_n + theta_t),
-    three remat modes:
-    the dk_kin / dk_kin_bwd custom calls of the compiled gradient and the gradients (bitwise against the plain one)."""
     import jax
     import jax.numpy as jnp
     from nablaengine import jax_ffi as F
@@ -489,7 +429,6 @@ def _remat_kin(args, a):
     return r
 
 
-# ---------------------------------------------------------------- batch
 
 def sec_batch(args):
     import jax
@@ -550,7 +489,6 @@ def sec_batch(args):
                library_builds_during=st1["builds"] - st0["builds"], library_loads_during=st1["loads"] - st0["loads"])
     res["no_recompile"] = bool(all(c["compiles"] == 0 for c in calls[4:])
                                and all(sorted(v) == [1, 40, 160, 4096] for v in traces.values()))
-    # jax.grad of a scalar loss through both entries, in jit and in lax.scan, against the same loss unrolled
     res["grad"] = _grad_scan(a, kinematics_scan=args.kinematics_scan)
     res["pass"] = bool(all(rows.values()) and res["no_recompile"] and res["library_builds_during"] == 0
                        and res["grad"]["pass"])
@@ -567,12 +505,12 @@ def _grad_scan(a, H=4, B=256, kinematics_scan=False):
     theta = jnp.asarray(0.01 * rng.standard_normal((H,) + u0.shape), jnp.float32)
     cw = jnp.asarray(rng.standard_normal((B, 31, 3)), jnp.float32)
 
-    def step_loss(c, th):  # a rollout: the next state is the step's qpos_n
+    def step_loss(c, th):
         q, v, w = c
         q1, v1, w1, qn, xp, xq, cv, sc = F.step(q, v, w, u0 + th, fr, com, kinematics=True)
         return (qn, v1, w1), jnp.sum(xp * cw) + jnp.sum(cv[:, 1:, 3:] ** 2) + jnp.sum(xq[:, 16, 0])
 
-    def kin_loss(c, th):  # --kinematics-scan: the state advanced through jax_ffi.kinematics alone
+    def kin_loss(c, th):
         q, v, w = c
         qp = q.at[:, 7:].add(th)
         qn, xp, xq, cv, sc = F.kinematics(qp, v, com)
@@ -604,7 +542,6 @@ def _grad_scan(a, H=4, B=256, kinematics_scan=False):
     return res
 
 
-# ---------------------------------------------------------------- timing
 
 def _bench(f, reps):
     import jax
@@ -619,7 +556,6 @@ def _bench(f, reps):
 
 
 def _bare_kernels(a, reps, repeats):
-    """k_kin / k_kin_vjp alone: the library's shims through ctypes on JAX's buffers (default stream), ms per launch."""
     import ctypes
     import glob
     import jax
@@ -627,15 +563,15 @@ def _bare_kernels(a, reps, repeats):
     from nablaengine import jax_ffi as F
     q, v, c = a[0], a[1], a[5]
     B = q.shape[0]
-    outs = jax.block_until_ready(jax.jit(F.kinematics_forward)(q, v, c))  # (uploads the constants)
+    outs = jax.block_until_ready(jax.jit(F.kinematics_forward)(q, v, c))
     rng = np.random.default_rng(0)
     cots = [jnp.asarray(rng.standard_normal(o.shape), jnp.float32) for o in outs]
     gq, gv = jax.block_until_ready(jax.jit(F.kinematics_backward)(q, v, c, *cots))
     lib = ctypes.CDLL(F.init()["path"])
     rt = ctypes.CDLL(sorted(glob.glob(os.path.join(os.path.dirname(jax.__file__), "..", "nvidia", "cuda_runtime",
                                                    "lib", "libcudart.so*")))[0])
-    P = lambda x: ctypes.c_void_p(x.unsafe_buffer_pointer())  # noqa: E731
-    tag = F.init()["forward_unit"]  # the unit with the forward / kinematics entries (dk_fwd when it has its own flags)
+    P = lambda x: ctypes.c_void_p(x.unsafe_buffer_pointer())
+    tag = F.init()["forward_unit"]
     kin, kvjp = getattr(lib, f"{tag}_kinematics"), getattr(lib, f"{tag}_kinematics_vjp")
     calls = dict(k_kin=lambda: kin(ctypes.c_void_p(0), B, P(q), P(v), P(c), *[P(o) for o in outs]),
                  k_kin_vjp=lambda: kvjp(ctypes.c_void_p(0), B, P(q), P(v), P(c), *[P(x) for x in cots],
@@ -705,7 +641,6 @@ def sec_timing(args):
         for n, f in calls:
             allt[n].append(_bench(f, args.reps))
     med = {n: float(np.median(v)) for n, v in allt.items()}
-    # device-bound: K calls in one lax.scan (each call's input the previous one's qpos_n), ms per call
     K = 50
 
     def scan_fn(kin_fn, vjp):
@@ -718,8 +653,6 @@ def sec_timing(args):
             else:
                 outs = kin_fn(q, v, a[5])
                 q = outs[0]
-            # every output into the carry: XLA drops the parts of MJX whose outputs are unused (the engine's FFI
-            # call is never eliminated), which made MJX's forward look ~4x cheaper
             acc = acc + sum(o.reshape(o.shape[0], -1).sum(1) for o in outs[1:])
             return (q, v, acc), None
         return jax.jit(lambda q, v: jax.lax.scan(body, (q, v, jnp.zeros_like(q[:, 0])), None, length=K)[0])
@@ -748,7 +681,7 @@ def sec_timing(args):
                     "in_scan_ms_per_call: K calls chained in one lax.scan (device time per call, the comparison with "
                     "MJX); the bare kernels back to back on the default stream; V100 numbers compare against MJX on "
                     "the same card only")
-    res["pass"] = True  # reported, not gated
+    res["pass"] = True
     print("timing", json.dumps({k: v for k, v in res.items() if k not in ("ms_all", "in_scan_all")}), flush=True)
     return res
 
@@ -815,11 +748,11 @@ def main():
         res["sections"][sec] = r
         print(f"== {sec}: pass {r.get('pass')} ({r['seconds']:.0f} s)", flush=True)
     res["pass"] = bool(all(v.get("pass") for v in res["sections"].values()))
-    res["provenance"] = provenance.provenance()  # commit, GPU, driver, nvcc, packages, MuJoCo Warp
+    res["provenance"] = provenance.provenance()
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(res, indent=1))
     print(json.dumps(dict(pass_=res["pass"], sections={k: v.get("pass") for k, v in res["sections"].items()})))
-    return 0 if res["pass"] else 1  # the exit status (a --section child exits 0: its parent reads the JSON)
+    return 0 if res["pass"] else 1
 
 
 if __name__ == "__main__":

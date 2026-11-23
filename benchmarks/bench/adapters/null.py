@@ -1,20 +1,5 @@
 """The null adapter: a CUDA-free stand-in engine that exercises the whole driver (worker processes, protocol, schema,
-resume, error statuses) without any physics. Not an engine; never in a results table.
-
-Its "control step" is the identity map (qpos' = qpos, qvel' = qvel, warm' = warm) computed with numpy, plus a sleep
-of work_ms per call, so its gradient and Jacobian are known exactly and test the tangent helpers of base.py:
-gradient = (qpos_tangent(cot_qpos, qpos), cot_qvel, 0), Jacobian = [[tangent_to_qpos(qpos), 0, 0], [0, I, 0]].
-
-  python -m benchmarks.bench run --engines null --quick --out runs/bench/test_null/
-  python -m benchmarks.bench run --engines null --opt null.fail=oom ...    # error paths (below)
-
-Options (run --opt null.<key>=<value>):
-  work_ms   milliseconds slept per fwd call (default 1.0); vjp sleeps 2 x, jac 4 x
-  fail      None (default); "setup": setup raises RuntimeError (status error for every op); "oom": setup raises
-            MemoryError (skipped:oom); "op": the vjp op raises (error for vjp only); "hang": setup sleeps for an hour
-            (the driver's per-unit timeout: skipped:time)
-  no_jac    true: no jac op (not_supported with a message)
-"""
+resume, error statuses) without any physics. Not an engine; never in a results table."""
 
 import time
 
@@ -72,7 +57,7 @@ class NullAdapter(base.Adapter):
 
     def ops(self):
         out = dict(fwd=self._fwd, vjp=self._vjp)
-        out["fwd_train"] = out["fwd"]  # the same callable: timed once, recorded as alias_of
+        out["fwd_train"] = out["fwd"]
         if not self.no_jac:
             out["jac"] = self._jac
         if self.cot is None:

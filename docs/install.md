@@ -3,7 +3,7 @@
 ## With `setup_env.sh`
 
 ```bash
-git clone https://github.com/OamIcs/NablaEngine.git NablaEngine && cd NablaEngine
+git clone https://github.com/sailab-ai/NablaEngine.git NablaEngine && cd NablaEngine
 scripts/setup_env.sh --dry-run     # print the plan first
 scripts/setup_env.sh               # environment in .dk_env/ (or --env DIR)
 source .dk_env/activate.sh
@@ -54,5 +54,5 @@ so the artifact can be built once and copied (`DK_TORCH_ARTIFACT`, `docs/api_tor
 - The CUDA library is compiled by nvcc on first use (about 15 s) and cached per architecture and content hash
   (`DK_CACHE_DIR`, `docs/configuration.md`); a host C++ compiler is needed too. CUDA 13 dropped sm_70 (V100), and
   sm_120 (RTX PRO 6000) needs CUDA 12.8 or newer.
-- `scripts/verify.sh` (about 15 minutes on a V100) runs every check; `--quick` a few minutes. `docs/verification.md`
+- `scripts/verify.sh` (about 25 minutes on a V100) runs every check; `--quick` a few minutes. `docs/verification.md`
   describes them.

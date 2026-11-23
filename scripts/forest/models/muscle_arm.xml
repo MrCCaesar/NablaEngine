@@ -1,0 +1,44 @@
+<!-- General actuator unit scenes (forest_engine.muscle; scripts/forest/muscle_check.py): the 4-dof arm of
+     spatial_arm.xml (hinge, hinge, slide, hinge, fixed base, contacts off, Euler) with its sites and wrap geoms. The
+     tendon / actuator blocks are the scenes' (muscle_check.SCENES). -->
+<mujoco model="muscle_arm">
+  <option timestep="0.002" integrator="Euler"/>
+  <default>
+    <joint damping="0.05" armature="0.002"/>
+    <geom type="capsule" size="0.02" density="500" contype="0" conaffinity="0"/>
+    <site size="0.005"/>
+  </default>
+  <worldbody>
+    <site name="w0" pos="0.05 0.02 1.15"/>
+    <site name="w1" pos="-0.05 -0.03 0.9"/>
+    <body name="l1" pos="0 0 1">
+      <joint name="h1" axis="0 1 0" range="-1.5 1.5"/>
+      <geom fromto="0 0 0 0.3 0 0"/>
+      <site name="a1" pos="0.08 0.01 0.04"/>
+      <site name="a2" pos="0.2 -0.01 0.035"/>
+      <site name="a3" pos="0.25 0.0 -0.04"/>
+      <body name="l2" pos="0.3 0 0">
+        <joint name="h2" axis="0 1 0" range="-2 2"/>
+        <geom fromto="0 0 0 0.25 0 0"/>
+        <geom name="wsph" type="sphere" size="0.045" pos="0 0 0"/>
+        <geom name="wcyl" type="cylinder" size="0.035 0.03" pos="0 0 0" quat="0.70710678 0.70710678 0 0"/>
+        <site name="side_out" pos="0 0 0.09"/>
+        <site name="side_out2" pos="0 0 -0.09"/>
+        <site name="side_in" pos="0.005 0.0 0.012"/>
+        <site name="b1" pos="0.12 0.01 0.03"/>
+        <site name="b2" pos="0.2 -0.015 -0.03"/>
+        <body name="l3" pos="0.25 0 0">
+          <joint name="s3" type="slide" axis="1 0 0" range="-0.05 0.05"/>
+          <geom fromto="0 0 0 0.1 0 0"/>
+          <site name="c1" pos="0.05 0.02 0.02"/>
+          <body name="l4" pos="0.1 0 0">
+            <joint name="h4" axis="0 0 1" range="-1 1"/>
+            <geom fromto="0 0 0 0.1 0.02 -0.03"/>
+            <site name="d1" pos="0.06 0.015 0.0"/>
+            <site name="d2" pos="0.09 -0.01 -0.02"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

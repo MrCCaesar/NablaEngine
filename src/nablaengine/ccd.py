@@ -1,16 +1,53 @@
 """MuJoCo Warp's general convex collision for box-box pairs (native CCD: GJK, EPA and multicontact by polygon
 clipping), translated to CUDA for one thread per pair (mujoco_warp/_src/collision_gjk.py and collision_convex.py,
 Copyright 2025 The Newton Developers, Apache License 2.0; their order of operations, so that the contacts agree with
-MuJoCo Warp's up to float rounding). Used by the G1 engine for models with box-box pairs (g1_engine.model_hooks).
+MuJoCo Warp's up to float rounding). Used by the G1 engine for models with box-box pairs (g1_engine.model_hooks)."""
+import os
 
-header(m): the iteration counts and tolerance (MuJoCo Warp: EPA 16 iterations when every convex pair is box-box,
-the GJK ccd_iterations; MULTICCD always for box-box). DEVICE: the device code (needs make_frame from the engine).
-"""
 
+def gjk_mj4():
+    """$DK_GJK_MJ4 at source generation (docs/configuration.md): 0 (default) MuJoCo Warp 3.17's GJK, 1 MuJoCo Warp
+    4.0's (collision_gjk.gjk): the termination tests read the search direction as tuned for discrete geoms (x_dir,
+    not x_k, whose own direction can be off by more than the gap in float32), and after the first iteration the
+    stall test does not compare with the initial guess's norm (no simplex point)."""
+    raw = os.environ.get("DK_GJK_MJ4", "") or "0"
+    if raw not in ("0", "1"):
+        raise ValueError(f"DK_GJK_MJ4={raw!r}: 0 or 1")
+    return raw == "1"
+
+
+GJK_MJ4_HOOKS = (
+    ("f3 dir_neg = x_k / xnorm;", "f3 dir_neg = x_k / xnorm, x_dir = x_k;  // (DK_GJK_MJ4)"),
+    ("if (dn > CV_MINVAL) dir_neg = dir_neg / dn;",
+     "if (dn > CV_MINVAL) { dir_neg = dir_neg / dn; x_dir = xnorm * dir_neg; }"),
+    ("if (nn > CV_MINVAL) dir_neg = cvsign(dt3(dir_neg, nrm)) * nrm / nn;",
+     "if (nn > CV_MINVAL) { dir_neg = cvsign(dt3(dir_neg, nrm)) * nrm / nn; x_dir = xnorm * dir_neg; }"),
+    ("if (dt3(x_k, x_k - simplex[n]) < epsilon) break;", "if (dt3(x_dir, x_dir - simplex[n]) < epsilon) break;"),
+    ("lower = dt3(x_k, simplex[n]);", "lower = dt3(x_dir, simplex[n]);"),
+    ("    xnorm_prev = xnorm;\n", "    xnorm_prev = xnorm;\n    if (it == 0) xnorm_prev = 0.f;  // (DK_GJK_MJ4: the guess is no simplex point)\n"),
+)
+
+
+def apply_gjk_mj4(src):
+    """src with MuJoCo Warp 4.0's GJK (GJK_MJ4_HOOKS in every copy) when $DK_GJK_MJ4 is 1; src itself otherwise (and
+    for a text without the GJK)."""
+    if not gjk_mj4():
+        return src
+    counts = [src.count(a) for a, _ in GJK_MJ4_HOOKS]
+    if not any(counts):
+        return src
+    if len(set(counts)) != 1:
+        raise RuntimeError(f"DK_GJK_MJ4: the GJK anchors occur {counts} times (expected equal counts)")
+    for a, b in GJK_MJ4_HOOKS:
+        src = src.replace(a, b)
+    return src
 
 def header(m):
-    """#defines of the box-box CCD (the model's ccd_iterations and ccd_tolerance)."""
-    return (f"#define GJK_ITERATIONS {int(m.opt.ccd_iterations)}\n#define EPA_ITERATIONS 16\n"
+    """#defines of the box-box CCD (the model's ccd_iterations and ccd_tolerance; MuJoCo Warp's EPA runs 16 iterations
+    when every convex pair is box-box, else ccd_iterations: g1_engine.cylccd's pairs)."""
+    from nablaengine.g1_engine import cylccd
+    epa = int(m.opt.ccd_iterations) if cylccd.pairs(m) else 16
+    return (f"#define GJK_ITERATIONS {int(m.opt.ccd_iterations)}\n#define EPA_ITERATIONS {epa}\n"
             f"#define CCD_TOLERANCE {float(m.opt.ccd_tolerance):.9g}f\n#define NPOLYMAX 4\n#define NMESHDEG 3\n")
 
 

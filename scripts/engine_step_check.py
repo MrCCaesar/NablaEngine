@@ -1,51 +1,5 @@
 """Check the G1 engine's forward (--substeps substeps of one control step) on corpus states against MuJoCo Warp, MuJoCo C
-and the MuJoCo C float64 truth.
-
-Per world: qpos, qvel, warm start, ctrl, foot friction and torso COM offset from the corpus (nablaengine.fixtures:
-default mf_s0, benchmarks/data/mf_s0.npz). Compared:
-  MuJoCo Warp   with --substeps 4 (a control step): the corpus's MuJoCo Warp reference (fixtures/mjlab/mjw317_<corpus>.npz,
-                native mujoco-warp 3.17.0 at 50 iterations, scripts/make_mjw_reference.py): ours_vs_mjw_qvel / _qpos,
-                relative error per world |d| / |ref| (median, p99, max), and MuJoCo C's against it for context; with
-                --substeps 1 the contact sets at the input state against MuJoCo Warp's collision (ours_vs_mjw_contacts)
-  MuJoCo C      mj_step with the same per-world friction / COM (Newton, --iterations, tolerance --tolerance) in float64:
-                the solver acceleration, next qvel and next qpos (qacc, qvel, qpos), Newton iterations, contact and row
-                counts, contact sets
-  truth         with --select truth and --substeps 4: the run's first worlds are the states of the corpus's truth
-                file (benchmarks/data/truth/<corpus>.npz: the sampled states and their forward truth, MuJoCo C float64
-                at tight solver options) and ours_vs_truth_qvel / _qpos compare with it, on all of them and on the
-                model_ok ones (MuJoCo C and MuJoCo Warp agree on the state's contacts, zones and frames)
-Worlds with unsupported contacts (box-box configurations where MuJoCo Warp's multiccd adds contacts) are left out of the
-error statistics (supported_share). Also the kernel time (one block of 32 threads per world, --reps launches). The
-binary is built as the forward unit (nablaengine.cuda.arch_flags('forward'): from compute_90 PTX on sm_120, as the FFI
-library's forward; result key arch_flags where that is not -arch=<arch>), with the forward unit's -D options for the
-target (nablaengine.cuda.unit_defines: on sm_90 the register caps SPLIT_PRE_MINB=16 SPLIT_POST_MAXNREG=128 unless
---define sets those bounds; result key forward_defines where there are any).
-
---tape: the main run also writes the forward tape (nablaengine.g1_engine.tape; tape.bin in the work directory) and the
-forward-tape checks T1-T8 run on it (tape_checks; result key "tape"). With the split forward (the default; --fused:
-k_substep) both kernels of a substep write their part of the record. $DK_SPLIT_ONLY=1 / 2 (split forward): the timed
-launches run only k_pre / k_post (per-kernel time; results invalid). --save-outputs writes every world's outputs
-(qpos, qvel, warm, info, con, and the tape) for bitwise comparisons between builds.
-
-Digests (--digests, default check): the main run's outputs against the committed manifest of forward digests
-(nablaengine.checks: fixtures/mjlab/engine_digests.json, keyed by corpus, run and build): "match", "mismatch" (the
-forward changed: a failure) or "unanchored" (no entry for this toolchain or run). --digests write --digests-file F adds
-this run's entry to F.
-
-Gates (--gate; GATES): supported_share 1; with --substeps 4 at the reference's iterations, against MuJoCo Warp qvel
-median and p99, qpos median and p99; with --select truth the same against the truth on the model_ok states; with
---substeps 1 the share of worlds whose contact set matches MuJoCo Warp's. Exit status: 1 when a gate (with --gate), a
-tape check (T1-T6, T8; T7's timing is reported) or the digests (mismatch) fail, else 0. The work directory (the
-generated source, the binary, its inputs and outputs) is removed at exit; --keep-work or DK_KEEP_WORK=1 keeps it
-(nablaengine.workdir).
-
-  PYTHONPATH=src python scripts/engine_step_check.py --corpus mf_s0 --substeps 4 --reps 0 --check 4096 --gate \\
-      --out runs/engine_ctrlstep_mf_s0.json
-  PYTHONPATH=src python scripts/engine_step_check.py --corpus mf_s0 --substeps 4 --nworld 256 --check 256 \\
-      --select truth --reps 0 --gate --out runs/engine_truth_mf_s0.json
-  PYTHONPATH=src python scripts/engine_step_check.py --corpus mf_s0 --substeps 1 --reps 0 --check 4096 --gate \\
-      --out runs/engine_sub1_mf_s0.json
-"""
+and the MuJoCo C float64 truth."""
 
 import argparse
 import hashlib
@@ -58,23 +12,16 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from nablaengine import checks, cuda, fixtures, provenance, workdir
+from nablaengine import checks, cuda, engines, fixtures, provenance, workdir
 from nablaengine.cuda import compile_cuda
 from nablaengine.g1_engine import source, step, tape
-# the forward kernel k_substep and the constant loader (in the package, shared with nablaengine.jax_ffi; other
-# scripts use them as ESC.KERNEL and ESC.loader)
-from nablaengine.g1_engine.host import KERNEL, loader  # noqa: F401
+from nablaengine.g1_engine.host import KERNEL, loader
 
-# --gate's pass criteria (relative errors per world, module docstring). Measured on a V100 (4096 states, 50
-# iterations), mf_s0 / mf_s1: against MuJoCo Warp qvel median 1.4e-6 / 1.4e-6, p99 1.2e-5 / 1.0e-5, qpos median
-# 9.6e-8 / 9.3e-8, p99 5.3e-7 / 5.3e-7 (MuJoCo Warp against its own rerun: qvel median 3e-7, p99 3.5e-6); against the
-# truth (model_ok, 250 / 255 states) qvel median 7.4e-7 / 7.4e-7, p99 5.1e-6 / 1.1e-5, qpos median 6.6e-8 / 6.8e-8,
-# p99 2.9e-7 / 7.6e-7; contact sets at the input state 1.0 (3 / 1 threshold flips)
 GATES = dict(supported_share=1.0, mjw_qvel_median=5e-6, mjw_qvel_p99=5e-5, mjw_qpos_median=5e-7, mjw_qpos_p99=5e-6,
              truth_qvel_median=5e-6, truth_qvel_p99=5e-5, truth_qpos_median=5e-7, truth_qpos_p99=5e-6,
              mjw_contacts_match=0.999)
 TAPE_GATED = ("T1_outputs_tape_on_vs_off", "T2_state_chain", "T3_contact_table", "T4_L_Q", "T5_L_H",
-              "T5b_L_H_engine_geometry", "T8_record_coverage")  # T7 (timing) is reported
+              "T5b_L_H_engine_geometry", "T8_record_coverage")
 
 
 HOST = r"""
@@ -193,7 +140,7 @@ def contacts_vs_mjw(m, con, ok, ref, K, tol_dist=1e-5, tol_pos=1e-5, tol_normal=
     matched contacts, and the mismatching pairs by geom-type combination. A contact that only one side has and whose
     |dist| < tol_flip is a threshold flip (float32 rounding decides whether it is active), counted separately."""
     names = {int(t): mujoco.mjtGeom(t).name[7:].lower() for t in set(m.geom_type)}
-    kind = lambda pr: "-".join(sorted((names[int(m.geom_type[m.pair_geom1[pr]])],  # noqa: E731
+    kind = lambda pr: "-".join(sorted((names[int(m.geom_type[m.pair_geom1[pr]])],
                                        names[int(m.geom_type[m.pair_geom2[pr]])])))
     good, flips, n, dev, bad_kind = 0, 0, 0, np.zeros(3), {}
     for i in range(K):
@@ -217,7 +164,7 @@ def contacts_vs_mjw(m, con, ok, ref, K, tol_dist=1e-5, tol_pos=1e-5, tol_normal=
                 same = False
                 bad_kind[kind(pr)] = bad_kind.get(kind(pr), 0) + 1
                 continue
-            rest = list(b)  # pair the contacts of a pair by position (equal distances leave the order arbitrary)
+            rest = list(b)
             for x in a:
                 y = rest.pop(int(np.argmin([np.abs(x[2:5] - r[2:5]).max() for r in rest])))
                 d = np.array([abs(x[1] - y[1]), np.abs(x[2:5] - y[2:5]).max(), abs(abs(np.dot(x[5:8], y[5:8])) - 1)])
@@ -283,26 +230,18 @@ def kbimp64(solref, solimp, pos, h):
 
 
 def tape_checks(args, m, mt, arr, run, main, K):
-    """Forward-tape checks T1-T8 on the main run's tape.
-
-    T1 outputs bitwise the same with the tape on and off (same binary; first: the engine run to run); T2 the state
-    chain (record 0 is the input, record k the state of a k-substep run, qvel' = qvel + h qacc_adv within 2 ulp);
-    T3 the contact table (record 0 against a 1-substep run's contacts and MuJoCo Warp's, valid slots, row counts);
-    T4 L_Q against MuJoCo C's mj_fullM + h diag(kv) in float64; T5 L_H against M + J_A' D_A J_A from MuJoCo C at the
-    record's state on matched contacts (T5b: the same with the engine's contact geometry and D formula, isolating the
-    factor from float32 collision geometry); T6 REFACT / NONCONV / min_nu / clamp statistics; T7 time, tape on vs off;
-    T8 every record word written, the padding between fields zero."""
+    """Forward-tape checks T1-T8 on the main run's tape."""
     nw, nsub, nv = len(main["qpos"]), args.substeps, m.nv
     rec = tape.decode(main["tape"], m)
+    forms = tape.factor_forms(m)
     keys = ("qpos", "qvel", "warm", "info", "con")
     out = {}
 
-    # T1
     off = [run(nsub)[1] for _ in range(2)]
     det = all(np.array_equal(off[0][k], off[1][k]) for k in keys)
     same = {k: bool(np.array_equal(main[k], off[0][k])) for k in keys}
     t1 = dict(deterministic_run_to_run=det, tape_on_vs_off_bitwise=same, **{"pass": all(same.values())})
-    if not det:  # the fallback: contact multisets equal and relative errors <= 1e-6
+    if not det:
         def rel(a, b):
             return np.linalg.norm(a - b, axis=1) / np.maximum(np.linalg.norm(b, axis=1), 1e-9)
         ok = np.array([sorted(x[x[:, 0] >= 0, 0]) == sorted(y[y[:, 0] >= 0, 0])
@@ -311,8 +250,7 @@ def tape_checks(args, m, mt, arr, run, main, K):
         t1.update(fallback_share=float(ok.mean()), **{"pass": bool(ok.all())})
     out["T1_outputs_tape_on_vs_off"] = t1
 
-    # T2
-    sub = {k: run(k)[1] for k in range(1, nsub)}  # the state after k substeps (tape off)
+    sub = {k: run(k)[1] for k in range(1, nsub)}
     q32, v32 = arr["qpos"].astype(np.float32), arr["qvel"].astype(np.float32)
     t2 = dict(rec0_is_input=bool(np.array_equal(rec["qpos"][:, 0], q32) and np.array_equal(rec["qvel"][:, 0], v32)))
     t2["rec_k_vs_run_of_k_substeps"] = {
@@ -322,7 +260,7 @@ def tape_checks(args, m, mt, arr, run, main, K):
         for k in sub}
     t2["last_qacc_is_warm_output"] = bool(np.array_equal(rec["qacc"][:, -1], main["warm"]))
     h = np.float32(m.opt.timestep)
-    nxt = np.concatenate([rec["qvel"][:, 1:], main["qvel"][:, None]], 1)  # qvel after substep k
+    nxt = np.concatenate([rec["qvel"][:, 1:], main["qvel"][:, None]], 1)
     fma = (rec["qvel"].astype(np.float64) + np.float64(h) * rec["qacc_adv"].astype(np.float64)).astype(np.float32)
     u_fma, u_sep = ulp_dist(nxt, fma), ulp_dist(nxt, rec["qvel"] + h * rec["qacc_adv"])
     t2["qvel_chain_ulp"] = dict(fused_max=int(u_fma.max()), fused_share_exact=float((u_fma == 0).mean()),
@@ -331,18 +269,17 @@ def tape_checks(args, m, mt, arr, run, main, K):
                       and all(all(v.values()) for v in t2["rec_k_vs_run_of_k_substeps"].values()))
     out["T2_state_chain"] = t2
 
-    # T3
     ptype, pdim = [], np.asarray(m.pair_dim)
     for p in range(m.npair):
         ts = sorted(step.GEOM_TYPE[int(m.geom_type[g])] for g in (m.pair_geom1[p], m.pair_geom2[p]))
         ptype.append(tuple(ts))
-    allowed = {(0, 1): 1, (0, 2): 2, (1, 1): 1, (1, 2): 1, (2, 2): 4, (0, 3): 8, (2, 3): 2, (3, 3): 8}  # slot < n
+    allowed = {(0, 1): 1, (0, 2): 2, (1, 1): 1, (1, 2): 1, (2, 2): 4, (0, 3): 8, (2, 3): 2, (3, 3): 8}
     valid = rec["pair"] >= 0
     pr, sl = rec["pair"][valid], rec["slot"][valid]
     lim = np.array([allowed[ptype[p]] for p in pr])
     dup = sum(len(set(zip(rec["pair"][i, k][valid[i, k]], rec["slot"][i, k][valid[i, k]]))) != valid[i, k].sum()
               for i in range(nw) for k in range(nsub))
-    nfl = int((m.dof_frictionloss > 0).sum())  # frictionloss rows come first (a model with frictionloss)
+    nfl = int((m.dof_frictionloss > 0).sum())
     nrows = np.where(valid, np.where(pdim[np.maximum(rec["pair"], 0)] == 3, 4, 1), 0).sum(-1) + rec["nlim"] + nfl
     c1 = sub[1]["con"] if nsub > 1 else main["con"]
     p1 = c1[:, :, 0].astype(np.int64)
@@ -356,8 +293,8 @@ def tape_checks(args, m, mt, arr, run, main, K):
               nefc_vs_rows=float((rec["nefc"] == np.minimum(nrows, step.NEFC)).mean()),
               ncon_last_vs_info=float((rec["ncon"][:, -1] == np.minimum(main["info"][:, 1], step.maxcon(m))).mean()),
               nefc_last_vs_info=float((rec["nefc"][:, -1] == main["info"][:, 2]).mean()))
-    if fixtures.has_contacts(args.corpus):  # record 0's pairs (with the 1-substep run's distances) against MuJoCo Warp's
-        ref = fixtures.load_contacts(args.corpus)["con"]  # as multisets; world i is corpus state args.state_index[i]
+    if fixtures.has_contacts(args.corpus):
+        ref = fixtures.load_contacts(args.corpus)["con"]
         good = flips = bad = 0
         for i in range(nw):
             if main["info"][i, 3]:
@@ -368,13 +305,13 @@ def tape_checks(args, m, mt, arr, run, main, K):
             if ca == cb:
                 good += 1
                 continue
-            extra = []  # per pair with different counts, the contacts beyond the common count (largest dist first out)
+            extra = []
             for p in set(ca) | set(cb):
                 if ca[p] != cb[p]:
                     da, db = sorted(x for q, x in a if q == p), sorted(x for q, x in b if q == p)
                     n = min(len(da), len(db))
                     extra += da[n:] + db[n:]
-            if all(abs(x) < 1e-6 for x in extra):  # threshold flips (as contacts_vs_mjw)
+            if all(abs(x) < 1e-6 for x in extra):
                 flips += 1
             else:
                 bad += 1
@@ -385,17 +322,16 @@ def tape_checks(args, m, mt, arr, run, main, K):
                       and t3.get("vs_mjw_pairs", {}).get("mismatch", 0) == 0)
     out["T3_contact_table"] = t3
 
-    # limit rows (the engine's float32 test) and the clamp mask against a float64 recomputation
     c1c = source.constants(m)[0]
     lay = {s: n for s, n in zip([x[0] for x in source.CONST_LAYOUT], np.cumsum([0] + [
         (dict(nb=m.nbody, nv=m.nv, one=1)[c] if isinstance(c, str) else c) * w for _, _, c, w in source.CONST_LAYOUT]))}
-    cget = lambda s, n: c1c[lay[s]:lay[s] + n]  # noqa: E731
+    cget = lambda s, n: c1c[lay[s]:lay[s] + n]
     kp, kv, frc = cget("c_kp", nv), cget("c_kv", nv), cget("c_frclim", nv)
     jr = np.zeros((nv, 2), np.float32)
     jl = np.zeros(nv, bool)
     for j in range(1, m.njnt):
         jr[m.jnt_dofadr[j]], jl[m.jnt_dofadr[j]] = m.jnt_range[j], m.jnt_limited[j]
-    qd = rec["qpos"][..., 1:]  # hinge dof i at qpos i + 1 (i >= 6)
+    qd = rec["qpos"][..., 1:]
     lim_on = (np.arange(nv) >= 6) & jl & (np.minimum(qd - jr[:, 0], jr[:, 1] - qd) < 0)
     ctrl = np.concatenate([np.zeros((nw, 6), np.float32), arr["ctrl"].astype(np.float32)], 1)[:, None]
     act = kp.astype(np.float64) * (ctrl - qd.astype(np.float64)) - kv.astype(np.float64) * rec["qvel"].astype(np.float64)
@@ -407,7 +343,6 @@ def tape_checks(args, m, mt, arr, run, main, K):
                              mismatch_max_rel_margin=float(marg[mis].max()) if mis.any() else 0.0,
                              nlim_vs_float32_limit_test=float((lim_on.sum(-1) == rec["nlim"]).mean()))
 
-    # T4, T5: MuJoCo C (float64) at each record's state, worlds 0..K-1
     d = mujoco.MjData(m)
     torso, foot = fixtures.torso_id(m, mt), mt["foot_pairs"]
     ipos0, fric0 = m.body_ipos[torso].copy(), m.pair_friction.copy()
@@ -415,7 +350,7 @@ def tape_checks(args, m, mt, arr, run, main, K):
     for a in range(m.nu):
         kv64[m.jnt_dofadr[m.actuator_trnid[a, 0]]] = -m.actuator_biasprm[a, 2]
     pair_of = {frozenset((int(m.pair_geom1[i]), int(m.pair_geom2[i]))): i for i in range(m.npair)}
-    eng_g = []  # the engine's geom order of each pair (lower type first, as step.pair_constants)
+    eng_g = []
     for p in range(m.npair):
         g1, g2 = int(m.pair_geom1[p]), int(m.pair_geom2[p])
         if step.GEOM_TYPE[int(m.geom_type[g1])] > step.GEOM_TYPE[int(m.geom_type[g2])]:
@@ -426,8 +361,8 @@ def tape_checks(args, m, mt, arr, run, main, K):
     LIMIT = mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
     jp1, jp2 = np.zeros((3, nv)), np.zeros((3, nv))
     e4, e5, e5b, e5c, e5_refact, unmatched, skipped, geo_order = [], [], [], [], [], 0, 0, 0
-    worst = {False: [], True: []}  # per SINGULAR: the largest T5 errors (error, world, substep, T5b, T5c, largest
-    sing5 = []                      # engine-MuJoCo contact deviations (dist, pos, 1 - |cos| of the normals), kinds)
+    worst = {False: [], True: []}
+    sing5 = []
     footset = set(int(x) for x in foot)
     for i in range(K):
         m.body_ipos[torso] = ipos0 + arr["com"][i]
@@ -440,18 +375,18 @@ def tape_checks(args, m, mt, arr, run, main, K):
             mujoco.mj_fullM(m, d, M)
             Q = M + hh * np.diag(kv64)
             LQ = tape.tri_unpack(rec["L_Q"][i, k], nv).astype(np.float64)
-            e4.append(np.linalg.norm(LQ @ LQ.T - Q) / np.linalg.norm(Q))
-            if rec["unsupported"][i, k] or nfl:  # T5 has no frictionloss rows (nor has the adjoint)
+            e4.append(np.linalg.norm(tape.factor_product(LQ, forms["L_Q"]) - Q) / np.linalg.norm(Q))
+            if rec["unsupported"][i, k] or nfl:
                 skipped += 1
                 continue
             nc, zone = int(rec["ncon"][i, k]), rec["zone"][i, k]
             tk = [(int(rec["pair"][i, k, c]), int(rec["slot"][i, k, c])) for c in range(nc)]
             mj = {}
-            for ci in range(d.ncon):  # MuJoCo's contacts by (pair, slot)
+            for ci in range(d.ncon):
                 cc = d.contact[ci]
                 p = pair_of[frozenset((int(cc.geom1), int(cc.geom2)))]
                 slot = 0
-                if ptype[p] == (0, 2):  # plane-capsule: which end
+                if ptype[p] == (0, 2):
                     g = eng_g[p][1]
                     slot = 0 if (cc.pos - d.geom_xpos[g]) @ d.geom_xmat[g].reshape(3, 3)[:, 2] > 0 else 1
                 mj.setdefault((p, slot), []).append(ci)
@@ -462,14 +397,10 @@ def tape_checks(args, m, mt, arr, run, main, K):
                 con_e = None
             else:
                 con_e = True
-            # H_ref variants: "mujoco" (T5: MuJoCo's contact points, normals and efc_D), "engine" (T5b: the engine's
-            # contacts of substep k, i.e. those of a run with k + 1 substeps in table order, and D by the engine's
-            # formula at the engine's distance), "mujoco_geometry_engine_D" (MuJoCo's points and normals, the engine's D:
-            # separates the Jacobians from D's sensitivity to the float32 distance); M and the Jacobians from MuJoCo C
             ce = (sub[k + 1] if k + 1 < nsub else main)["con"][i]
             Hs = {v: M.copy() for v in (("mujoco", "mujoco_geometry_engine_D") if con_e else ()) + ("engine",)}
             r, dev = 0, np.zeros(3)
-            for j in ldofs:  # limit rows, dof ascending
+            for j in ldofs:
                 if zone[r]:
                     q = rec["qpos"][i, k, j + 1]
                     _, _, imp = kbimp64(m.jnt_solref[1], m.jnt_solimp[1], min(q - jr[j, 0], jr[j, 1] - q), hh)
@@ -491,7 +422,7 @@ def tape_checks(args, m, mt, arr, run, main, K):
                 geo = dict(engine=(ce[c, 2:5].astype(np.float64), ce[c, 5:8].astype(np.float64), mu, De))
                 if con_e:
                     cc = d.contact[mj[(p, slot)][0]]
-                    sg = 1.0 if int(cc.geom1) == g1 else -1.0  # MuJoCo's normal points from its geom1 to geom2
+                    sg = 1.0 if int(cc.geom1) == g1 else -1.0
                     geo["mujoco"] = (cc.pos.copy(), sg * cc.frame[:3], cc.friction[0],
                                      [d.efc_D[cc.efc_address + t] for t in range(nr)])
                     geo["mujoco_geometry_engine_D"] = geo["mujoco"][:3] + (De,)
@@ -508,7 +439,7 @@ def tape_checks(args, m, mt, arr, run, main, K):
                             Hs[v] += D[t] * np.outer(us[t], us[t])
                 r += nr
             LH = tape.tri_unpack(rec["L_H"][i, k], nv).astype(np.float64)
-            HL = LH @ LH.T
+            HL = tape.factor_product(LH, forms["L_H"])
             err = {v: np.linalg.norm(HL - H) / np.linalg.norm(H) for v, H in Hs.items()}
             e5b.append(err["engine"])
             if con_e:
@@ -523,19 +454,13 @@ def tape_checks(args, m, mt, arr, run, main, K):
     m.body_ipos[torso], m.pair_friction[:] = ipos0, fric0
     out["T4_L_Q"] = dict(**stats(e4), **{"pass": bool(np.median(e4) <= 1e-6 and max(e4) <= 1e-5)})
     nrec = K * nsub - skipped
-    # T5 against MuJoCo C's own contacts and efc_D carries the float32 collision geometry: a 1e-7 m distance change moves
-    # D by ~1e-4 inside the 1 mm solimp transition, short lever arms amplify contact-point errors in J, and on SINGULAR
-    # records (axes within 5 mm) the normal itself is ill-conditioned (float32 and float64 normals can differ by tens of
-    # degrees). T5b removes all three (the engine's contacts, MuJoCo's M and Jacobians, D in float64), T5c only the
-    # distance part of D. The pass test of T5 is therefore on the non-singular records with a tolerance for the
-    # geometry; a 1e-5 bound is reported, and the factor itself is judged by T5b
     e5a, s5 = np.asarray(e5), np.asarray(sing5, bool)
     reg = e5a[~s5] if len(e5a) else e5a
     out["T5_L_H"] = dict(**stats(e5), matched_share=float(len(e5) / max(nrec, 1)), unmatched=unmatched,
                          unsupported_skipped=skipped, non_singular=stats(reg),
                          singular=stats(e5a[s5] if len(e5a) else e5a),
                          refact_records=stats(e5_refact), design_threshold_max_1e_5=bool(max(e5, default=0.0) <= 1e-5),
-                         **{"pass": None if nrec == 0 else  # every record skipped (a model with frictionloss)
+                         **{"pass": None if nrec == 0 else
                             bool(len(e5) >= 0.95 * nrec and len(reg) and np.quantile(reg, 0.99) <= 1e-4
                                  and reg.max() <= 1e-3)})
     out["T5b_L_H_engine_geometry"] = dict(**stats(e5b), contact_order_mismatch=geo_order,
@@ -547,8 +472,7 @@ def tape_checks(args, m, mt, arr, run, main, K):
         dict(world=i, substep=k, T5=e, T5b=eb, T5c=ec, min_nu=float(rec["min_nu"][i, k]),
              refact=bool(rec["refact"][i, k]), dev_dist_pos_normal=dv, contact_kinds=dict(kd)) for e, i, k, eb, ec, dv, kd in worst[sg]] for sg in worst}
 
-    # T6
-    w_any = lambda x: float(x.any(1).mean())  # noqa: E731
+    w_any = lambda x: float(x.any(1).mean())
     t6 = dict(records=int(nw * nsub), refact_records=float(rec["refact"].mean()), refact_worlds=w_any(rec["refact"]),
               nonconv_records=float(rec["nonconv"].mean()), nonconv_worlds=w_any(rec["nonconv"]),
               min_nu_lt_5mm_worlds=int((rec["min_nu"] < 5e-3).any(1).sum()),
@@ -559,21 +483,19 @@ def tape_checks(args, m, mt, arr, run, main, K):
               clamp_records=float((rec["clamp"] != 0).mean()),
               niter_mean_per_substep=rec["niter"].mean(0).round(3).tolist(), niter_max=int(rec["niter"].max()),
               zone_rows_mean=float(rec["zone"].sum(-1).mean()), nefc_mean=float(rec["nefc"].mean()))
-    if any("DK_TAPE_VERIFY" in x for x in args.define):  # debug build: L_H against a re-assembly at the final zones
+    if any("DK_TAPE_VERIFY" in x for x in args.define):
         t6["verify_diff_without_refact"] = int((rec["verify_diff"] & ~rec["refact"]).sum())
         t6["verify_diff_with_refact"] = int((rec["verify_diff"] & rec["refact"]).sum())
     out["T6_statistics"] = t6
 
-    # T7
     if args.reps > 0:
         ms = {False: [], True: []}
-        for _ in range(3):  # alternating, the same binary
+        for _ in range(3):
             for on in (False, True):
                 ms[on].append(run(nsub, on, args.reps)[0]["ms"])
         slow = float(np.median(ms[True]) / np.median(ms[False]) - 1)
         out["T7_timing"] = dict(ms_tape_off=ms[False], ms_tape_on=ms[True], slowdown=slow, **{"pass": slow <= 0.04})
 
-    # T8: every word of every record written (the buffer starts as 0xA5 bytes), the padding between fields as zeros
     raw = main["tape"].view(np.uint32)
     field = np.zeros(raw.shape[-1], bool)
     for o, n in tape.layout(m).values():
@@ -588,9 +510,38 @@ def tape_checks(args, m, mt, arr, run, main, K):
     return out
 
 
-def binary_source(m, foot_pairs):
+def forest_modules():
+    """(host, step, tape, adjoint) of the forest engine (nablaengine.forest_engine; NotInRelease in a public package)."""
+    from nablaengine._optional import FOREST, load
+    return load("nablaengine.forest_engine", FOREST, "host", "step", "tape", "adjoint")
+
+
+def forest_binary_source(m, foot_pairs, com_body):
+    """(CUDA source, packed constants) of the engine binary on the forest engine (--engine forest): the forest engine's
+    forward and adjoint text as its libraries build it (adjoint.cuda_source, constants adjoint.engine_constants with
+    com_body), forest_engine.host's KERNEL and HOST's main (ctrl NU wide, com COM_WORDS, the contact table CON_WORDS;
+    a deferred-CCD build also opts k_pre_a into its shared memory). scripts/identity_gate.py --engine forest hashes
+    it."""
+    fhost, _, _, fadj = forest_modules()
+    consts, lays, sizes = fadj.engine_constants(m, foot_pairs, com_body)
+    hst = (HOST.replace("IN(ctrl, NV - 6)", "IN(ctrl, NU)").replace("IN(com, 3)", "IN(com, COM_WORDS)")
+           .replace("MAXCON * 8", "MAXCON * CON_WORDS"))
+    pre = "  cudaFuncSetAttribute(k_pre, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem_pre);\n"
+    assert hst.count(pre) == 1 and hst.count("MAXCON * CON_WORDS") == 2
+    hst = hst.replace(pre, pre + "#if CV_DEFER\n  cudaFuncSetAttribute(k_pre_a, cudaFuncAttributeMaxDynamicSharedMemorySize, "
+                                 "(int)smem_pre);\n#endif\n")
+    from nablaengine.forest_engine import margin_convex
+    src = (fadj.cuda_source(m) + margin_convex.host(fhost.KERNEL, m)
+           + hst.replace("LOAD_CONSTS", fhost.loader(lays, sizes)).replace("NCONST", str(len(consts))))
+    return src, consts
+
+
+def binary_source(m, foot_pairs, engine="tree", com_body=None):
     """(CUDA source, packed constants) of this script's engine binary for model m (the forward kernels k_pre / k_post /
-    k_substep, KERNEL and HOST's main; scripts/identity_gate.py hashes it)."""
+    k_substep, KERNEL and HOST's main; scripts/identity_gate.py hashes it). engine "forest": forest_binary_source with
+    com_body."""
+    if engine == "forest":
+        return forest_binary_source(m, foot_pairs, com_body)
     c1, maxd = source.constants(m)
     c2 = step.pair_constants(m, foot_pairs)
     dofbody, mask = step.extra_constants(m)
@@ -603,7 +554,7 @@ def binary_source(m, foot_pairs):
     src = (source.header(m, maxd, 1) + step.EXTRA_HEADER + step.step_header(m) + tape.header(m) + source.DEVICE
            + step.STEP_DEVICE + step.STEP_KERNEL + KERNEL
            + HOST.replace("LOAD_CONSTS", loader(list(lay1) + lay2 + lay3, sizes)).replace("NCONST", str(len(consts))))
-    return src, consts
+    return step.apply_hooks(src, step.tree_chol_hooks(m)), consts
 
 
 def main():
@@ -647,10 +598,15 @@ def main():
     ap.add_argument("--digests-file", default="", help="--digests write: the manifest to add the entry to")
     ap.add_argument("--digests-replace", action="store_true",
                     help="--digests write: replace an entry of this key whose digests differ")
+    ap.add_argument("--engine", default=None, choices=("tree", "forest"),
+                    help="the engine whose build is checked (default: $DK_ENGINE, nablaengine.engines.default: tree, else forest)")
     ap.add_argument("--out", required=True)
     workdir.add_argument(ap)
     args = ap.parse_args()
     workdir.configure(args)
+    args.engine = args.engine or engines.default()
+    if args.engine == "forest" and (args.tape or args.profile):
+        ap.error("--tape / --profile: the tree engine's checks only")
     if args.digests == "write" and not args.digests_file:
         ap.error("--digests write needs --digests-file")
     if args.save_outputs and Path(args.save_outputs).resolve() == Path(args.out).with_suffix(".npz").resolve():
@@ -661,14 +617,16 @@ def main():
     m.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_SENSOR)
     m.opt.tolerance = args.tolerance
     foot = mt["foot_pairs"]
-    src, consts = binary_source(m, foot)
-    maxcon = step.maxcon(m)
+    com_body = mt.get("torso_body", source.COM_BODY)
+    src, consts = binary_source(m, foot, args.engine, com_body)
+    estep = forest_modules()[1] if args.engine == "forest" else step
+    maxcon, con_words = estep.maxcon(m), (int(estep.CON_WORDS) if args.engine == "forest" else 8)
     work = workdir.work_dir("engine_step_")
     (work / "step.cu").write_text(src)
     extra = ((["-DDK_PROFILE"] if args.profile else []) + [f"-D{d}" for d in args.define] + args.xflag
              + (["-DDK_SPLIT=0"] if args.fused else []))
-    compile_cuda(work / "step.cu", work / "step", extra, unit="forward")  # sm_120: NVVM 7, sm_90: caps (nablaengine.cuda)
-    nvcc_extra = list(extra)  # (the name extra is reused below)
+    compile_cuda(work / "step.cu", work / "step", extra, unit="forward")
+    nvcc_extra = list(extra)
     consts.tofile(work / "consts.bin")
     z = fixtures.load_corpus(args.corpus)
     nw, S = args.nworld, len(z["qpos"])
@@ -680,8 +638,8 @@ def main():
         first = np.asarray(truth["index"], np.int64)
         idx = np.concatenate([first, np.setdiff1d(np.arange(S), first)])[:nw]
     else:
-        idx = np.arange(nw) % S  # tiled
-    args.state_index = idx  # world i runs corpus state idx[i]
+        idx = np.arange(nw) % S
+    args.state_index = idx
     arr = {k: np.asarray(z[src_k])[idx] for k, src_k in
            (("qpos", "qpos"), ("qvel", "qvel"), ("warm", "qacc_warmstart"), ("ctrl", "ctrl"), ("fric", "friction"),
             ("com", "com"))}
@@ -699,15 +657,15 @@ def main():
                     qvel=np.fromfile(work / "out_qvel.bin", np.float32).reshape(nw, m.nv),
                     warm=np.fromfile(work / "out_warm.bin", np.float32).reshape(nw, m.nv),
                     info=np.fromfile(work / "out_info.bin", np.int32).reshape(nw, 4),
-                    con=np.fromfile(work / "out_con.bin", np.float32).reshape(nw, maxcon, 8))
+                    con=np.fromfile(work / "out_con.bin", np.float32).reshape(nw, maxcon, con_words))
         if use_tape:
             outs["tape"] = np.fromfile(work / "tape.bin", np.float32).reshape(nw, nsub, rec_words)
         return r, outs, o
 
     res, main_out, out = run(args.substeps, args.tape, args.reps)
-    if cuda.forward_virtual_arch():  # the forward unit is not built natively (sm_120: NVVM 7)
+    if cuda.forward_virtual_arch():
         res["arch_flags"] = cuda.arch_flags("forward")
-    if cuda.unit_defines("forward", None, extra):  # the target's forward-unit -D options (sm_90: the register caps)
+    if cuda.unit_defines("forward", None, extra):
         res["forward_defines"] = cuda.unit_defines("forward", None, extra)
     if args.save_outputs:
         np.savez(args.save_outputs, **main_out)
@@ -726,6 +684,8 @@ def main():
                               share=dict(zip(step.PROF_PHASES, (cyc / part.sum()).round(4).tolist())),
                               total_cycles_per_world_substep=float(part.sum() / (nw * args.substeps)))
     oq, ov, ow, info, con = (main_out[k] for k in ("qpos", "qvel", "warm", "info", "con"))
+    con = con[:, :, :8]
+    res["engine"] = args.engine
     pair_of = {frozenset((int(m.pair_geom1[i]), int(m.pair_geom2[i]))): i for i in range(m.npair)}
     con_ref = []
     K = min(args.check, nw)
@@ -758,14 +718,13 @@ def main():
     has_ref = args.substeps == 4 and "out_qpos" in z
     if args.substeps == 4 and not has_ref:
         res["ours_vs_mjw"] = f"not evaluated: no MuJoCo Warp reference of {args.corpus}"
-    if has_ref:  # the corpus's MuJoCo Warp control step (50 iterations): ours and MuJoCo against it
+    if has_ref:
         gq, gv = (np.asarray(z[k])[idx[:K]] for k in ("out_qpos", "out_qvel"))
         res["mjw_reference"] = dict(iterations=int(z.get("iterations", 50)), file=(
             f"{args.corpus}_fwd.npz" if fixtures.is_fixture(args.corpus)
             else provenance.rel(fixtures.reference_path(args.corpus))))
         res.update(ours_vs_mjw_qvel=rel(ov[:K], gv), mujoco_vs_mjw_qvel=rel(rv, gv), ours_vs_mjw_qpos=rel(oq[:K], gq),
                    mujoco_vs_mjw_qpos=rel(rq, gq))
-        # states with a self contact whose geom axes nearly meet (singular normal derivative), reported separately
         axis_d = fixtures.self_contact_axis_distance(m, arr["qpos"][:K])
         for tag, sel in (("axis_lt_5mm", axis_d < 5e-3), ("rest", axis_d >= 5e-3)):
             sel = sel & ok
@@ -777,7 +736,7 @@ def main():
                ncon_match=float((info[:K, 1][ok] == ncon_ref[ok]).mean()),
                niter=dict(mean=float(info[:K, 0][ok].mean()), max=int(info[:K, 0][ok].max())),
                nefc_mean=float(info[:K, 2].mean()), ncon_mean=float(info[:K, 1].mean()))
-    if truth is not None and args.substeps == 4:  # the forward truth of the truth file's states (worlds 0..n - 1)
+    if truth is not None and args.substeps == 4:
         n = min(len(truth["index"]), nw)
         nk = min(n, K)
         tout = truth["out"][:n]
@@ -818,7 +777,7 @@ def main():
         bad += 1
     res.update(contact_set_mismatch=bad / max(int(ok.sum()), 1), mismatch_pairs={f"{k[0]}-{k[1]} pair {k[2]}": v for k, v in
                                                               sorted(pair_bad.items(), key=lambda x: -x[1])})
-    if args.substeps == 1 and fixtures.has_contacts(args.corpus):  # at the input state: ours against MuJoCo Warp's
+    if args.substeps == 1 and fixtures.has_contacts(args.corpus):
         ref = dict(con=fixtures.load_contacts(args.corpus)["con"][idx[:K]])
         res.update(contacts_vs_mjw(m, con[:K], ok, ref, min(K, S)))
     if args.tape:
@@ -826,6 +785,8 @@ def main():
     if args.digests != "off":
         run_key = dict(substeps=args.substeps, iterations=args.iterations, tolerance=args.tolerance, nworld=nw,
                        select=args.select, tape=bool(args.tape), fused=bool(args.fused))
+        if args.engine == "forest":
+            run_key["engine"] = "forest"
         key = checks.forward_key(args.corpus, arr, fixtures.fixtures_dir() / "g1_train.mjb", run_key, nvcc_extra)
         if args.digests == "write":
             status = checks.digest_write(args.digests_file, main_out, key, hashlib.sha256(src.encode()).hexdigest(),
@@ -838,9 +799,9 @@ def main():
     if args.gate:
         res["gates"] = GATES
     print(json.dumps(res, indent=1), flush=True)
-    res["provenance"] = provenance.provenance()  # commit, GPU, driver, nvcc, packages, MuJoCo Warp
+    res["provenance"] = provenance.provenance()
     Path(args.out).write_text(json.dumps(res, indent=1))
-    print(f"engine step check ({args.corpus}, {args.substeps} substeps, {nw} worlds): "
+    print(f"engine step check ({args.engine} engine, {args.corpus}, {args.substeps} substeps, {nw} worlds): "
           + ("PASS" if not res["failures"] else "FAIL: " + "; ".join(res["failures"])), flush=True)
     return 1 if res["failures"] else 0
 
@@ -854,7 +815,7 @@ def rel_rows(a, b):
 def failures(args, res):
     """The failed checks of a result: the tape checks (TAPE_GATED), the digests (mismatch), and with --gate GATES."""
     out = []
-    for k in TAPE_GATED if isinstance(res.get("tape"), dict) else ():  # (the binary's JSON line has tape: 0 / 1)
+    for k in TAPE_GATED if isinstance(res.get("tape"), dict) else ():
         if res["tape"].get(k, {}).get("pass") is False:
             out.append(f"tape {k}")
     if res.get("digests", {}).get("status") == "mismatch":

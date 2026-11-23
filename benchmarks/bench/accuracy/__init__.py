@@ -3,5 +3,4 @@
   gradient.py  VJPs and Jacobians per group and input block, floored at the truth's own uncertainty; a paired view
   fd_sweep.py  MuJoCo C finite differences across step sizes, and their cost
   job.py       fills a job document's accuracy and gradient lists from its raw dumps
-  stats.py     summary statistics
-"""
+  stats.py     summary statistics"""

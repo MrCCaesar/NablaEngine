@@ -1,23 +1,5 @@
 """MuJoCo C finite-difference Jacobians of one control step (substeps x mj_step, ctrl held, qfrc_applied 0), the
-helper of the mjc adapter (adapters/mjc.py). numpy and mujoco only.
-
-Inputs x = (qpos tangent (nv), qvel (nv), ctrl (nu)); outputs y = (qpos' in qpos form (nq), qvel' (nv)); J is
-(B, nq + nv, 2 nv + nu), the layout of the harness's op jac (adapters/base.py) and of truth/fdlib.fd_job's J.
-
-  chain   MuJoCo C's native derivative: per substep mjd_transitionFD(m, d, eps, centered, A, B) (A = d(dq', v') /
-          d(dq, v), B = d(dq', v')/du, with its stage skipping), chained J_x = A_S ... A_1 and
-          J_u = sum_k A_S ... A_(k+1) B_k along the nominal trajectory (mj_step between the substeps); the output
-          tangent mapped to qpos form by
-          d qpos' / d tangent at qpos' (base.tangent_to_qpos). Worlds run on a Python thread pool (the binding
-          releases the GIL inside the C calls; MuJoCo C has no batched derivative API), in dynamic chunks; each pool
-          thread keeps its own MjModel copy, on which every world's DR is set before its derivatives, and its own
-          MjData.
-  direct  for truth cross-checks only: every perturbed input (+-eps along each column; qpos along the tangent as
-          mj_integratePos, base.perturbed_qpos) is its own simulation of one mujoco.batch.Batch (set_models: each
-          world's DR model), stepped the whole control step, so the warm starts of later substeps follow the
-          perturbation (the construction of the gradient truth); forward or centered differences of qpos' in qpos form.
-
-"""
+helper of the mjc adapter (adapters/mjc.py). numpy and mujoco only."""
 
 import copy
 import threading
@@ -28,7 +10,7 @@ import numpy as np
 
 from benchmarks.bench.adapters import base
 
-CHUNKS_PER_THREAD = 4  # dynamic load balancing of the chain: about this many chunks of worlds per thread
+CHUNKS_PER_THREAD = 4
 
 
 def check_model(m):
@@ -52,11 +34,11 @@ def chain_one(m, d, q, v, u, w, eps, centered, nsub, A, Bm):
     d.qfrc_applied[:] = 0.0
     Jx, Ju = np.eye(2 * nv), np.zeros((2 * nv, m.nu))
     for _ in range(nsub):
-        mujoco.mjd_transitionFD(m, d, eps, bool(centered), A, Bm, None, None)  # restores d's state
+        mujoco.mjd_transitionFD(m, d, eps, bool(centered), A, Bm, None, None)
         Jx = A @ Jx
         Ju = A @ Ju + Bm
         mujoco.mj_step(m, d)
-    Jt = np.concatenate([Jx, Ju], 1)  # (2 nv, 2 nv + nu): output tangent rows
+    Jt = np.concatenate([Jx, Ju], 1)
     J = np.zeros((m.nq + nv, 2 * nv + m.nu))
     J[:m.nq] = base.tangent_to_qpos(d.qpos[None].copy())[0] @ Jt[:nv]
     J[m.nq:] = Jt[nv:]

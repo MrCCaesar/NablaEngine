@@ -65,7 +65,6 @@ def _opts(cls, **kw):
 
 
 def _run(cls, prob, states, nworld, iterations, **opts):
-    """setup + one diagnostics forward; (adapter stats, diagnostics, provenance)."""
     a = cls()
     a.setup(prob, states, nworld, iterations, **_opts(cls, **opts))
     a.outputs()
@@ -199,7 +198,7 @@ def main(argv=None):
             for it in its:
                 try:
                     m, pv = measure(a.engine, prob, c, it, a.nconmax, a.njmax)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     ok = False
                     print(f"[mjw_capacity] {pid} {c} it {it}: {type(e).__name__}: {e}", file=sys.stderr)
                     continue
@@ -218,7 +217,7 @@ def main(argv=None):
         if not a.no_verify and ok:
             try:
                 res, bad = verify(a.engine, prob, list(per), its[0], doc)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 ok = False
                 print(f"[mjw_capacity] verify {pid}: {type(e).__name__}: {e}", file=sys.stderr)
                 continue

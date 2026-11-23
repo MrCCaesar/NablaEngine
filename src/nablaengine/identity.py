@@ -1,48 +1,5 @@
 """Identity of the engine's build units: the hashes and comparisons behind the G1 identity gate
-(scripts/identity_gate.py and its manifest).
-
-A build unit is one nvcc translation unit of a production build: its generated CUDA source, the -D options and the
-nvcc command line its build function gives it (nablaengine.jax_ffi.build_plan / unit_command for the FFI library,
-nablaengine.cuda.compile_command for the check binaries), the packed model constants it is uploaded with, and the file
-name nvcc sees. Three levels, each cheaper than the next and each implied by the one before:
-
-  L0  the unit as generated (no compiler run): sha256 of its source text, its -D options, the packed constants and
-      the nvcc arguments (the nvcc path and the include directories as placeholders)
-  L1  the preprocessed source per pass: nvcc's device pass (nvcc -E -Xcompiler -P, __CUDA_ARCH__ of the unit's
-      virtual architecture) and its host pass (the host compiler's preprocessing step of nvcc's own compile, taken
-      from nvcc -dryrun, with -P), blank lines collapsed. A change that the G1 build compiles out (code behind a
-      generated #if that is 0 for the G1) leaves L1 unchanged
-  L2  code generation, from one compile of the unit with the production command plus -keep: the PTX (comment lines
-      dropped), the SASS (cuobjdump -sass, header lines dropped, white space collapsed), the resource usage per kernel
-      (cuobjdump -res-usage: registers, stack, shared, local memory) and the host translation (cudafe++'s output and
-      the kernel stubs, line markers dropped). A change in dead code or comments leaves L2 unchanged; anything else
-      that changes L2 changes what the GPU runs (or the host code that launches it)
-
-What a deeper identical level proves after an L0 difference (clearing_level): L1 and L2 are compiler outputs, so they
-cannot see the packed constants (data uploaded at run time): a unit whose constants differ differs, whatever L1 and L2
-say. L1 is the preprocessor's output, so it clears only a change of the source or of the -D options; a change of any
-other nvcc option (-fmad, -Xptxas, -maxrregcount, ...) acts after preprocessing and needs an identical L2.
-
-Normalisation (checked by the gate itself: every unit rebuilt in other directories hashes the same): nvcc names
-entities with internal linkage (an anonymous namespace, static functions) after the unit's module id, which contains a
-hash of the source file's absolute path (e.g. _78236708_4_u_cu_launch in _ZN34_GLOBAL__N__78236708_4_u_cu_launch1kEPf),
-so the same source compiled in two directories gives different PTX, SASS, cubins and host code. Every text of a unit
-has the module id that nvcc wrote (-keep's <file>.module_id) replaced by <MODULE> (and any remaining _INTERNAL_ /
-_GLOBAL__N__ path hash by the regexes of MANGLE), which makes them identical across directories; units are compiled
-under their production file names.
-Raw cubins and objects are never compared (not reproducible across directories; the FFI library's cache key is
-source-based for the same reason).
-
-Architectures: a unit whose real architecture the local nvcc cannot target (sm_120 with nvcc 12.4: its production
-flags are -arch=compute_90 -code=sm_120, the NVVM 7 front end) is compiled for its virtual architecture only (the PTX
-nvcc would hand ptxas) and that PTX assembled by a separate ptxas that knows the real architecture (ptxas -arch=sm_120
--m64, as nvcc runs it; $PTXAS, else the pip nvidia.cuda_nvcc package's, else next to nvcc). The SASS of such a unit is
-that ptxas's, so the toolchain record (toolchain()) names it; manifest entries are keyed by the architecture and the
-toolchain (nvcc, host compiler, ptxas where separate, cuobjdump), because SASS depends on all of them.
-
-Tools: nvcc (nablaengine.cuda.nvcc), cuobjdump ($CUOBJDUMP, else next to nvcc, on PATH, or a conda package cache;
-find_tool). cuobjdump must know the architecture it disassembles (sm_120: CUDA 12.8 or newer).
-"""
+(scripts/identity_gate.py and its manifest)."""
 
 import functools
 import hashlib
@@ -59,7 +16,6 @@ import numpy as np
 
 SCHEMA = "dk-identity/1"
 LEVELS = (0, 1, 2)
-# internal-linkage names whose path hash the module-id substitution did not catch (another nvcc's spelling)
 MANGLE = (re.compile(r"_INTERNAL_[0-9a-f]{8}_[0-9]+_[A-Za-z0-9_]+?_cu_[0-9a-f]{8}"),
           re.compile(r"_GLOBAL__N__[0-9a-f]{8}_[0-9]+_[A-Za-z0-9_]+?_cu_[0-9a-f]{8}"))
 SASS_HEADER = ("Fatbin", "code for", "arch =", "code version", "host =", "compile_size", "identifier", "producer")
@@ -277,7 +233,6 @@ def level0(unit):
 
 
 def _strip(args, drop_code):
-    """args without the output / input / compile-only parts (-c, -o X, the source) and, if drop_code, without -code=."""
     out, it = [], iter(args)
     for a in it:
         if a == "-o":
@@ -333,14 +288,12 @@ class Toolchain:
         _run([self.nvcc, *base, "-E", "-Xcompiler", "-P", "-o", pp.name, src.name], cwd=work)
         out = dict(virtual=virt, device=sha256(normalize_preprocessed(pp.read_text())))
         host = self._host_preprocess(base, src.name, work)
-        if host is None:  # (a missing host pass would leave host-code changes unseen at L1)
+        if host is None:
             raise RuntimeError(f"{unit.name}: no host preprocessing step in nvcc -dryrun ({self.nvcc})")
         out["host"] = sha256(normalize_preprocessed(host))
         return out
 
     def _host_preprocess(self, base, src, work):
-        """The host pass's preprocessed source: the host compiler's -E command of nvcc -dryrun (the one without
-        __CUDA_ARCH__), run with -P into a file of ours; None if the dry run has no such command."""
         dry = _run([self.nvcc, "-dryrun", *base, "-c", "-o", "unit_dry.o", src], cwd=work)
         for line in dry.split("\n"):
             if not line.startswith("#$ "):
@@ -380,7 +333,7 @@ class Toolchain:
         _run([self.nvcc, *args, "-keep", "-keep-dir", "keep"], cwd=work)
         stem = Path(unit.file).stem
         mids = [p.read_text().strip() for p in keep.glob(f"{stem}.module_id")]
-        ptx = keep / f"{stem}.ptx"  # (an executable's device-link stub, <stem>_dlink.*, is not the unit's code)
+        ptx = keep / f"{stem}.ptx"
         if not ptx.exists():
             raise RuntimeError(f"{unit.name}: no {ptx.name} in nvcc's -keep output")
         if route == "ptxas":

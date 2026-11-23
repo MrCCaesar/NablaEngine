@@ -1,0 +1,26 @@
+<mujoco model="boxstack">
+  <option timestep="0.005" iterations="5"/>
+  <default><geom contype="0" conaffinity="0"/></default>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <body name="b0" pos="0 0 0.05"><freejoint/><geom name="g0" type="box" size="0.05 0.05 0.05" mass="0.5"/></body>
+    <body name="b1" pos="0.01 0.005 0.152" euler="0 0 20"><freejoint/><geom name="g1" type="box" size="0.05 0.04 0.05" mass="0.4"/></body>
+    <body name="b2" pos="-0.01 0 0.255" euler="5 0 40"><freejoint/><geom name="g2" type="box" size="0.04 0.05 0.05" mass="0.3"/></body>
+    <body name="carriage" pos="-0.25 0 0.05">
+      <joint name="px" type="slide" axis="1 0 0" range="-0.2 0.4" damping="5"/>
+      <inertial pos="0 0 0" mass="0.2" diaginertia="0.001 0.001 0.001"/>
+      <body name="pusher">
+        <joint name="py" type="slide" axis="0 1 0" range="-0.2 0.2" damping="5"/>
+        <geom name="gp" type="box" size="0.05 0.08 0.05" mass="1"/>
+      </body>
+    </body>
+  </worldbody>
+  <contact>
+    <pair geom1="floor" geom2="g0"/><pair geom1="floor" geom2="g1"/><pair geom1="floor" geom2="g2"/>
+    <pair geom1="g0" geom2="g1"/><pair geom1="g1" geom2="g2"/><pair geom1="g0" geom2="g2"/>
+    <pair geom1="gp" geom2="g0"/><pair geom1="gp" geom2="g1"/><pair geom1="gp" geom2="g2"/>
+  </contact>
+  <actuator>
+    <motor joint="px" ctrlrange="-20 20"/><motor joint="py" ctrlrange="-20 20"/>
+  </actuator>
+</mujoco>

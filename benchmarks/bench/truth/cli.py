@@ -64,7 +64,7 @@ def _parser():
     ix.add_argument("--corpora", type=_csv, required=True, help="comma-separated corpus names")
     ix.add_argument("--made-by", default=None, help="the command that made the files (default: as recorded, else "
                                                     "truth make --corpora <the corpora>)")
-    for mod in EXTRA.values():  # subcommands of optional modules (present only where the module is)
+    for mod in EXTRA.values():
         mod.add_parser(sub, common_args)
     return ap
 
@@ -73,9 +73,6 @@ CORE = ("__init__", "cli", "common", "mjc", "mjw_labels", "store")
 
 
 def _extra_commands():
-    """Additional subcommands: {name: module} of the other modules benchmarks/bench/truth/<module>.py that define, at
-    top level, add_parser(sub, common_args) and cli(args, cache) -> int (found from the source, imported only then;
-    the subcommand is the module name with '-' for '_')."""
     import ast
     import importlib
     out = {}
@@ -103,7 +100,6 @@ def _index_entry(s, command):
 
 
 def _write_index(path, entries, replace=False):
-    """Merge {corpus: entry} into an index file (replace: the given entries only)."""
     try:
         idx = {} if replace else json.loads(path.read_text())
     except (OSError, ValueError):
@@ -197,7 +193,7 @@ def main(argv=None):
                     g = tr.gradient()
                     same = bool((fw["out"][g["index"]] == g["out"]).all())
                     res["fd_base_bitwise"] = same
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 bad += 1
                 res = dict(corpus=name, ok=False, error=prov.scrub(f"{type(e).__name__}: {e}"))
             print(json.dumps(res), flush=True)

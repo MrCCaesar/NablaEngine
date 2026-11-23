@@ -23,6 +23,13 @@ MuJoCo Warp's atomics make a rerun differ in the last bits, so a regenerated fil
 checks compare with tolerances (scripts/engine_step_check.py --gate).
 
   PYTHONPATH=. <mjw-native python> scripts/make_mjw_reference.py --corpora mf_s0,mf_s1
+
+--model MODEL.mjb with --name: the same reference on another binary of the corpus's model, e.g. MuJoCo 4.0's, which
+cannot load the 3.17 binary;
+the file then records that model's path and sha256, and the corpus's model sha256 is not checked.
+
+  PYTHONPATH=. <mujoco 4.0 python> scripts/make_mjw_reference.py --model g1_train_mj4.mjb \
+      --name "mjw400_{corpus}.npz"
 """
 
 import argparse
@@ -37,8 +44,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from benchmarks.bench import problem as P  # noqa: E402
-from benchmarks.bench.truth import common, mjw_labels  # noqa: E402
+from benchmarks.bench import problem as P
+from benchmarks.bench.truth import common, mjw_labels
 
 OUT_DIR = ROOT / "fixtures" / "mjlab"
 NAME = "mjw317_{corpus}.npz"
@@ -52,7 +59,7 @@ def write_npz(path, arrays):
     with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for k in sorted(arrays):
             buf = io.BytesIO()
-            v = np.asarray(arrays[k])  # (np.ascontiguousarray would make the 0-d meta 1-d)
+            v = np.asarray(arrays[k])
             np.lib.format.write_array(buf, v if v.flags.c_contiguous else v.copy(order="C"), allow_pickle=False)
             info = zipfile.ZipInfo(f"{k}.npy", date_time=_ZIP_TIME)
             info.compress_type = zipfile.ZIP_DEFLATED
@@ -77,10 +84,10 @@ def input_contacts(prob, arrays, nconmax=mjw_labels.NCONMAX, njmax=mjw_labels.NJ
         pf, bi = P.DR(mjm, prob).batched(arrays["friction"], arrays["com"], np.float32)
         m.pair_friction.assign(pf)
         m.body_ipos.assign(bi)
-        m.opt.warn_overflow = 0  # mjw.forward also runs the solver; only the collision is kept
+        m.opt.warn_overflow = 0
         mjd = mujoco.MjData(mjm)
         d = mjw.put_data(mjm, mjd, nworld=n, nconmax=nconmax, njmax=njmax, naconmax=nconmax * n)
-        f32 = lambda x: wp.array(np.ascontiguousarray(x, np.float32), dtype=float)  # noqa: E731
+        f32 = lambda x: wp.array(np.ascontiguousarray(x, np.float32), dtype=float)
         for dst, k in ((d.qpos, "qpos"), (d.qvel, "qvel"), (d.qacc_warmstart, "qacc_warmstart"), (d.ctrl, "ctrl")):
             wp.copy(dst, f32(arrays[k]))
         mjw.forward(m, d)
@@ -109,10 +116,18 @@ def input_contacts(prob, arrays, nconmax=mjw_labels.NCONMAX, njmax=mjw_labels.NJ
     return con, count
 
 
-def make(name, iterations, out_dir):
+def make(name, iterations, out_dir, model=None, fname=NAME):
     corpus = P.load_corpus(name)
     prob = common.problem_of(corpus)
-    desc = common.check_model(corpus, prob)
+    if model is None:
+        desc = common.check_model(corpus, prob)
+    else:
+        import dataclasses
+        import hashlib
+        mp = Path(model).resolve()
+        prob = dataclasses.replace(prob, model=str(mp), meta=None)
+        desc = dict(path=str(mp.relative_to(ROOT)) if mp.is_relative_to(ROOT) else mp.name,
+                    sha256=hashlib.sha256(mp.read_bytes()).hexdigest())
     out, meta = mjw_labels.run(prob, corpus.arrays, iterations)
     if meta["capacity_overflow_worlds"]:
         raise RuntimeError(f"{name}: {meta['capacity_overflow_worlds']} worlds overflowed the capacity")
@@ -120,7 +135,7 @@ def make(name, iterations, out_dir):
     arrays = dict(out_qpos=out["out_qpos"].astype(np.float32), out_qvel=out["out_qvel"].astype(np.float32),
                   ncon=out["ncon"].astype(np.int16), nefc=out["nefc"].astype(np.int16),
                   niter=out["niter"].astype(np.int16), con=con, con_count=count)
-    for k in ("out_qpos", "out_qvel"):  # MuJoCo Warp's state is float32: the cast is exact
+    for k in ("out_qpos", "out_qvel"):
         assert np.array_equal(arrays[k].astype(np.float64), out[k]), k
     meta = dict(format="dk-mjw-reference/1", corpus=dict(name=name, files=corpus.files,
                                                          inputs=common.inputs_digest(corpus.arrays)),
@@ -130,7 +145,7 @@ def make(name, iterations, out_dir):
                                          "ls_iterations", "tolerance_model", "tolerance_effective", "capacity",
                                          "warn_overflow", "deterministic", "iteration_limit_worlds", "states")})
     arrays["meta"] = np.array(json.dumps(meta, sort_keys=True))
-    path = Path(out_dir) / NAME.format(corpus=name)
+    path = Path(out_dir) / fname.format(corpus=name)
     write_npz(path, arrays)
     print(json.dumps(dict(corpus=name, path=str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path),
                           bytes=path.stat().st_size, contacts_max=int(count.max()), contacts_mean=float(count.mean()),
@@ -143,9 +158,13 @@ def main(argv=None):
     ap.add_argument("--corpora", default="mf_s0,mf_s1", help="benchmark corpora (benchmarks/data/<name>.npz)")
     ap.add_argument("--iterations", type=int, default=mjw_labels.ITERATIONS)
     ap.add_argument("--out-dir", default=str(OUT_DIR))
+    ap.add_argument("--model", default=None, help="another binary of the corpus's model (module docstring)")
+    ap.add_argument("--name", default=NAME, help="output file name, {corpus} replaced (default %(default)s)")
     a = ap.parse_args(argv)
+    if a.model is not None and a.name == NAME:
+        ap.error("--model needs --name (the default name is the 3.17 reference's)")
     for name in a.corpora.split(","):
-        make(name.strip(), a.iterations, a.out_dir)
+        make(name.strip(), a.iterations, a.out_dir, a.model, a.name)
     return 0
 
 

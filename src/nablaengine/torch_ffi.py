@@ -1,44 +1,5 @@
 """PyTorch interface of the engine: the same CUDA library and semantics as nablaengine.jax_ffi, on torch's current CUDA
-stream.
-
-  step(qpos, qvel, warm, ctrl, friction, com, *, iterations=10, substeps=4, clamp_kv=0, normal=3, clamp_soft=None,
-       grad_decay=1.0, kinematics=False) -> (qpos', qvel', warm'[, qpos_n, xpos, xquat, cvel, subtree_com])
-  kinematics(qpos, qvel, com) -> (qpos_n, xpos, xquat, cvel, subtree_com)
-  scale_grad(tree, gamma)
-
-Arguments and outputs as jax_ffi.step / jax_ffi.kinematics (see that module's docstring): float32 tensors on one CUDA
-device, contiguous, leading dimension B (the worlds): qpos (B, nq), qvel (B, nv), warm (B, nv), ctrl (B, nu), friction
-(B,), com (B, 3) (mjlab G1: nq 36, nv 35, nu 29). Other dtypes, devices or shapes raise TypeError; nothing is cast or
-copied implicitly. step is differentiable (torch.autograd): when any input requires grad, the forward also writes the
-tape (B, substeps * REC_WORDS float32, 5888 B per world and substep) and keeps it for the backward (the analytic
-adjoint, deterministic), which returns d/dqpos (36-dimensional qpos form), d/dqvel and d/dctrl, no gradient for warm,
-friction and com. The outputs and gradients are bitwise those of jax_ffi on the same GPU (scripts/torch_ffi_check.py).
-
-A rollout is a Python loop: every differentiated step keeps its tape until the backward (tape_bytes(); 6 GB for
-4096 worlds x 64 steps). torch.utils.checkpoint may rerun a step: the forward is deterministic, so a recomputed tape
-is bitwise the first one.
-
-The library: the engine's CUDA source for the model (jax_ffi.build_plan's units without the XLA FFI unit, plus
-dk_torch.cu's diagnostic counters), compiled by build() for one architecture into an artifact in the cache directory
-(libdk_g1_torch_<arch>_<key>.so with the CUDA runtime linked statically, the packed constants .npy, the model facts
-.json): `python -m nablaengine.torch_ffi build [--arch sm_XY ...]` where mujoco 3.17 and nvcc are installed. init()
-loads the artifact for the GPU's architecture (or $DK_TORCH_ARTIFACT) with ctypes: a process that only loads it needs
-torch, NumPy and the NVIDIA driver, and imports no JAX, no mujoco and no nvcc. The artifact records a hash of the
-package sources it was generated from (sources_sha256); a stale one is rebuilt where nvcc and mujoco are available,
-else init() raises. Every call goes to the library's C entries (<unit>_forward, <unit>_adjoint, <unit>_kinematics,
-<unit>_kinematics_vjp) with torch's current stream and the tensors' device pointers, the inputs' device made current.
-The model constants are uploaded to a device on its first use, which synchronizes once: call init(device) before
-capturing a CUDA graph. After that, step, its backward and kinematics only launch kernels and allocate through torch's
-caching allocator (no host synchronization), so they can be captured in a CUDA graph with fixed shapes. The four
-entries are torch.library custom ops (nablaengine::forward, backward, kinematics, kinematics_backward) with fake
-implementations while torch.compile traces (opaque nodes); eager calls run the same functions directly.
-
-Diagnostics (set_diagnostics switches them): per device, the counters of jax_ffi.DIAG (forward calls and worlds, worlds at the iteration limit,
-unsupported worlds, tape flags; backward calls and rows, rows with non-finite gradients or cotangents, replay
-mismatches) are added up on the device by every call, in an int64 tensor that is never read implicitly:
-diagnostics(device) returns it, read_diagnostics() reads it into a dict (a synchronization). The backward's info
-(B,) carries the adjoint's flags | NONFINITE_* << NONFINITE_SHIFT as jax_ffi.backward's.
-"""
+stream."""
 import ctypes
 import hashlib
 import json
@@ -49,22 +10,20 @@ from pathlib import Path
 
 import numpy as np
 
-# the interface constants of nablaengine.jax_ffi (repeated here so that the run time imports neither jax_ffi nor mujoco;
-# scripts/torch_ffi_check.py checks that they are equal)
 ITERATIONS, SUBSTEPS, CLAMP_KV, NORMAL = 10, 4, 0, 3
 CLAMP_SOFT, GRAD_DECAY = 0.2, 1.0
 DIAG = ("fwd_calls", "fwd_worlds", "fwd_unsupported_worlds", "fwd_iteration_limit_worlds", "tape_records",
         "refact_records", "nonconv_records", "singular_records", "bwd_calls", "bwd_rows", "nonfinite_rows",
         "nonfinite_qpos_rows", "nonfinite_qvel_rows", "nonfinite_ctrl_rows", "nonfinite_cotangent_rows",
         "replay_mismatch_worlds", "fwd_contact_overflow_worlds", "fwd_row_overflow_worlds")
-OVERFLOW_CONTACTS, OVERFLOW_ROWS = 4, 16  # forward info[:, 3] bits: contacts / constraint rows beyond capacity dropped
-_OVERFLOW_WARN = [os.environ.get("DK_OVERFLOW_WARN", "0") not in ("", "0")]  # set_overflow_warnings
+OVERFLOW_CONTACTS, OVERFLOW_ROWS = 4, 16
+_OVERFLOW_WARN = [os.environ.get("DK_OVERFLOW_WARN", "0") not in ("", "0")]
 NONFINITE_QPOS, NONFINITE_QVEL, NONFINITE_CTRL, NONFINITE_COT, NONFINITE_SHIFT = 1, 2, 4, 8, 16
-VARIANTS = tuple((kv, n) for kv in (0, 1, 2) for n in (0, 1, 2, 3))  # adjoint builds (clamp_kv, normal)
+VARIANTS = tuple((kv, n) for kv in (0, 1, 2) for n in (0, 1, 2, 3))
 FWD_UNIT = "dk_fwd"
 ARTIFACT_VERSION = 1
-# the package files the library is generated from: an artifact records their hash, a different hash means stale
-SOURCES = ("cuda.py", "jax_ffi.py", "torch_ffi.py", "fixtures.py", "engines.py", "ccd.py", "terrain.py", "g1_engine/*.py",
+SOURCES = ("cuda.py", "jax_ffi.py", "torch_ffi.py", "fixtures.py", "engines.py", "ccd.py", "terrain.py",
+           "g1_engine/*.py", "forest_engine/*.py",
            "model/*.py")
 
 
@@ -73,10 +32,10 @@ def _tag(v):
 
 
 _LOCK = threading.Lock()
-_STATE = {}  # lib, info, fns (ctypes entries), consts, flags
-_READY = set()  # devices whose constants are uploaded
-_DIAG = {}  # device index -> int64 (NDIAG,) counters
-_DIAG_ON = [True]  # set_diagnostics: the counters and the backward's non-finite bits (on by default)
+_STATE = {}
+_READY = set()
+_DIAG = {}
+_DIAG_ON = [True]
 
 
 def _err(msg, exc=TypeError):
@@ -158,8 +117,6 @@ extern "C" int dk_torch_diag_bwd(cudaStream_t st, unsigned long long* d, int nw,
 
 
 def _torch_unit(m, rec_words=None):
-    """The torch library's own unit dk_torch.cu (TORCH_UNIT with the model's sizes and jax_ffi's constants; rec_words:
-    the tape record's length, default the model's)."""
     from nablaengine import engines
     E = engines.modules(m)
     g1_adjoint, g1_tape = E.adjoint, E.tape
@@ -196,23 +153,63 @@ def sources_sha256():
     return h.hexdigest()
 
 
-def build(arch, model_dir=None, model=None, foot_pairs=None, set_current=True, terrain=None, com_body=None):
+def build(arch, model_dir=None, model=None, foot_pairs=None, set_current=True, terrain=None, com_body=None,
+          params=None, max_contacts=None, max_rows=None, motor_limits=None, contact_forces=False, actuator=None,
+          contact_surrogate=False, foot_wrench=None, contact_frame=False, contact_grad=False, noslip_pairs=None,
+          foot_normal=False, capacity_diag=False):
     """Generate and compile the library for the model and architecture arch (sm_XY) and write its artifact into the
     cache directory: the library libdk_g1_torch_<arch>_<key>.so (the CUDA runtime linked statically), the packed model
     constants (.npy) and the model facts (.json); returns the .json's path. Needs mujoco 3.17 and nvcc (CUDA 12.x), no
     torch and no JAX; cached (the same sources reuse the library). set_current: make it the architecture's artifact
     that init() loads by default (torch_<arch>_current.json); False for another model's, loaded by its path. terrain:
     a nablaengine.terrain.TerrainConfig for a terrain build (never made current; set_terrain() uploads the terrain).
-    com_body: the body that takes the per-world COM offset (as jax_ffi.init)."""
+    com_body: the body that takes the per-world COM offset (as jax_ffi.init). params: per-world physics parameters
+    (as jax_ffi.init; never made current). max_contacts, max_rows: the capacities per world (as jax_ffi.init; a build
+    with them is never made current). actuator: an actuator model (nablaengine.actuators, as jax_ffi.init; never made
+    current); motor_limits: its permanent alias. contact_forces: the contact table with the forces (as jax_ffi.init; a G1 build with them is never made
+    current; "substeps", foot_wrench, contact_frame as jax_ffi.init). contact_surrogate: the backward's contact-gradient
+    surrogates (as jax_ffi.init; never made current). contact_grad: the contact output's VJP (as jax_ffi.init; never
+    made current). foot_normal: the foot / toe-weight contact words (as jax_ffi.init; never made current).
+    capacity_diag: the forward info's capacity counts, info (B, 6) (as jax_ffi.init; never made current)."""
     import nablaengine
     from nablaengine import jax_ffi
+    from nablaengine import actuators
+    from nablaengine.params import as_params
+    params, act = as_params(params), actuators.resolve(actuator, motor_limits, "torch_ffi.build")
+    motor = act.motor if act is not None else None
+    if params or act is not None:
+        set_current = False
     from nablaengine import engines
-    from nablaengine.model import capability
     m, fp, com = jax_ffi._model(model_dir, model, foot_pairs, com_body)
-    capability.require(m, fp, com, "engine", "torch_ffi.build")
     E = engines.modules(m)
+    actuators.check_engine(act, E.forest, "torch_ffi.build")
+    actuators.check_bam_build(act, "torch_ffi.build", terrain, params,
+                              contact_forces or foot_wrench not in (None, False) or contact_frame)
+    m = actuators.prepare_model(act, m)
+    bam = act.bam if act is not None else None
     g1_kin, g1_step, g1_tape = E.kinematics, E.step, E.tape
-    plan = jax_ffi.build_plan(m, fp, arch, terrain, com)
+    engines.require(m, fp, com, "torch_ffi.build")
+    mc_in, mr_in, mc, nefc = jax_ffi.capacity(m, terrain, max_contacts, max_rows)
+    if mc_in is not None or mr_in is not None:
+        set_current = False
+    cspec = jax_ffi.contact_spec(m, contact_forces, foot_wrench, contact_frame, terrain, foot_normal)
+    if cspec is None and contact_grad:
+        from nablaengine.g1_engine import contact_forces as _cf
+        cspec = _cf.as_spec("last", None, False, terrain is not None, m)
+    if cspec is not None:
+        contact_forces = cspec
+        set_current = False
+    if contact_surrogate or contact_grad or capacity_diag:
+        set_current = False
+    nsp = jax_ffi._noslip_pairs(m, fp, noslip_pairs)
+    if nsp is not None:
+        set_current = False
+    plan = jax_ffi.build_plan(m, fp, arch, terrain, com, params, mc_in, mr_in, motor, contact_forces,
+                              **({"bam": bam} if bam is not None else {}),
+                              **({"surrogate": True} if contact_surrogate else {}),
+                              **({"contact_grad": True} if contact_grad else {}),
+                              **({"noslip_pairs": nsp} if nsp is not None else {}),
+                              **({"capacity_diag": True} if capacity_diag else {}))
     if terrain is not None:
         from nablaengine import terrain as _terrain
         set_current = False
@@ -220,29 +217,53 @@ def build(arch, model_dir=None, model=None, foot_pairs=None, set_current=True, t
     units = {k: v for k, v in plan["units"].items() if k != "dk_ffi.cu"}
     defines = {k: v for k, v in plan["defines"].items() if k in units}
     unit_arch = {k: v for k, v in (plan["unit_arch"] or {}).items() if k in units}
-    mc = terrain.maxcon if terrain is not None and terrain.maxcon else g1_step.maxcon(m)
-    rec = g1_tape.rec_words(m, mc, g1_tape.kind(terrain))
-    units["dk_torch.cu"], defines["dk_torch.cu"] = _torch_unit(m, rec), []  # the device-side diagnostic counters
-    if unit_arch:  # the adjoint units' architecture flags (sm_120: every unit through NVVM 7 by default)
+    rec = g1_tape.rec_words(m, mc, g1_tape.kind(terrain), mr_in, **({"motor": True} if motor is not None else {}))
+    if bam is not None:
+        rec += jax_ffi._bam_tape_words(m)
+    units["dk_torch.cu"], defines["dk_torch.cu"] = _torch_unit(m, rec), []
+    if capacity_diag:
+        from nablaengine._optional import FOREST, load as _load
+        _capd = _load("nablaengine.forest_engine", FOREST, "capacity_diag")
+        units["dk_torch.cu"] = _capd.torch_unit(units["dk_torch.cu"])
+    nov = terrain.velocity_words() + terrain.material_words() if terrain is not None else 0
+    if params or nov:
+        gw = m.nu + (params.width(m.nv) + 1 if params else 0) + nov
+        units["dk_torch.cu"] = units["dk_torch.cu"].replace("all_finite(gu + (size_t)w * NU, NU)",
+                                                            f"all_finite(gu + (size_t)w * {gw}, {gw})")
+    if unit_arch:
         adj = unit_arch.get(f"{_tag(VARIANTS[0])}.cu")
         if adj:
             unit_arch["dk_torch.cu"] = adj
     consts = np.ascontiguousarray(plan["consts"], np.float32)
     path, built, key = jax_ffi._build(units, defines, arch, None, consts, unit_arch or None, prefix="libdk_g1_torch")
-    try:  # the kinematics outputs' assumptions (kinematics.check_model); the kinematics entries raise without them
+    try:
         g1_kin.check_model(m)
         kin_error = None
     except AssertionError as e:
         kin_error = f"the model does not meet the kinematics outputs' assumptions ({e!r})"
     stem = path.with_suffix("")
     np.save(stem.with_suffix(".npy"), consts)
-    meta = dict(artifact_version=ARTIFACT_VERSION, com_body=com, library=path.name, consts=stem.with_suffix(".npy").name, key=key,
+    meta = dict(artifact_version=ARTIFACT_VERSION, engine=E.name, adj_stage=jax_ffi.adj_stage(E),
+                com_layout=jax_ffi.com_layout(m, terrain, params), com_body=com, library=path.name, consts=stem.with_suffix(".npy").name, key=key,
                 arch=arch, version=nablaengine.__version__, sources_sha256=sources_sha256(),
                 terrain=terrain.key() if terrain is not None else None,
                 terrain_geoms=tgeoms if terrain is not None else None,
+                com_words=(((g1_step.com_words(m) if E.forest else 3) + (terrain.com_words() - 3 if terrain is not None else 0))
+                           + params.width(m.nv)),
+                params=params.key() if params else None, param_words=params.width(m.nv) if params else 0,
+                obj_vel_words=terrain.velocity_words() if terrain is not None else 0,
+                obj_mat_words=terrain.material_words() if terrain is not None else 0,
+                motor_limits=motor.key(m) if motor is not None else None,
+                actuator=act.key(m) if act is not None else None, **jax_ffi._act_info(m, bam),
+                clamp_implicit=(list(E.step.clamp_implicit()) if hasattr(E.step, "clamp_implicit") else None),
+                tree_chol=None if E.forest else g1_step.tree_chol_stages(m),
+                tree_chol_mode=os.environ.get("DK_TREE_CHOL") or "0",
+                con_words=jax_ffi.con_words(m, contact_forces), contact_forces=jax_ffi.contact_info(m, cspec),
+                contact_surrogate=bool(contact_surrogate), contact_grad=bool(contact_grad), noslip_pairs=list(nsp) if nsp is not None else None,
+                capacity_diag=bool(capacity_diag), info_words=6 if capacity_diag else 4,
                 consts_sha256=hashlib.sha256(consts.tobytes()).hexdigest(), rec_words=rec,
                 nq=m.nq, nv=m.nv, nu=m.nu, nbody=m.nbody,
-                maxcon=mc,
+                maxcon=mc, nefc=nefc, elliptic=bool(int(m.opt.cone) == 1),
                 off_flags=int(g1_tape.layout(m)["flags"][0]), forward_unit=plan["forward_unit"],
                 variants=[list(v) for v in VARIANTS], kinematics_error=kin_error, timestep=float(m.opt.timestep),
                 foot_pairs=[int(p) for p in fp], arch_flags=plan["arch_flags"],
@@ -256,8 +277,6 @@ def build(arch, model_dir=None, model=None, foot_pairs=None, set_current=True, t
 
 
 def _artifact_path(arch, artifact):
-    """The artifact to load: the argument, else $DK_TORCH_ARTIFACT, else the cache's current one for arch (None: none
-    built yet)."""
     a = artifact or os.environ.get("DK_TORCH_ARTIFACT")
     if a:
         return Path(a)
@@ -266,8 +285,6 @@ def _artifact_path(arch, artifact):
 
 
 def _stale(js, arch):
-    """Why the artifact js cannot be loaded for arch (None: it can): missing files, another artifact version or
-    architecture, or a library generated from other package sources than the installed ones."""
     if js is None or not js.exists():
         return "no artifact"
     meta = json.loads(js.read_text())
@@ -279,25 +296,47 @@ def _stale(js, arch):
         return "its library or constants file is missing"
     if meta.get("default_model") and meta["sources_sha256"] != sources_sha256():
         return "built from other package sources (the package changed since): rebuild it"
+    if meta.get("tree_chol_mode", "0") != (os.environ.get("DK_TREE_CHOL") or "0"):
+        return f"built with DK_TREE_CHOL={meta.get('tree_chol_mode', '0')}, the environment has another value"
     return None
 
 
-def init(device=None, artifact=None, model_dir=None, model=None, foot_pairs=None, terrain=None, com_body=None):
+def init(device=None, artifact=None, model_dir=None, model=None, foot_pairs=None, terrain=None, com_body=None,
+         params=None, max_contacts=None, max_rows=None, motor_limits=None, contact_forces=False, actuator=None,
+         contact_surrogate=False, foot_wrench=None, contact_frame=False, contact_grad=False, noslip_pairs=None,
+         foot_normal=False, capacity_diag=False):
     """Load the library and upload the model constants to device (default torch's current CUDA device); idempotent
     per device, one library per process. The library comes from an artifact (build()): artifact (a .json path),
     else $DK_TORCH_ARTIFACT, else the cache's current artifact for the GPU's architecture. Loading an artifact needs
     torch, NumPy and the NVIDIA driver only: no nvcc, mujoco or JAX. Without a usable artifact (none, or one of other
     package sources), init() builds one first (mujoco and nvcc needed then). model_dir / model / foot_pairs: another
     model than the default (as jax_ffi.init): built (or found in the cache) for it, not made current. Returns the
-    artifact's facts (path, key, arch, sizes, ...). The first call on a device synchronizes it once: call this
+    artifact's facts (path, key, arch, sizes, ...; engine, adj_stage, com_body, com_layout as jax_ffi.init's, lists
+    for tuples). The first call on a device synchronizes it once: call this
     before capturing a CUDA graph. terrain: a nablaengine.terrain.TerrainConfig: a terrain build (in progress;
-    set_terrain() uploads the terrain data; raycast() measures it)."""
+    set_terrain() uploads the terrain data; raycast() measures it). params: per-world physics parameters
+    (nablaengine.params.PhysicsParams or field names; com is then (B, info["com_words"]), as jax_ffi.init).
+    max_contacts, max_rows: the contact and constraint-row capacity per world (as jax_ffi.init; info["maxcon"] /
+    info["nefc"]). actuator: an actuator model (nablaengine.actuators, e.g. "unitree_g1"; as jax_ffi.init;
+    info["actuator"], info["motor_limits"]); motor_limits: its permanent alias. contact_forces: the contact table with
+    the forces (as jax_ffi.init; info["con_words"] 12; "substeps", foot_wrench, contact_frame as jax_ffi.init,
+    info["contact_forces"]). contact_surrogate: the backward's contact-gradient surrogates
+    (as jax_ffi.init; step / backward cone_mu=, impulse_clip=). contact_grad: the contact output's VJP (as
+    jax_ffi.init: step(contacts=True) returns a differentiable contact output, backward(g_contacts=)). foot_normal:
+    the foot / toe-weight contact words and contact_table()'s foot_normal (as jax_ffi.init). capacity_diag: the forward
+    info's capacity counts, info (B, 6) (as jax_ffi.init; capacity_counts())."""
     import torch
     dev = _device_index(device)
     with _LOCK:
         if not _STATE:
-            _load(torch, dev, artifact, model_dir, model, foot_pairs, terrain, com_body)
-        elif artifact is not None or model_dir is not None or model is not None or terrain is not None:
+            _load(torch, dev, artifact, model_dir, model, foot_pairs, terrain, com_body, params, max_contacts, max_rows,
+                  motor_limits, contact_forces, actuator, contact_surrogate, foot_wrench, contact_frame, contact_grad, noslip_pairs,
+                  foot_normal, capacity_diag)
+        elif (artifact is not None or model_dir is not None or model is not None or terrain is not None
+              or params is not None or max_contacts is not None or max_rows is not None
+              or motor_limits is not None or actuator is not None or contact_forces or contact_surrogate
+              or foot_wrench not in (None, False) or contact_frame or contact_grad
+              or noslip_pairs is not None or foot_normal or capacity_diag):
             raise _err("init(artifact / model ...) after the library is loaded: one library per process", RuntimeError)
         cc = torch.cuda.get_device_capability(dev)
         if f"sm_{cc[0]}{cc[1]}" != _STATE["info"]["arch"]:
@@ -308,11 +347,22 @@ def init(device=None, artifact=None, model_dir=None, model=None, foot_pairs=None
         return _STATE["info"]
 
 
-def _load(torch, dev, artifact, model_dir, model, foot_pairs, terrain=None, com_body=None):
+def _load(torch, dev, artifact, model_dir, model, foot_pairs, terrain=None, com_body=None, params=None,
+          max_contacts=None, max_rows=None, motor_limits=None, contact_forces=False, actuator=None,
+          contact_surrogate=False, foot_wrench=None, contact_frame=False, contact_grad=False, noslip_pairs=None,
+          foot_normal=False, capacity_diag=False):
     cc = torch.cuda.get_device_capability(dev)
     arch = os.environ.get("DK_ARCH") or f"sm_{cc[0]}{cc[1]}"
-    if model_dir is not None or model is not None or terrain is not None:
-        js = build(arch, model_dir, model, foot_pairs, set_current=False, terrain=terrain, com_body=com_body)
+    if (model_dir is not None or model is not None or terrain is not None or params or max_contacts is not None
+            or max_rows is not None or motor_limits is not None or actuator is not None or contact_forces
+            or contact_surrogate or foot_wrench not in (None, False) or contact_frame or contact_grad
+            or noslip_pairs is not None or foot_normal or capacity_diag):
+        js = build(arch, model_dir, model, foot_pairs, set_current=False, terrain=terrain, com_body=com_body,
+                   params=params, max_contacts=max_contacts, max_rows=max_rows, motor_limits=motor_limits,
+                   contact_forces=contact_forces, actuator=actuator, contact_surrogate=contact_surrogate,
+                   foot_wrench=foot_wrench, contact_frame=contact_frame, contact_grad=contact_grad,
+                   noslip_pairs=noslip_pairs, **({"foot_normal": True} if foot_normal else {}),
+                   **({"capacity_diag": True} if capacity_diag else {}))
     else:
         js = _artifact_path(arch, artifact)
         why = _stale(js, arch)
@@ -331,14 +381,23 @@ def _load(torch, dev, artifact, model_dir, model, foot_pairs, terrain=None, com_
         raise _err(f"{meta['consts']} does not match its artifact {js}", RuntimeError)
     lib = ctypes.cdll.LoadLibrary(str(js.parent / meta["library"]))
     info = dict(meta, path=str(js.parent / meta["library"]), artifact=str(js))
+    info.setdefault("actuator", None)
+    info.setdefault("act_words", 0)
+    info.setdefault("act_layout", None)
+    info.setdefault("bam", None)
+    info.setdefault("contact_surrogate", False)
+    info.setdefault("noslip_pairs", None)
+    info.setdefault("contact_forces", None)
+    info.setdefault("capacity_diag", False)
+    info.setdefault("info_words", 4)
     fns = _bind(lib, info)
     _STATE.update(lib=lib, info=info, fns=fns, consts=consts, off_flags=int(meta["off_flags"]))
     import atexit
-    atexit.register(_exit_report)  # with set_overflow_warnings(True): the counts nobody read, reported at exit
-    _custom_ops()  # defined here, outside any torch.compile trace (defining them inside one is not traceable)
+    atexit.register(_exit_report)
+    _custom_ops()
 
 
-_TERRAIN = {}  # device index -> the terrain's device tensors (kept alive)
+_TERRAIN = {}
 
 
 def set_terrain(terrain, device=None, cell=1.0):
@@ -350,13 +409,17 @@ def set_terrain(terrain, device=None, cell=1.0):
     if "set_terrain" not in _STATE["fns"]:
         raise _err("set_terrain needs a terrain build: init(terrain=TerrainConfig(...))", RuntimeError)
     packed = terrain.pack(cell)
-    order = ("boxes", "hf_head", "hf_int", "hf_data", "grid", "cell_start", "cell_items", "elem_cell")
+    from nablaengine import jax_ffi
+    jax_ffi._terrain_material_check(packed, _STATE["info"])
+    packed["material"] = terrain.material_upload(_STATE["info"].get("terrain"))
+    _STATE["terrain_sand"] = packed["sand"]
+    order = ("boxes", "hf_head", "hf_int", "hf_data", "grid", "cell_start", "cell_items", "elem_cell", "material")
     with torch.cuda.device(dev):
         tens = {k: torch.from_numpy(np.ascontiguousarray(packed[k]).reshape(-1)).to(f"cuda:{dev}") for k in order}
-        for k in order:  # never a null pointer (the kernel checks only grid)
+        for k in order:
             if tens[k].numel() == 0:
                 tens[k] = torch.zeros(1, dtype=tens[k].dtype, device=f"cuda:{dev}")
-        ptrs = (ctypes.c_void_p * 8)(*[tens[k].data_ptr() for k in order])
+        ptrs = (ctypes.c_void_p * 9)(*[tens[k].data_ptr() for k in order])
         for f in _STATE["fns"]["set_terrain"]:
             _rc(f(dev, ctypes.cast(ptrs, ctypes.c_void_p)), "the terrain upload")
         torch.cuda.synchronize(dev)
@@ -364,7 +427,6 @@ def set_terrain(terrain, device=None, cell=1.0):
 
 
 
-# ---- height scan: rays against the terrain (mjlab's RayCastSensor on MuJoCo Warp's rays) ------------------------------
 
 def grid_pattern(size=(1.0, 1.0), resolution=0.1, direction=(0.0, 0.0, -1.0), device=None):
     """(offsets (N, 3), directions (N, 3)) of a grid of parallel rays in the frame, as mjlab's
@@ -380,8 +442,6 @@ def grid_pattern(size=(1.0, 1.0), resolution=0.1, direction=(0.0, 0.0, -1.0), de
 
 
 def _yaw_rotation(rot):
-    """mjlab RayCastSensor._extract_yaw_rotation: the rotation about z of the frame's x axis (its y axis where x is
-    within 0.1 of vertical)."""
     import torch
     x = rot[:, :, 0].clone()
     x[:, 2] = 0
@@ -446,13 +506,11 @@ def _device_index(device):
 
 
 def _bind(lib, info):
-    """The library's C entries (argument types set), after a check of every unit's compiled sizes against the
-    artifact's model facts."""
     vp, i32, f32 = ctypes.c_void_p, ctypes.c_int, ctypes.c_float
     fwd = info["forward_unit"]
     fns = dict(forward=getattr(lib, f"{fwd}_forward"), work_bytes=getattr(lib, f"{fwd}_work_bytes"),
                kin=getattr(lib, f"{fwd}_kinematics"), kin_vjp=getattr(lib, f"{fwd}_kinematics_vjp"))
-    fns["forward"].argtypes = [vp, i32] + [vp] * 6 + [i32, i32] + [vp] * 7
+    fns["forward"].argtypes = [vp, i32] + [vp] * 6 + [i32, i32] + [vp] * (9 if info.get("act_words") else 7)
     fns["work_bytes"].argtypes, fns["work_bytes"].restype = [i32], ctypes.c_longlong
     fns["kin"].argtypes = [vp, i32] + [vp] * 8
     fns["kin_vjp"].argtypes = [vp, i32] + [vp] * 12
@@ -460,9 +518,11 @@ def _bind(lib, info):
     for v in VARIANTS:
         t = _tag(v)
         f = getattr(lib, f"{t}_adjoint")
-        f.argtypes = [vp, i32, i32] + [vp] * 9 + [vp, f32]
+        f.argtypes = ([vp, i32, i32] + [vp] * 9 + [vp, f32] + ([vp] * 3 if info.get("act_words") else [])
+                      + ([f32, f32] if info.get("contact_surrogate") else [])
+                      + ([vp] if info.get("contact_grad") else []))
         fns["adjoint"][v] = f
-        sz = np.zeros(9, np.int64)  # as jax_ffi.init's check of dk_sizes
+        sz = np.zeros(9, np.int64)
         getattr(lib, f"{t}_sizes").argtypes = [vp]
         getattr(lib, f"{t}_sizes")(sz.ctypes.data)
         want = (info["rec_words"], info["nq"], info["nv"], info["maxcon"], v[0], v[1], info["off_flags"])
@@ -507,7 +567,6 @@ def _upload(dev):
 
 
 def _ready(t):
-    """The device index of tensor t, its constants uploaded (init)."""
     dev = t.device.index
     if dev not in _READY:
         init(dev)
@@ -515,15 +574,12 @@ def _ready(t):
 
 
 def _on(dev):
-    """dev as the current CUDA device for a library call (the kernels, their constants and torch's stream are per
-    device): a no-op where it already is."""
     import contextlib
     import torch
     return contextlib.nullcontext() if torch.cuda.current_device() == dev else torch.cuda.device(dev)
 
 
 def _on_input_device(fn):
-    """fn(first, ...) run with first's CUDA device current (_on), so its launches and torch's stream match."""
     import functools
 
     @functools.wraps(fn)
@@ -557,8 +613,6 @@ def _rc(rc, what):
 
 
 def _soft(clamp_kv, clamp_soft):
-    """jax_ffi._soft without numpy (torch.compile traces it): the soft clamp's delta for clamp_kv 2 (None:
-    CLAMP_SOFT), None for 0 / 1 (where it must be None); the library call rounds it to float32."""
     if int(clamp_kv) != 2:
         if clamp_soft is not None:
             raise _err(f"clamp_soft is the soft clamp's (clamp_kv=2), not clamp_kv={clamp_kv}", ValueError)
@@ -569,22 +623,43 @@ def _soft(clamp_kv, clamp_soft):
     return d
 
 
-_LAST_CON = {}  # device -> the contact table of the last forward on it
+def _sur(cone_mu, impulse_clip):
+    mu = float(np.float32(cone_mu or 0.0))
+    if not (math.isfinite(mu) and mu >= 0.0):
+        raise _err(f"cone_mu must be finite and >= 0, got {cone_mu}", ValueError)
+    if impulse_clip is None:
+        return mu, 0.0
+    clip = float(np.float32(impulse_clip))
+    if not clip > 0.0:
+        raise _err(f"impulse_clip must be > 0 (None: off), got {impulse_clip}", ValueError)
+    return mu, (0.0 if clip == math.inf else clip)
+
+
+def _com_words():
+    return int(_STATE["info"].get("com_words", 3)) if _STATE else 3
+
+
+_LAST_CON = {}
 
 
 def last_contacts(device=None):
     """The contacts of the last substep of the most recent forward / step on device (default the current one), as a
     dict of tensors over (B, maxcon): valid (pair >= 0), pair (the model's contact pair index; -1 past the world's
-    contacts), dist, pos (world), normal (world, the contact frame's first axis). Overwritten by the next
+    contacts), dist, pos (world), normal (world, the contact frame's first axis); with the forest engine also force
+    (the contact force in world coordinates, on the pair's second geom in the engine's geom order: the frame's normal
+    points from the first geom to the second) and force_normal (its normal component, >= 0). Overwritten by the next
     forward on the device; not differentiable. None before any forward."""
+    con = _LAST_CON.get(_device_index(device))
+    return None if con is None else contact_table(con)
+
+
+def contact_table(con, substeps=None):
+    """The contact output of forward / step (contacts=True), (B, width), as last_contacts' dict (and as
+    jax_ffi.contact_table: per-substep tables, foot wrenches, tangents, terrain element with those options)."""
     import torch
-    dev = _device_index(device)
-    con = _LAST_CON.get(dev)
-    if con is None:
-        return None
-    B, mc = con.shape[0], int(_STATE["info"]["maxcon"])
-    c = con.view(B, mc, 8)
-    out = dict(pair=c[..., 0].to(torch.int32), dist=c[..., 1], pos=c[..., 2:5], normal=c[..., 5:8])
+    from nablaengine.g1_engine import contact_forces as _cf
+    out = _cf.decode(con, _STATE["info"], substeps, _STATE.get("terrain_sand"))
+    out["pair"] = out["pair"].to(torch.int32)
     out["valid"] = out["pair"] >= 0
     return out
 
@@ -601,39 +676,50 @@ def tape_bytes(nworld, substeps=SUBSTEPS, steps=1):
     return 4 * _STATE["info"]["rec_words"] * substeps * nworld * steps
 
 
-# ---- custom ops (torch.library): the library calls, opaque to torch.compile ------------------------------------------
 
 @_on_input_device
-def _forward_impl(qpos, qvel, warm, ctrl, friction, com, iterations, substeps, tape, kinematics):
+def _forward_impl(qpos, qvel, warm, ctrl, friction, com, iterations, substeps, tape, kinematics, act=None):
     import torch
     dev = _ready(qpos)
     nq, nv, nu, nb, rec = _sizes()
     B = qpos.shape[0]
     for name, x, shape in (("qpos", qpos, (B, nq)), ("qvel", qvel, (B, nv)), ("warm", warm, (B, nv)),
-                           ("ctrl", ctrl, (B, nu)), ("friction", friction, (B,)), ("com", com, (B, 3))):
+                           ("ctrl", ctrl, (B, nu)), ("friction", friction, (B,)), ("com", com, (B, _com_words()))):
         _check(name, x, shape, dev)
+    aw = int(_STATE["info"].get("act_words", 0))
+    if aw and act is None:
+        raise _err(f"this build has the BAM servo model: pass its state act= (B, {aw}) float32 "
+                   "(nablaengine.actuators.bam.initial_state; docs/actuators.md)", ValueError)
+    if not aw and act is not None:
+        raise _err("act= is the state of a stateful actuator model (actuator='bam'); this build has none", ValueError)
+    if aw:
+        _check("act", act, (B, aw), dev)
+        if kinematics:
+            raise _err("kinematics=True is not available with the BAM servo model yet", ValueError)
     if substeps < 1 or substeps > 32 or iterations < 0:
         raise _err("substeps in 1..32 and iterations >= 0", ValueError)
     kw = dict(dtype=torch.float32, device=qpos.device)
     q1, v1, w1 = torch.empty((B, nq), **kw), torch.empty((B, nv), **kw), torch.empty((B, nv), **kw)
-    info = torch.empty((B, 4), dtype=torch.int32, device=qpos.device)
+    info = torch.empty((B, int(_STATE["info"]["info_words"])), dtype=torch.int32, device=qpos.device)
     tp = torch.empty((B, substeps * rec), **kw) if tape else torch.empty((0, substeps * rec), **kw)
     kin = _kin_empty(B, qpos.device) if kinematics else []
+    oact = [torch.empty((B, aw), **kw)] if aw else []
     if B == 0:
-        return [q1, v1, w1, info, tp] + kin
+        return [q1, v1, w1, info, tp] + kin + oact
     fns = _STATE["fns"]
-    con = torch.empty((B, _STATE["info"]["maxcon"] * 8), **kw)  # the last substep's contacts (last_contacts())
+    con = torch.empty((B, _con_width(substeps)), **kw)
     _LAST_CON[dev] = con
     work = torch.empty((max(int(fns["work_bytes"](B)), 1),), dtype=torch.uint8, device=qpos.device)
     st = torch.cuda.current_stream(dev).cuda_stream
     _rc(fns["forward"](st, B, *map(_ptr, (qpos, qvel, warm, ctrl, friction, com)), iterations, substeps, _ptr(q1),
-                       _ptr(v1), _ptr(w1), _ptr(info), _ptr(con), _ptr(tp) if tape else None, _ptr(work)),
+                       _ptr(v1), _ptr(w1), _ptr(info), _ptr(con), _ptr(tp) if tape else None,
+                       *((_ptr(act), _ptr(oact[0])) if aw else ()), _ptr(work)),
         "the forward launch")
     if kinematics:
         _rc(fns["kin"](st, B, _ptr(q1), _ptr(v1), _ptr(com), *map(_ptr, kin)), "the kinematics launch")
     if _DIAG_ON[0]:
         _diag_forward(dev, st, info, tp if tape else None, iterations, substeps)
-    return [q1, v1, w1, info, tp] + kin
+    return [q1, v1, w1, info, tp] + kin + oact
 
 
 def _kin_empty(B, device):
@@ -645,30 +731,57 @@ def _kin_empty(B, device):
 
 @_on_input_device
 def _backward_impl(tape, friction, com, g_qpos, g_qvel, ctrl, kin_state, kin_cot, substeps, clamp_kv, normal,
-                   clamp_soft):
+                   clamp_soft, act=None, g_act=None, cone_mu=0.0, impulse_clip=0.0, g_contacts=None):
     import torch
     dev = _ready(tape)
     nq, nv, nu, nb, rec = _sizes()
     B = tape.shape[0]
-    for name, x, shape in (("tape", tape, (B, substeps * rec)), ("friction", friction, (B,)), ("com", com, (B, 3)),
+    for name, x, shape in (("tape", tape, (B, substeps * rec)), ("friction", friction, (B,)), ("com", com, (B, _com_words())),
                            ("g_qpos", g_qpos, (B, nq)), ("g_qvel", g_qvel, (B, nv))):
         _check(name, x, shape, dev)
     v = (int(clamp_kv), int(normal))
     if v not in VARIANTS:
         raise _err(f"no adjoint variant clamp_kv={clamp_kv} normal={normal}", ValueError)
+    aw = int(_STATE["info"].get("act_words", 0))
+    if aw:
+        if act is None:
+            raise _err(f"this build has the BAM servo model: backward needs the step's input state act= (B, {aw})",
+                       ValueError)
+        if v[0] == 2 or kin_state:
+            raise _err("the BAM servo model's adjoint: clamp_kv 0 or 1 (the same there: its servo force has no kv), "
+                       "no kinematics outputs", ValueError)
+        if g_act is None:
+            g_act = torch.zeros((B, aw), dtype=torch.float32, device=tape.device)
+        _check("act", act, (B, aw), dev)
+        _check("g_act", g_act, (B, aw), dev)
+    elif act is not None or g_act is not None:
+        raise _err("act= / g_act= belong to a build with the BAM servo model", ValueError)
     if (v[0] == 2) != (ctrl is not None):
         raise _err("clamp_kv=2 (the soft clamp) needs the step's ctrl; 0 and 1 take none", ValueError)
+    sur = _STATE["info"].get("contact_surrogate")
+    if not sur and (cone_mu or impulse_clip):
+        raise _err("cone_mu / impulse_clip need a library built with init(contact_surrogate=True)", ValueError)
     if ctrl is not None:
         _check("ctrl", ctrl, (B, nu), dev)
+    cgrad = bool(_STATE["info"].get("contact_grad"))
+    if g_contacts is not None:
+        if not cgrad:
+            raise _err("g_contacts needs a library built with init(contact_grad=True)", ValueError)
+        _check("g_contacts", g_contacts, (B, _con_width(substeps)), dev)
     kw = dict(dtype=torch.float32, device=tape.device)
-    gq, gv, gu = torch.empty((B, nq), **kw), torch.empty((B, nv), **kw), torch.empty((B, nu), **kw)
+    npw = int(_STATE["info"].get("param_words", 0))
+    nov = int(_STATE["info"].get("obj_vel_words", 0))
+    nov += int(_STATE["info"].get("obj_mat_words", 0))
+    gq, gv = torch.empty((B, nq), **kw), torch.empty((B, nv), **kw)
+    gu = torch.empty((B, nu + (npw + 1 if npw else 0) + nov), **kw)
     info = torch.empty((B,), dtype=torch.int32, device=tape.device)
+    ga = [torch.empty((B, aw), **kw)] if aw else []
     if B == 0:
-        return [gq, gv, gu, info]
+        return [gq, gv, gu, info] + ga
     fns = _STATE["fns"]
     st = torch.cuda.current_stream(dev).cuda_stream
     cq, cv = g_qpos, g_qvel
-    if kin_state:  # the kinematics outputs' cotangents pulled back onto (qpos', qvel'), added to theirs last
+    if kin_state:
         q1, v1 = kin_state
         _check("qpos'", q1, (B, nq), dev)
         _check("qvel'", v1, (B, nv), dev)
@@ -679,11 +792,14 @@ def _backward_impl(tape, friction, com, g_qpos, g_qvel, ctrl, kin_state, kin_cot
         _rc(fns["kin_vjp"](st, B, _ptr(q1), _ptr(v1), _ptr(com), *map(_ptr, kin_cot), _ptr(g_qpos), _ptr(g_qvel),
                            _ptr(cq), _ptr(cv)), "the kinematics VJP launch")
     _rc(fns["adjoint"][v](st, B, substeps, _ptr(tape), _ptr(friction), _ptr(com), _ptr(cq), _ptr(cv), _ptr(gq),
-                          _ptr(gv), _ptr(gu), _ptr(info), _ptr(ctrl), ctypes.c_float(clamp_soft)),
+                          _ptr(gv), _ptr(gu), _ptr(info), _ptr(ctrl), ctypes.c_float(clamp_soft),
+                          *((_ptr(act), _ptr(g_act), _ptr(ga[0])) if aw else ()),
+                          *((ctypes.c_float(cone_mu), ctypes.c_float(impulse_clip if impulse_clip else math.inf))
+                            if sur else ()), *((_ptr(g_contacts),) if cgrad else ())),
         "the adjoint launch")
     if _DIAG_ON[0]:
         _diag_backward(dev, st, gq, gv, gu, cq, cv, info)
-    return [gq, gv, gu, info]
+    return [gq, gv, gu, info] + ga
 
 
 @_on_input_device
@@ -692,7 +808,7 @@ def _kinematics_impl(qpos, qvel, com):
     dev = _ready(qpos)
     nq, nv, _, _, _ = _sizes()
     B = qpos.shape[0]
-    for name, x, shape in (("qpos", qpos, (B, nq)), ("qvel", qvel, (B, nv)), ("com", com, (B, 3))):
+    for name, x, shape in (("qpos", qpos, (B, nq)), ("qvel", qvel, (B, nv)), ("com", com, (B, _com_words()))):
         _check(name, x, shape, dev)
     out = _kin_empty(B, qpos.device)
     if B:
@@ -707,7 +823,7 @@ def _kinematics_backward_impl(qpos, qvel, com, g_qpos_n, g_xpos, g_xquat, g_cvel
     dev = _ready(qpos)
     nq, nv, _, nb, _ = _sizes()
     B = qpos.shape[0]
-    for name, x, shape in (("qpos", qpos, (B, nq)), ("qvel", qvel, (B, nv)), ("com", com, (B, 3)),
+    for name, x, shape in (("qpos", qpos, (B, nq)), ("qvel", qvel, (B, nv)), ("com", com, (B, _com_words())),
                            ("g_qpos_n", g_qpos_n, (B, nq)), ("g_xpos", g_xpos, (B, nb, 3)),
                            ("g_xquat", g_xquat, (B, nb, 4)), ("g_cvel", g_cvel, (B, nb, 6)),
                            ("g_subtree_com", g_subtree_com, (B, nb, 3))):
@@ -728,8 +844,6 @@ _IMPL = dict(forward=lambda *a: _forward_impl(*a), backward=lambda *a: _backward
 
 
 def _ops():
-    """The library calls: the torch.library custom ops while torch.compile traces (opaque nodes), the same functions
-    called directly in eager mode (no custom-op dispatch: about 0.3 ms less host time per forward + backward)."""
     import torch
     if not torch.compiler.is_compiling():
         return _IMPL
@@ -737,7 +851,6 @@ def _ops():
 
 
 def _custom_ops():
-    """The custom ops, defined on first use (torch imported lazily)."""
     if _OPS:
         return _OPS
     import torch
@@ -746,32 +859,42 @@ def _custom_ops():
 
     @torch.library.custom_op("nablaengine::forward", mutates_args=())
     def forward_op(qpos: Tensor, qvel: Tensor, warm: Tensor, ctrl: Tensor, friction: Tensor, com: Tensor,
-                   iterations: int, substeps: int, tape: bool, kinematics: bool) -> List[Tensor]:
-        return _forward_impl(qpos, qvel, warm, ctrl, friction, com, iterations, substeps, tape, kinematics)
+                   iterations: int, substeps: int, tape: bool, kinematics: bool,
+                   act: Optional[Tensor] = None) -> List[Tensor]:
+        return _forward_impl(qpos, qvel, warm, ctrl, friction, com, iterations, substeps, tape, kinematics, act)
 
     @forward_op.register_fake
-    def _(qpos, qvel, warm, ctrl, friction, com, iterations, substeps, tape, kinematics):
+    def _(qpos, qvel, warm, ctrl, friction, com, iterations, substeps, tape, kinematics, act=None):
         nq, nv, _, nb, rec = _fake_sizes()
         B = qpos.shape[0]
         out = [qpos.new_empty((B, nq)), qpos.new_empty((B, nv)), qpos.new_empty((B, nv)),
-               qpos.new_empty((B, 4), dtype=torch.int32), qpos.new_empty((B if tape else 0, substeps * rec))]
+               qpos.new_empty((B, int(_STATE["info"].get("info_words", 4))), dtype=torch.int32),
+               qpos.new_empty((B if tape else 0, substeps * rec))]
         if kinematics:
             out += [qpos.new_empty(s) for s in ((B, nq), (B, nb, 3), (B, nb, 4), (B, nb, 6), (B, nb, 3))]
+        if act is not None:
+            out.append(act.new_empty(act.shape))
         return out
 
     @torch.library.custom_op("nablaengine::backward", mutates_args=())
     def backward_op(tape: Tensor, friction: Tensor, com: Tensor, g_qpos: Tensor, g_qvel: Tensor,
                     ctrl: Optional[Tensor], kin_state: List[Tensor], kin_cot: List[Tensor], substeps: int,
-                    clamp_kv: int, normal: int, clamp_soft: float) -> List[Tensor]:
+                    clamp_kv: int, normal: int, clamp_soft: float, act: Optional[Tensor] = None,
+                    g_act: Optional[Tensor] = None, cone_mu: float = 0.0, impulse_clip: float = 0.0,
+                    g_contacts: Optional[Tensor] = None) -> List[Tensor]:
         return _backward_impl(tape, friction, com, g_qpos, g_qvel, ctrl, kin_state, kin_cot, substeps, clamp_kv,
-                              normal, clamp_soft)
+                              normal, clamp_soft, act, g_act, cone_mu, impulse_clip, g_contacts)
 
     @backward_op.register_fake
-    def _(tape, friction, com, g_qpos, g_qvel, ctrl, kin_state, kin_cot, substeps, clamp_kv, normal, clamp_soft):
+    def _(tape, friction, com, g_qpos, g_qvel, ctrl, kin_state, kin_cot, substeps, clamp_kv, normal, clamp_soft,
+          act=None, g_act=None, cone_mu=0.0, impulse_clip=0.0, g_contacts=None):
         nq, nv, nu, _, _ = _fake_sizes()
         B = tape.shape[0]
-        return [tape.new_empty((B, nq)), tape.new_empty((B, nv)), tape.new_empty((B, nu)),
-                tape.new_empty((B,), dtype=torch.int32)]
+        npw = int(_STATE["info"].get("param_words", 0))
+        nov = int(_STATE["info"].get("obj_vel_words", 0)) + int(_STATE["info"].get("obj_mat_words", 0))
+        return [tape.new_empty((B, nq)), tape.new_empty((B, nv)),
+                tape.new_empty((B, nu + (npw + 1 if npw else 0) + nov)),
+                tape.new_empty((B,), dtype=torch.int32)] + ([act.new_empty(act.shape)] if act is not None else [])
 
     @torch.library.custom_op("nablaengine::kinematics", mutates_args=())
     def kinematics_op(qpos: Tensor, qvel: Tensor, com: Tensor) -> List[Tensor]:
@@ -805,17 +928,13 @@ def _fake_sizes():
     return _sizes()
 
 
-# ---- diagnostics (device counters, as jax_ffi's k_diag_fwd / k_diag_bwd) ---------------------------------------------
 
 def _diag_forward(dev, st, info, tape, iterations, substeps):
-    """The forward's counters added on the device (one kernel, dk_torch_diag_fwd: as jax_ffi's k_diag_fwd)."""
     _rc(_STATE["fns"]["dk_torch_diag_fwd"](st, _ptr(_DIAG[dev]), info.shape[0], substeps, iterations, _ptr(info),
                                             _ptr(tape)), "the forward diagnostics launch")
 
 
 def _diag_backward(dev, st, gq, gv, gu, cq, cv, info):
-    """The backward's counters added on the device and the non-finite bits into info (one kernel, dk_torch_diag_bwd:
-    as jax_ffi's k_diag_bwd)."""
     _rc(_STATE["fns"]["dk_torch_diag_bwd"](st, _ptr(_DIAG[dev]), info.shape[0], *map(_ptr, (gq, gv, gu, cq, cv)),
                                             _ptr(info)), "the backward diagnostics launch")
 
@@ -853,16 +972,29 @@ def read_diagnostics(device=None, reset=True):
 
 def warn_overflow(d, where="nablaengine"):
     """A RuntimeWarning when the counters d count worlds whose contacts or constraint rows exceeded the per-world
-    capacity (64 contacts, 192 rows): the ones beyond were dropped, so those worlds miss support and friction forces
-    (as jax_ffi.warn_overflow). The worlds of a call: info[:, 3] & OVERFLOW_CONTACTS / OVERFLOW_ROWS of forward()."""
+    capacity (the loaded library's info["maxcon"] / info["nefc"]): the ones beyond were dropped, so those worlds miss
+    support and friction forces (as jax_ffi.warn_overflow). The worlds of a call: info[:, 3] & OVERFLOW_CONTACTS /
+    OVERFLOW_ROWS of forward(). init(max_contacts=, max_rows=) raises the capacities."""
     import warnings
     nc, nr = d.get("fwd_contact_overflow_worlds", 0), d.get("fwd_row_overflow_worlds", 0)
+    info = _STATE["info"] if _STATE else {}
+    maxcon, nefc = info.get("maxcon", 64), info.get("nefc", 192)
     if nc or nr:
-        warnings.warn(f"{where}: {nc} world-steps exceeded the contact capacity (64 per world) and {nr} the constraint-"
-                      f"row capacity (192); their extra contacts / rows were dropped, so those worlds miss support and "
-                      f"friction forces (e.g. deep interpenetration). See docs/api_torch.md, Diagnostics.",
-                      RuntimeWarning, stacklevel=3)
+        warnings.warn(f"{where}: {nc} world-steps exceeded the contact capacity ({maxcon} per world) and {nr} the "
+                      f"constraint-row capacity ({nefc}); their extra contacts / rows were dropped, so those worlds miss "
+                      f"support and friction forces (e.g. deep interpenetration; init(max_contacts=, max_rows=) raises "
+                      f"the capacities). See docs/api_torch.md, Diagnostics.", RuntimeWarning, stacklevel=3)
     return nc + nr
+
+
+def capacity_counts(info):
+    """(contacts_found, rows_needed), two (B,) int32 tensors, from forward()'s info of a build with
+    init(capacity_diag=True) (info (B, 6)): as jax_ffi.capacity_counts (per world the largest over the call's substeps
+    of the contacts found and the constraint rows needed before the capacities truncate them)."""
+    if info.dim() != 2 or info.shape[1] != 6:
+        raise _err(f"capacity_counts: info of shape {tuple(info.shape)}; the counts need a build with "
+                   "init(capacity_diag=True), whose forward info is (B, 6)", ValueError)
+    return info[:, 4], info[:, 5]
 
 
 def set_overflow_warnings(enabled):
@@ -876,17 +1008,15 @@ def set_overflow_warnings(enabled):
 
 
 def _exit_report():
-    """At exit: the overflow warning for each device's counts since the last read (no reset); never raises."""
     try:
         if not (_DIAG_ON[0] and _OVERFLOW_WARN[0]):
             return
         for dev in sorted(_DIAG):
             warn_overflow(dict(zip(DIAG, (int(x) for x in _DIAG[dev].cpu()))), where=f"nablaengine (cuda:{dev})")
-    except Exception:  # noqa: BLE001  (interpreter or CUDA shutting down)
+    except Exception:
         pass
 
 
-# ---- autograd --------------------------------------------------------------------------------------------------------
 
 def _make_step_fn():
     import torch
@@ -894,18 +1024,22 @@ def _make_step_fn():
     class _Step(torch.autograd.Function):
         @staticmethod
         def forward(ctx, qpos, qvel, warm, ctrl, friction, com, iterations, substeps, clamp_kv, normal, clamp_soft,
-                    grad_decay, kin):
+                    grad_decay, kin, sur=(0.0, 0.0), con=False):
             r = _ops()["forward"](qpos, qvel, warm, ctrl, friction, com, iterations, substeps, True, kin)
             q1, v1, w1, info, tp = r[:5]
             ctx.save_for_backward(tp, friction, com, ctrl, q1, v1)
-            ctx.opts = (substeps, clamp_kv, normal, clamp_soft, grad_decay, kin)
+            ctx.opts = (substeps, clamp_kv, normal, clamp_soft, grad_decay, kin, sur, con)
             ctx.mark_non_differentiable(w1)
-            return (q1, v1, w1) + tuple(r[5:])
+            return (q1, v1, w1) + tuple(r[5:]) + ((_last_con(qpos, substeps).clone(),) if con else ())
 
         @staticmethod
         def backward(ctx, g_q1, g_v1, g_w1, *g_kin):
             tp, friction, com, ctrl, q1, v1 = ctx.saved_tensors
-            substeps, clamp_kv, normal, clamp_soft, grad_decay, kin = ctx.opts
+            substeps, clamp_kv, normal, clamp_soft, grad_decay, kin, sur, con = ctx.opts
+            g_con = None
+            if con:
+                g_con = g_kin[-1].contiguous() if g_kin[-1] is not None else None
+                g_kin = g_kin[:-1]
             g_q1 = torch.zeros_like(q1) if g_q1 is None else g_q1.contiguous()
             g_v1 = torch.zeros_like(v1) if g_v1 is None else g_v1.contiguous()
             kin_state, kin_cot = [], []
@@ -915,12 +1049,55 @@ def _make_step_fn():
                            for g, s in zip(g_kin, _kin_shapes(q1.shape[0]))]
             gq, gv, gu, _ = _ops()["backward"](tp, friction, com, g_q1, g_v1, ctrl if clamp_kv == 2 else None,
                                                kin_state, kin_cot, substeps, clamp_kv, normal,
-                                               0.0 if clamp_soft is None else clamp_soft)
-            if grad_decay != 1.0:  # the state cotangent through this step's physics times it, ctrl's not
-                gq, gv = gq * grad_decay, gv * grad_decay  # grad_decay a float32 value: one float32 product
-            return gq, gv, None, gu, None, None, None, None, None, None, None, None, None
+                                               0.0 if clamp_soft is None else clamp_soft, None, None, *sur, g_con)
+            if grad_decay != 1.0:
+                gq, gv = gq * grad_decay, gv * grad_decay
+            gcom, gfr, nu = None, None, int(_STATE["info"]["nu"])
+            npw, nov = int(_STATE["info"].get("param_words", 0)), int(_STATE["info"].get("obj_vel_words", 0))
+            nov += int(_STATE["info"].get("obj_mat_words", 0))
+            if npw or nov:
+                gcom = torch.zeros_like(com)
+            if npw:
+                gcom[:, com.shape[1] - npw:] = gu[:, nu:nu + npw]
+                gfr = gu[:, nu + npw].contiguous()
+            if nov:
+                gcom[:, com.shape[1] - npw - nov:com.shape[1] - npw] = gu[:, gu.shape[1] - nov:]
+            gu = gu[:, :nu]
+            return gq, gv, None, gu, gfr, gcom, None, None, None, None, None, None, None, None, None
 
     return _Step
+
+
+def _make_step_act_fn():
+    import torch
+
+    class _StepAct(torch.autograd.Function):
+        """A BAM build's step: (qpos, qvel, warm, ctrl, friction, com, act) -> (qpos', qvel', warm', act'),
+        differentiable in qpos, qvel, ctrl and act."""
+        @staticmethod
+        def forward(ctx, qpos, qvel, warm, ctrl, friction, com, act, iterations, substeps, clamp_kv, normal,
+                    grad_decay):
+            r = _ops()["forward"](qpos, qvel, warm, ctrl, friction, com, iterations, substeps, True, False, act)
+            q1, v1, w1, info, tp, a1 = r
+            ctx.save_for_backward(tp, friction, com, act, q1, v1)
+            ctx.opts = (substeps, clamp_kv, normal, grad_decay)
+            ctx.mark_non_differentiable(w1)
+            return q1, v1, w1, a1
+
+        @staticmethod
+        def backward(ctx, g_q1, g_v1, g_w1, g_a1):
+            tp, friction, com, act, q1, v1 = ctx.saved_tensors
+            substeps, clamp_kv, normal, grad_decay = ctx.opts
+            g_q1 = torch.zeros_like(q1) if g_q1 is None else g_q1.contiguous()
+            g_v1 = torch.zeros_like(v1) if g_v1 is None else g_v1.contiguous()
+            g_a1 = torch.zeros_like(act) if g_a1 is None else g_a1.contiguous()
+            gq, gv, gu, _, ga = _ops()["backward"](tp, friction, com, g_q1, g_v1, None, [], [], substeps, clamp_kv,
+                                                   normal, 0.0, act, g_a1)
+            if grad_decay != 1.0:
+                gq, gv, ga = gq * grad_decay, gv * grad_decay, ga * grad_decay
+            return gq, gv, None, gu, None, None, ga, None, None, None, None, None
+
+    return _StepAct
 
 
 def _kin_shapes(B):
@@ -958,23 +1135,79 @@ def _fn(name, make):
     return _FNS[name]
 
 
+def _con_width(substeps):
+    i = _STATE["info"]
+    cf, mc, cw = i.get("contact_forces"), int(i["maxcon"]), int(i.get("con_words", 8))
+    if not cf:
+        return mc * cw
+    nf = len(cf["feet"])
+    return (int(substeps) if cf["mode"] == "substeps" else 1) * mc * cw + (int(substeps) * nf * 6 + nf if nf else 0)
+
+
+def _last_con(x, substeps=SUBSTEPS):
+    import torch
+    con = _LAST_CON.get(_device_index(x.device))
+    if con is None or con.shape[0] != x.shape[0]:
+        con = torch.empty((x.shape[0], _con_width(substeps)), dtype=torch.float32, device=x.device)
+    return con
+
+
 def step(qpos, qvel, warm, ctrl, friction, com, *, iterations=ITERATIONS, substeps=SUBSTEPS, clamp_kv=CLAMP_KV,
-         normal=NORMAL, clamp_soft=None, grad_decay=GRAD_DECAY, kinematics=False):
+         normal=NORMAL, clamp_soft=None, grad_decay=GRAD_DECAY, kinematics=False, contacts=False, act=None,
+         cone_mu=0.0, impulse_clip=None):
     """One control step: (qpos', qvel', warm'); kinematics=True: (qpos', qvel', warm', qpos_n, xpos, xquat, cvel,
     subtree_com), the output state's kinematics. Options as jax_ffi.step (clamp_kv, normal, clamp_soft and
     grad_decay act on the backward only). Differentiable in qpos, qvel and ctrl when any input requires grad (then the
-    forward also writes the tape); warm' is not differentiable."""
+    forward also writes the tape); warm' is not differentiable. contacts=True: the last substep's contact table
+    (B, maxcon * con_words) after warm', as jax_ffi.step (contact_table() decodes it; not differentiable; the tensor
+    last_contacts() reads, so eager mode only, not inside a captured CUDA graph). act: the BAM servo model's state
+    (B, info["act_words"]) in a BAM build (required there, refused elsewhere): (qpos', qvel', warm', act'[,
+    contacts]), differentiable in act too (clamp_kv 0 or 1, the same there; no kinematics outputs; docs/actuators.md).
+    cone_mu, impulse_clip: the backward's contact-gradient surrogates (as jax_ffi.step; a contact_surrogate build)."""
     import torch
+    if act is not None or (_STATE and _STATE["info"].get("act_words")):
+        args = (qpos, qvel, warm, ctrl, friction, com, act)
+        if torch.is_grad_enabled() and any(isinstance(x, torch.Tensor) and x.requires_grad for x in args):
+            if kinematics or int(clamp_kv) not in (0, 1) or int(normal) not in (0, 1, 2, 3):
+                raise _err("the BAM servo model's step: clamp_kv 0 or 1, normal in 0..3, no kinematics outputs",
+                           ValueError)
+            gd = float(grad_decay)
+            if not math.isfinite(gd):
+                raise _err(f"grad_decay must be finite, got {grad_decay}", ValueError)
+            if act is None:
+                raise _err("this build has the BAM servo model: pass its state act=", ValueError)
+            r = _fn("step_act", _make_step_act_fn).apply(*args, int(iterations), int(substeps), int(clamp_kv),
+                                                         int(normal), gd)
+            return tuple(r) + ((_last_con(qpos, substeps),) if contacts else ())
+        r = _ops()["forward"](qpos, qvel, warm, ctrl, friction, com, int(iterations), int(substeps), False,
+                              bool(kinematics), act)
+        return tuple(r[:3]) + (r[-1],) + ((_last_con(qpos, substeps),) if contacts else ())
+    if contacts and _STATE and _STATE["info"].get("contact_grad") and torch.is_grad_enabled() and any(
+            isinstance(x, torch.Tensor) and x.requires_grad for x in (qpos, qvel, warm, ctrl, friction, com)):
+        if int(clamp_kv) not in (0, 1, 2) or int(normal) not in (0, 1, 2, 3):
+            raise _err("clamp_kv in {0, 1, 2}, normal in 0..3", ValueError)
+        gd = float(grad_decay)
+        if not math.isfinite(gd):
+            raise _err(f"grad_decay must be finite, got {grad_decay}", ValueError)
+        r = _fn("step", _make_step_fn).apply(qpos, qvel, warm, ctrl, friction, com, int(iterations), int(substeps),
+                                             int(clamp_kv), int(normal), _soft(clamp_kv, clamp_soft), gd,
+                                             bool(kinematics), _sur(cone_mu, impulse_clip), True)
+        return tuple(r[:3]) + (r[-1],) + tuple(r[3:-1])
+    if contacts:
+        r = step(qpos, qvel, warm, ctrl, friction, com, iterations=iterations, substeps=substeps, clamp_kv=clamp_kv,
+                 normal=normal, clamp_soft=clamp_soft, grad_decay=grad_decay, kinematics=kinematics, cone_mu=cone_mu,
+                 impulse_clip=impulse_clip)
+        return tuple(r[:3]) + (_last_con(qpos, substeps),) + tuple(r[3:])
     if int(clamp_kv) not in (0, 1, 2) or int(normal) not in (0, 1, 2, 3):
         raise _err("clamp_kv in {0, 1, 2}, normal in 0..3", ValueError)
     soft = _soft(clamp_kv, clamp_soft)
-    gd = float(grad_decay)  # used as float32 (torch's float32 product), as jax_ffi's np.float32(grad_decay)
+    gd = float(grad_decay)
     if not math.isfinite(gd):
         raise _err(f"grad_decay must be finite, got {grad_decay}", ValueError)
     args = (qpos, qvel, warm, ctrl, friction, com)
     if torch.is_grad_enabled() and any(isinstance(x, torch.Tensor) and x.requires_grad for x in args):
         return _fn("step", _make_step_fn).apply(*args, int(iterations), int(substeps), int(clamp_kv), int(normal),
-                                                soft, gd, bool(kinematics))
+                                                soft, gd, bool(kinematics), _sur(cone_mu, impulse_clip))
     r = _ops()["forward"](*args, int(iterations), int(substeps), False, bool(kinematics))
     return tuple(r[:3]) + tuple(r[5:])
 
@@ -987,26 +1220,56 @@ def kinematics(qpos, qvel, com):
 
 
 def forward(qpos, qvel, warm, ctrl, friction, com, *, iterations=ITERATIONS, substeps=SUBSTEPS, tape=False,
-            kinematics=False):
-    """One control step without autograd: (qpos', qvel', warm', info (B, 4) int32[, tape][, the kinematics outputs]),
-    as jax_ffi.forward."""
+            kinematics=False, contacts=False, act=None):
+    """One control step without autograd: (qpos', qvel', warm', info (B, info["info_words"]) int32[, contacts][, tape][, the
+    kinematics outputs]), as jax_ffi.forward (contacts=True: as step's). act: a BAM build's state (B,
+    info["act_words"]): (qpos', qvel', warm', act', info[, contacts][, tape]), as jax_ffi.forward."""
+    if act is not None:
+        r = _ops()["forward"](qpos, qvel, warm, ctrl, friction, com, int(iterations), int(substeps), bool(tape),
+                              bool(kinematics), act)
+        return (tuple(r[:3]) + (r[-1], r[3]) + ((_last_con(qpos, substeps),) if contacts else ()) + ((r[4],) if tape else ()))
     r = _ops()["forward"](qpos, qvel, warm, ctrl, friction, com, int(iterations), int(substeps), bool(tape),
                           bool(kinematics))
-    return tuple(r[:4]) + ((r[4],) if tape else ()) + tuple(r[5:])
+    return (tuple(r[:4]) + ((_last_con(qpos, substeps),) if contacts else ()) + ((r[4],) if tape else ())
+            + tuple(r[5:]))
 
 
 def backward(tape, friction, com, g_qpos, g_qvel, *, substeps=SUBSTEPS, clamp_kv=CLAMP_KV, normal=NORMAL, ctrl=None,
-             clamp_soft=None, kinematics=None):
+             clamp_soft=None, kinematics=None, act=None, g_act=None, cone_mu=0.0, impulse_clip=None,
+             g_contacts=None):
     """The adjoint of one control step from its tape: (g_qpos, g_qvel, g_ctrl, info (B,) int32), as
-    jax_ffi.backward (kinematics: None or (qpos', qvel', g_qpos_n, g_xpos, g_xquat, g_cvel, g_subtree_com))."""
+    jax_ffi.backward (kinematics: None or (qpos', qvel', g_qpos_n, g_xpos, g_xquat, g_cvel, g_subtree_com)). A BAM
+    build: act (the step's input state) and g_act (the cotangent of act'; None: zeros) -> (g_qpos, g_qvel, g_ctrl,
+    g_act, info), as jax_ffi.backward. cone_mu, impulse_clip: the contact-gradient surrogates (as jax_ffi.backward).
+    g_contacts: the contact output's cotangent (a contact_grad build; as jax_ffi.backward)."""
+    if _STATE and _STATE["info"].get("act_words"):
+        if int(clamp_kv) == 2 or kinematics is not None:
+            raise _err("the BAM servo model's adjoint: clamp_kv 0 or 1 (the same there: its servo force has no kv), "
+                       "no kinematics outputs", ValueError)
+        gq, gv, gu, info, ga = _ops()["backward"](tape, friction, com, g_qpos, g_qvel, None, [], [], int(substeps),
+                                                  int(clamp_kv), int(normal), 0.0, act, g_act)
+        return gq, gv, gu, ga, info
     soft = _soft(clamp_kv, clamp_soft)
     if soft is not None and ctrl is None:
         raise _err("clamp_kv=2 (the soft clamp) needs the step's ctrl", ValueError)
     ks, kc = ([], []) if kinematics is None else (list(kinematics[:2]), list(kinematics[2:]))
     if kinematics is not None and len(kc) != 5:
         raise _err("kinematics = (qpos', qvel', g_qpos_n, g_xpos, g_xquat, g_cvel, g_subtree_com)", ValueError)
-    return tuple(_ops()["backward"](tape, friction, com, g_qpos, g_qvel, ctrl if soft is not None else None, ks, kc,
-                                    int(substeps), int(clamp_kv), int(normal), 0.0 if soft is None else soft))
+    sur = _sur(cone_mu, impulse_clip)
+    r = tuple(_ops()["backward"](tape, friction, com, g_qpos, g_qvel, ctrl if soft is not None else None, ks, kc,
+                                 int(substeps), int(clamp_kv), int(normal), 0.0 if soft is None else soft, None, None,
+                                 *(sur if sur is not None else (0.0, 0.0)), g_contacts))
+    nu = int(_STATE["info"]["nu"])
+    npw, nov = int(_STATE["info"].get("param_words", 0)), int(_STATE["info"].get("obj_vel_words", 0))
+    nom = int(_STATE["info"].get("obj_mat_words", 0))
+    gw = r[2].shape[1]
+    ov = (r[2][:, gw - nom - nov:gw - nom],) if nov else ()
+    ov += (r[2][:, gw - nom:],) if nom else ()
+    if npw:
+        return (r[0], r[1], r[2][:, :nu], r[3], r[2][:, nu:nu + npw], r[2][:, nu + npw]) + ov
+    if nov or nom:
+        return (r[0], r[1], r[2][:, :nu], r[3]) + ov
+    return r
 
 
 def _make_scale_fn():
@@ -1031,7 +1294,7 @@ def scale_grad(tree, gamma):
     an exact decay^n per step boundary (see jax_ffi's module docstring)."""
     import torch
     from torch.utils import _pytree
-    g = float(gamma)  # used as float32 (torch's float32 product)
+    g = float(gamma)
     if not math.isfinite(g):
         raise _err(f"scale_grad's gamma must be finite, got {gamma}", ValueError)
     leaves, spec = _pytree.tree_flatten(tree)

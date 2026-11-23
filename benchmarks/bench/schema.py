@@ -1,34 +1,5 @@
 """The result schema dk-bench/1: one JSON file per (machine, job), rewritten after every benchmark unit so a run can
-resume, validated on write and on read. Standard library only (it imports in every engine environment).
-
-  from benchmarks.bench import schema
-  doc = schema.new_job(job=..., machine=..., software=..., protocol=..., provenance=...)
-  schema.write(path, doc)   # clean (numpy -> Python, non-finite -> null), validate (+ portability), atomic replace
-  doc = schema.read(path)   # parse + validate
-
-Top level: schema, created, updated, job {name, machine, parts, quick, cmd}, machine {tag, gpu, cpu, os,
-scheduler_cpus}, software (the driver's environment), provenance (NablaEngine's, plus the harness commit),
-environments {env name: software of that interpreter}, engines {engine id: the adapter's provenance}, models {problem
-id: model file, sha256, options}, corpora {name: path, sha256, n, kind}, protocol {warm-up, rounds, ...}, anchor (the
-dk anchor cell ids or null), cells [...], accuracy [...], gradient [...] (the last two are filled by the accuracy
-scorers; only their shape is checked here).
-
-A cell is one (engine, variant, model, corpus, subset, nworld, iterations, op, mode, process). Its id is
-  <engine>[~<variant>]/<model>/<corpus>[.s<subset>]/<nworld>/it<iterations>/<op>/<mode>/p<process>
-(kind "dump": .../dump/p<process>). Status vocabulary (STATUS_KINDS, parse_status):
-  ok                       timed; every timing field present
-  not_supported[:<short>]  the engine has no native way to do the op (message: the quoted reason)
-  skipped:oom | skipped:time   out of memory / over the unit's time budget (message: details)
-  error[:<short>]          anything else (message: the exception and the worker's stderr tail)
-  flagged:<reasons>        timed, but the GPU reported a hardware throttle reason during the timed rounds
-                           (hw_slowdown, hw_thermal, power_brake, joined by '+'); timing fields present
-<short> is a single token without spaces (at most 64 characters); the full text goes into `message`.
-Final statuses (resume skips them): ok, not_supported, skipped:oom, flagged; error and skipped:time are re-run by
-`run --retry-errors`.
-
-Portability (on write): no string may contain the home directory, the host name, or an absolute path under /home,
-/tmp, /global, /scratch, /Users (repository-relative paths, no host / user / job identifiers).
-"""
+resume, validated on write and on read. Standard library only (it imports in every engine environment)."""
 
 import datetime
 import json
@@ -55,7 +26,6 @@ OPT_NUM = (int, float, type(None))
 OPT_STR = (str, type(None))
 OPT_DICT = (dict, type(None))
 
-# field: (types, when) -- when: "all" (every cell), "timed" (timing cells with status ok / flagged), "optional"
 CELL_FIELDS = {
     "id": (str, "all"), "kind": (str, "all"), "engine": (str, "all"), "variant": (str, "all"),
     "label": (OPT_STR, "all"), "native": (OPT_STR, "all"), "device": (OPT_STR, "all"), "env": (OPT_STR, "all"),
@@ -64,13 +34,11 @@ CELL_FIELDS = {
     "op": (OPT_STR, "all"), "mode": (OPT_STR, "all"), "process": (int, "all"), "status": (str, "all"),
     "message": (OPT_STR, "all"), "headline": (bool, "all"), "started": (OPT_STR, "all"), "cmd": (str, "all"),
     "unit": (str, "all"),
-    # timing (status ok / flagged)
     "reps_per_round": (int, "timed"), "rounds": (int, "timed"), "drop_rounds": (int, "timed"),
     "rounds_ms": (list, "timed"), "median_ms": (NUM, "timed"), "p10_ms": (NUM, "timed"), "p90_ms": (NUM, "timed"),
     "min_ms": (NUM, "timed"), "max_ms": (NUM, "timed"), "control_steps_per_s": (NUM, "timed"),
     "world_substeps_per_s": (OPT_NUM, "timed"), "warmup": (dict, "timed"), "window_unix": (list, "timed"),
     "first_call_s": (OPT_NUM, "timed"), "prepare_s": (OPT_NUM, "timed"), "clocks": (OPT_DICT, "timed"),
-    # optional everywhere
     "calls_ms": (list, "optional"), "setup": (OPT_DICT, "optional"), "mem": (OPT_DICT, "optional"),
     "diag": (OPT_DICT, "optional"), "load": (OPT_DICT, "optional"), "raw": (OPT_STR, "optional"),
     "alias_of": (OPT_STR, "optional"), "hints": (OPT_DICT, "optional"), "elapsed_s": (OPT_NUM, "optional"),
@@ -108,7 +76,6 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-# ------------------------------------------------------------------------------------------------- status vocabulary
 
 def status(kind, detail=None):
     """The status string of kind (STATUS_KINDS) with an optional short detail (see the module docstring)."""
@@ -156,7 +123,6 @@ def is_final(s):
     return kind in ("ok", "not_supported", "flagged") or (kind == "skipped" and detail == "oom")
 
 
-# ------------------------------------------------------------------------------------------------- ids
 
 def cell_id(engine, variant, model, corpus, subset, nworld, iterations, op, mode, process):
     """The cell id (module docstring); op None = a dump cell."""
@@ -166,7 +132,6 @@ def cell_id(engine, variant, model, corpus, subset, nworld, iterations, op, mode
     return f"{e}/{model}/{c}/{nworld}/it{iterations}/{tail}/p{process}"
 
 
-# ------------------------------------------------------------------------------------------------- cleaning
 
 def clean(obj):
     """JSON-ready copy: numpy scalars and arrays -> Python, tuples -> lists, non-finite floats -> None, Paths -> str."""
@@ -182,7 +147,7 @@ def clean(obj):
         return obj if math.isfinite(obj) else None
     if isinstance(obj, Path):
         return str(obj)
-    tolist = getattr(obj, "tolist", None)  # numpy arrays and scalars, without importing numpy
+    tolist = getattr(obj, "tolist", None)
     if callable(tolist):
         return clean(tolist())
     item = getattr(obj, "item", None)
@@ -191,7 +156,6 @@ def clean(obj):
     raise TypeError(f"not JSON-serializable: {type(obj).__name__}")
 
 
-# ------------------------------------------------------------------------------------------------- validation
 
 def _type_name(t):
     ts = t if isinstance(t, tuple) else (t,)
@@ -201,7 +165,7 @@ def _type_name(t):
 def _check_type(val, types):
     ts = types if isinstance(types, tuple) else (types,)
     if isinstance(val, bool) and bool not in ts:
-        return False  # True is an int in Python, not in the schema
+        return False
     return isinstance(val, ts)
 
 
@@ -348,7 +312,6 @@ def validate(doc, portable=False):
             out.append(f"environments.{name}: expected an object")
     if doc["anchor"] is not None and not all(a in seen for a in doc["anchor"]):
         missing = [a for a in doc["anchor"] if a not in seen]
-        # an anchor names cells that are planned; before they ran they are not in cells yet
         if doc["job"].get("complete"):
             out.append(f"anchor cells missing: {missing}")
     if portable:
@@ -357,7 +320,6 @@ def validate(doc, portable=False):
         raise SchemaError(out)
 
 
-# ------------------------------------------------------------------------------------------------- documents
 
 def new_job(*, job, machine, software, protocol, provenance=None):
     """An empty job document (no cells yet)."""
@@ -377,7 +339,7 @@ def write(path, doc):
     fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     umask = os.umask(0)
     os.umask(umask)
-    os.chmod(tmp, 0o666 & ~umask)  # mkstemp's 0600 -> the usual file mode
+    os.chmod(tmp, 0o666 & ~umask)
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(doc, f, indent=1, allow_nan=False)

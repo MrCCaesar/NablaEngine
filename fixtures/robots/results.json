@@ -1,0 +1,1042 @@
+{
+ "description": "robot_check.py check (and grad64 on --grad worlds) on the fixtures' inputs; the recorded results of scripts/robots/regress.py",
+ "provenance": {
+  "commit": null,
+  "gpu": {
+   "name": "Tesla V100-SXM2-16GB",
+   "compute_cap": "7.0",
+   "driver": "550.90.07"
+  },
+  "api": "jax",
+  "grad": 64,
+  "commit_note": "a revision before this repository's history: not recorded"
+ },
+ "robots": {
+  "a1": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 9.261564173357328e-07,
+    "qvel_rel_p99": 1.4895313142915256e-05,
+    "qvel_rel_max": 0.0002509191690478474,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 2.7358531951904297e-05,
+    "ncon_equal": 1.0,
+    "ncon_mean": 1.974609375,
+    "flags": 0,
+    "newton_iterations_max": 10,
+    "at_iteration_limit": 0.001953125
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/a1/a1_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.686779403243118e-06,
+     "qvel_rel_p99": 4.503826191024271e-06,
+     "qpos_abs_median": 1.7595022494543144e-07,
+     "qpos_abs_max": 4.096610899395614e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 5.796352397422726e-06,
+     "rel_p90": 3.275974555988286e-05,
+     "rel_p99": 0.00039895588204353564,
+     "agree_rel_median": 5.796352397422726e-06,
+     "agree_rel_p90": 3.275974555988286e-05
+    },
+    "qvel": {
+     "rel_median": 2.017997873451087e-06,
+     "rel_p90": 2.0293513732401058e-05,
+     "rel_p99": 0.0004477625821438531,
+     "agree_rel_median": 2.017997873451087e-06,
+     "agree_rel_p90": 2.0293513732401058e-05
+    },
+    "ctrl": {
+     "rel_median": 6.779837811466894e-07,
+     "rel_p90": 4.337647528844872e-06,
+     "rel_p99": 4.9510915419293684e-05,
+     "agree_rel_median": 6.779837811466894e-07,
+     "agree_rel_p90": 4.337647528844872e-06
+    }
+   }
+  },
+  "adam_lite": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 2.0430159111128887e-06,
+    "qvel_rel_p99": 8.219904884754214e-06,
+    "qvel_rel_max": 1.3598288205685094e-05,
+    "qpos_abs_median": 1.2665987014770508e-07,
+    "qpos_abs_max": 1.7583370208740234e-06,
+    "ncon_equal": 1.0,
+    "ncon_mean": 2.958984375,
+    "flags": 0,
+    "newton_iterations_max": 6,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/adam_lite/adam_lite_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.6949115457129338e-06,
+     "qvel_rel_p99": 5.813477467136819e-06,
+     "qpos_abs_median": 9.593560996220413e-08,
+     "qpos_abs_max": 5.336488586304977e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 1.9460891477015146e-05,
+     "rel_p90": 0.00017544363477863797,
+     "rel_p99": 0.0017641554371635045,
+     "agree_rel_median": 1.9460891477015146e-05,
+     "agree_rel_p90": 0.00017544363477863797
+    },
+    "qvel": {
+     "rel_median": 6.550540366972232e-06,
+     "rel_p90": 0.00010058897254295727,
+     "rel_p99": 0.002731092037122562,
+     "agree_rel_median": 6.550540366972232e-06,
+     "agree_rel_p90": 0.00010058897254295727
+    },
+    "ctrl": {
+     "rel_median": 1.8939089894346042e-06,
+     "rel_p90": 1.2609696092387305e-05,
+     "rel_p99": 3.268058071782511e-05,
+     "agree_rel_median": 1.8939089894346042e-06,
+     "agree_rel_p90": 1.2609696092387305e-05
+    }
+   }
+  },
+  "adam_lite_full": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 2.1746168386016507e-06,
+    "qvel_rel_p99": 0.0003066965437028557,
+    "qvel_rel_max": 0.33608168363571167,
+    "qpos_abs_median": 1.2665987014770508e-07,
+    "qpos_abs_max": 0.00580114871263504,
+    "ncon_equal": 0.99609375,
+    "ncon_mean": 3.10546875,
+    "flags": 0,
+    "newton_iterations_max": 7,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/adam_lite_full/adam_lite_full_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.740313193044896e-06,
+     "qvel_rel_p99": 0.008359304485644977,
+     "qpos_abs_median": 1.1125250970467349e-07,
+     "qpos_abs_max": 0.00046248446029889534,
+     "agree_share": 0.953125
+    },
+    "qpos": {
+     "rel_median": 3.0414821754843402e-05,
+     "rel_p90": 0.00046435738497864937,
+     "rel_p99": 0.3954133001726419,
+     "agree_rel_median": 2.4595408154850986e-05,
+     "agree_rel_p90": 0.0002810169171511091
+    },
+    "qvel": {
+     "rel_median": 9.894986791702315e-06,
+     "rel_p90": 0.00020974826430924533,
+     "rel_p99": 0.39714223831527784,
+     "agree_rel_median": 8.82069034320877e-06,
+     "agree_rel_p90": 0.00011612758651364498
+    },
+    "ctrl": {
+     "rel_median": 3.0389641217126247e-06,
+     "rel_p90": 9.51505852690902e-05,
+     "rel_p99": 0.4123525764443838,
+     "agree_rel_median": 2.851225612653233e-06,
+     "agree_rel_p90": 6.403597935044775e-05
+    }
+   }
+  },
+  "anymal_c": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.2570255876198644e-06,
+    "qvel_rel_p99": 0.00019563727255444974,
+    "qvel_rel_max": 0.0010291666258126497,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 0.00011789798736572266,
+    "ncon_equal": 1.0,
+    "ncon_mean": 2.64453125,
+    "flags": 0,
+    "newton_iterations_max": 7,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/anymal_c/anymal_c_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 8.633371780942276e-07,
+     "qvel_rel_p99": 3.1308642010958477e-06,
+     "qpos_abs_median": 7.722583161839935e-08,
+     "qpos_abs_max": 2.0976570991315668e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 4.6422893337685254e-06,
+     "rel_p90": 4.802649290285371e-05,
+     "rel_p99": 0.0003729591769391989,
+     "agree_rel_median": 4.6422893337685254e-06,
+     "agree_rel_p90": 4.802649290285371e-05
+    },
+    "qvel": {
+     "rel_median": 2.664335677538297e-06,
+     "rel_p90": 1.8391170907681488e-05,
+     "rel_p99": 7.903807290228146e-05,
+     "agree_rel_median": 2.664335677538297e-06,
+     "agree_rel_p90": 1.8391170907681488e-05
+    },
+    "ctrl": {
+     "rel_median": 1.0020130861367502e-06,
+     "rel_p90": 7.447540180695143e-06,
+     "rel_p99": 3.002302836176927e-05,
+     "agree_rel_median": 1.0020130861367502e-06,
+     "agree_rel_p90": 7.447540180695143e-06
+    }
+   }
+  },
+  "apollo": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.9871154108841438e-06,
+    "qvel_rel_p99": 3.981031113653444e-05,
+    "qvel_rel_max": 0.026600049808621407,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 0.0004813969135284424,
+    "ncon_equal": 0.998046875,
+    "ncon_mean": 3.12109375,
+    "flags": 0,
+    "newton_iterations_max": 9,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/apollo/apollo_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 0.0048310328630019675,
+     "qvel_rel_p99": 0.12472302439630929,
+     "qpos_abs_median": 0.0002796326412751182,
+     "qpos_abs_max": 0.010337088539116635,
+     "agree_share": 0.328125
+    },
+    "qpos": {
+     "rel_median": 0.10598303885675794,
+     "rel_p90": 1.0162040175025469,
+     "rel_p99": 1.488126188191275,
+     "agree_rel_median": 1.0127100122352654e-05,
+     "agree_rel_p90": 7.907482113004953e-05
+    },
+    "qvel": {
+     "rel_median": 0.0663615296205801,
+     "rel_p90": 0.9392323517862835,
+     "rel_p99": 1.6274478870911528,
+     "agree_rel_median": 3.3153856259570328e-06,
+     "agree_rel_p90": 2.362451944222822e-05
+    },
+    "ctrl": {
+     "rel_median": 0.031526574014108945,
+     "rel_p90": 0.3490904049739879,
+     "rel_p99": 1.3430977187505337,
+     "agree_rel_median": 1.2215692428703195e-06,
+     "agree_rel_p90": 6.636715214801258e-06
+    }
+   }
+  },
+  "berkeley_humanoid": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 2.417970335955033e-06,
+    "qvel_rel_p99": 4.9160134949488565e-05,
+    "qvel_rel_max": 0.1310671865940094,
+    "qpos_abs_median": 1.4854595065116882e-07,
+    "qpos_abs_max": 0.006104722619056702,
+    "ncon_equal": 0.998046875,
+    "ncon_mean": 2.560546875,
+    "flags": 0,
+    "newton_iterations_max": 9,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/berkeley_humanoid/berkeley_humanoid_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 3.0385064081129202e-06,
+     "qvel_rel_p99": 0.15708741673503138,
+     "qpos_abs_median": 1.8980061685519578e-07,
+     "qpos_abs_max": 0.005019510311273179,
+     "agree_share": 0.625
+    },
+    "qpos": {
+     "rel_median": 0.00010034178515786987,
+     "rel_p90": 0.5199185455882608,
+     "rel_p99": 1.0002394901219211,
+     "agree_rel_median": 2.6537823788683353e-05,
+     "agree_rel_p90": 0.000396730175317667
+    },
+    "qvel": {
+     "rel_median": 2.6245204278635657e-05,
+     "rel_p90": 0.5602312857794495,
+     "rel_p99": 1.2483855749130228,
+     "agree_rel_median": 4.538522764429982e-06,
+     "agree_rel_p90": 4.1028526628903e-05
+    },
+    "ctrl": {
+     "rel_median": 6.297665509134597e-06,
+     "rel_p90": 0.3674661078509558,
+     "rel_p99": 0.9326472707950654,
+     "agree_rel_median": 1.3571753135967216e-06,
+     "agree_rel_p90": 1.8833463016587474e-05
+    }
+   }
+  },
+  "go1": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 9.186627494273125e-07,
+    "qvel_rel_p99": 1.4852220374450553e-05,
+    "qvel_rel_max": 4.6541787014575675e-05,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 9.5367431640625e-07,
+    "ncon_equal": 1.0,
+    "ncon_mean": 3.01953125,
+    "flags": 0,
+    "newton_iterations_max": 7,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/go1/go1_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 8.90607494569113e-07,
+     "qvel_rel_p99": 4.108390300239111e-06,
+     "qpos_abs_median": 1.2108993097115217e-07,
+     "qpos_abs_max": 3.4395655879038145e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 1.3173582935396528e-06,
+     "rel_p90": 2.1930692686329965e-05,
+     "rel_p99": 0.00013780364613291498,
+     "agree_rel_median": 1.3173582935396528e-06,
+     "agree_rel_p90": 2.1930692686329965e-05
+    },
+    "qvel": {
+     "rel_median": 9.197477139146821e-07,
+     "rel_p90": 4.4812168876497974e-06,
+     "rel_p99": 4.621957780650609e-05,
+     "agree_rel_median": 9.197477139146821e-07,
+     "agree_rel_p90": 4.4812168876497974e-06
+    },
+    "ctrl": {
+     "rel_median": 4.847984364824317e-07,
+     "rel_p90": 2.221930921247283e-06,
+     "rel_p99": 1.5530845127651816e-05,
+     "agree_rel_median": 4.847984364824317e-07,
+     "agree_rel_p90": 2.221930921247283e-06
+    }
+   }
+  },
+  "go2": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.0152930371987168e-06,
+    "qvel_rel_p99": 2.8821261366829276e-05,
+    "qvel_rel_max": 0.07760725915431976,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 0.0001729726791381836,
+    "ncon_equal": 0.998046875,
+    "ncon_mean": 2.916015625,
+    "flags": 0,
+    "newton_iterations_max": 10,
+    "at_iteration_limit": 0.00390625
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/go2/go2_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.397304200037902e-06,
+     "qvel_rel_p99": 7.074168046749325e-06,
+     "qpos_abs_median": 2.2072944372286685e-07,
+     "qpos_abs_max": 5.431584320092497e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 4.9205457580775e-06,
+     "rel_p90": 6.244716516030078e-05,
+     "rel_p99": 0.17061357903164753,
+     "agree_rel_median": 4.9205457580775e-06,
+     "agree_rel_p90": 6.244716516030078e-05
+    },
+    "qvel": {
+     "rel_median": 1.6690965553031638e-06,
+     "rel_p90": 1.306191180453206e-05,
+     "rel_p99": 7.184486452742571e-05,
+     "agree_rel_median": 1.6690965553031638e-06,
+     "agree_rel_p90": 1.306191180453206e-05
+    },
+    "ctrl": {
+     "rel_median": 1.0658935358447021e-06,
+     "rel_p90": 6.562228981331298e-06,
+     "rel_p99": 0.0001165754413995412,
+     "agree_rel_median": 1.0658935358447021e-06,
+     "agree_rel_p90": 6.562228981331298e-06
+    }
+   }
+  },
+  "h1": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 9.710786343930522e-07,
+    "qvel_rel_p99": 5.3259782362147234e-06,
+    "qvel_rel_max": 1.0881291927944403e-05,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 5.364418029785156e-07,
+    "ncon_equal": 1.0,
+    "ncon_mean": 1.45703125,
+    "flags": 0,
+    "newton_iterations_max": 5,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/h1/h1_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 6.975295932977321e-07,
+     "qvel_rel_p99": 3.342382287132252e-06,
+     "qpos_abs_median": 9.257097094428346e-08,
+     "qpos_abs_max": 2.6641413342076703e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 9.750042712500233e-07,
+     "rel_p90": 0.0001935819757335528,
+     "rel_p99": 0.0004871249935187778,
+     "agree_rel_median": 9.750042712500233e-07,
+     "agree_rel_p90": 0.0001935819757335528
+    },
+    "qvel": {
+     "rel_median": 9.432094407124302e-07,
+     "rel_p90": 5.193038704101552e-05,
+     "rel_p99": 0.00014826226289128602,
+     "agree_rel_median": 9.432094407124302e-07,
+     "agree_rel_p90": 5.193038704101552e-05
+    },
+    "ctrl": {
+     "rel_median": 2.472897838826033e-07,
+     "rel_p90": 7.393844736676425e-06,
+     "rel_p99": 0.00019034167009106726,
+     "agree_rel_median": 2.472897838826033e-07,
+     "agree_rel_p90": 7.393844736676425e-06
+    }
+   }
+  },
+  "n1": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.3020935512031429e-06,
+    "qvel_rel_p99": 6.112294613558333e-06,
+    "qvel_rel_max": 0.25859570503234863,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 0.005190417170524597,
+    "ncon_equal": 0.998046875,
+    "ncon_mean": 3.884765625,
+    "flags": 0,
+    "newton_iterations_max": 6,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/n1/n1_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 8.88795510900337e-07,
+     "qvel_rel_p99": 4.258592067408796e-06,
+     "qpos_abs_median": 7.893869352626481e-08,
+     "qpos_abs_max": 4.170781706669402e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 2.4916931395284686e-05,
+     "rel_p90": 0.00018638691895941415,
+     "rel_p99": 1.094350825493721,
+     "agree_rel_median": 2.4916931395284686e-05,
+     "agree_rel_p90": 0.00018638691895941415
+    },
+    "qvel": {
+     "rel_median": 6.59542978511784e-06,
+     "rel_p90": 4.335864324313154e-05,
+     "rel_p99": 0.00011557499359038002,
+     "agree_rel_median": 6.59542978511784e-06,
+     "agree_rel_p90": 4.335864324313154e-05
+    },
+    "ctrl": {
+     "rel_median": 3.3665504186714443e-07,
+     "rel_p90": 4.514572399305547e-06,
+     "rel_p99": 1.8795629015289615e-05,
+     "agree_rel_median": 3.3665504186714443e-07,
+     "agree_rel_p90": 4.514572399305547e-06
+    }
+   }
+  },
+  "n1_full": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.4048775938135805e-06,
+    "qvel_rel_p99": 0.00027425799635238945,
+    "qvel_rel_max": 0.12447149306535721,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 0.0019192993640899658,
+    "ncon_equal": 0.99609375,
+    "ncon_mean": 4.0859375,
+    "flags": 0,
+    "newton_iterations_max": 7,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/n1_full/n1_full_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.029027051366461e-06,
+     "qvel_rel_p99": 7.188151084569952e-05,
+     "qpos_abs_median": 8.90037302747615e-08,
+     "qpos_abs_max": 8.42097439940348e-06,
+     "agree_share": 0.984375
+    },
+    "qpos": {
+     "rel_median": 1.7661126908080286e-05,
+     "rel_p90": 0.00023921346179521885,
+     "rel_p99": 0.3873973606143993,
+     "agree_rel_median": 1.735099670098563e-05,
+     "agree_rel_p90": 0.00019379837676374592
+    },
+    "qvel": {
+     "rel_median": 5.075138528266328e-06,
+     "rel_p90": 4.80269539866059e-05,
+     "rel_p99": 0.0005740538113419215,
+     "agree_rel_median": 4.334322535055969e-06,
+     "agree_rel_p90": 4.47016038508346e-05
+    },
+    "ctrl": {
+     "rel_median": 3.6999587064445316e-07,
+     "rel_p90": 6.2529132506045955e-06,
+     "rel_p99": 0.00011988343863465824,
+     "agree_rel_median": 3.468751728620505e-07,
+     "agree_rel_p90": 6.012650271156778e-06
+    }
+   },
+   "recorded": "2026-11-12, Tesla V100-SXM2-16GB: the model with per-geom contact inverse weights, MuJoCo Warp and MuJoCo C on n1_full_flat_reference"
+  },
+  "op3": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 3.46532033290714e-07,
+    "qvel_rel_p99": 0.00014887751603964716,
+    "qvel_rel_max": 0.10384461283683777,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 0.0032127201557159424,
+    "ncon_equal": 0.998046875,
+    "ncon_mean": 1.98828125,
+    "flags": 0,
+    "newton_iterations_max": 7,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/op3/op3_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 2.808337775421278e-07,
+     "qvel_rel_p99": 0.03345276044938792,
+     "qpos_abs_median": 1.2062026277792626e-07,
+     "qpos_abs_max": 0.001421097189549303,
+     "agree_share": 0.765625
+    },
+    "qpos": {
+     "rel_median": 1.4116295319634126e-05,
+     "rel_p90": 0.06019527402142642,
+     "rel_p99": 0.269648314326537,
+     "agree_rel_median": 7.772800789932708e-06,
+     "agree_rel_p90": 0.00010182668459029274
+    },
+    "qvel": {
+     "rel_median": 1.6804759676097936e-06,
+     "rel_p90": 0.02838527006133861,
+     "rel_p99": 0.5597416454401558,
+     "agree_rel_median": 9.590218942615912e-07,
+     "agree_rel_p90": 7.260004277238054e-06
+    },
+    "ctrl": {
+     "rel_median": 3.5704621343119066e-07,
+     "rel_p90": 0.03689772072206296,
+     "rel_p99": 0.27585369918822084,
+     "agree_rel_median": 1.8441294312847645e-07,
+     "agree_rel_p90": 2.1696034880356182e-05
+    }
+   }
+  },
+  "spot": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.0008036497310968e-06,
+    "qvel_rel_p99": 1.1107340469607152e-05,
+    "qvel_rel_max": 3.0661551136290655e-05,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 5.066394805908203e-07,
+    "ncon_equal": 1.0,
+    "ncon_mean": 2.0625,
+    "flags": 0,
+    "newton_iterations_max": 8,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/spot/spot_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.2738781549710834e-06,
+     "qvel_rel_p99": 0.0011034917657693668,
+     "qpos_abs_median": 1.631082227060432e-07,
+     "qpos_abs_max": 5.254984959374154e-05,
+     "agree_share": 0.84375
+    },
+    "qpos": {
+     "rel_median": 2.1476749805625967e-05,
+     "rel_p90": 0.012829485498603965,
+     "rel_p99": 0.531022097788144,
+     "agree_rel_median": 1.4398428227938647e-05,
+     "agree_rel_p90": 0.00016875749779312224
+    },
+    "qvel": {
+     "rel_median": 6.842136316660201e-06,
+     "rel_p90": 0.004632314492207047,
+     "rel_p99": 0.1873916697624901,
+     "agree_rel_median": 1.983664997984673e-06,
+     "agree_rel_p90": 5.378231991240401e-05
+    },
+    "ctrl": {
+     "rel_median": 2.504143969830332e-06,
+     "rel_p90": 0.01721308692295433,
+     "rel_p99": 0.5695206106134771,
+     "agree_rel_median": 1.4600999276491974e-06,
+     "agree_rel_p90": 1.978897129504905e-05
+    }
+   }
+  },
+  "t1": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.5490077203139663e-06,
+    "qvel_rel_p99": 2.9446935513988137e-05,
+    "qvel_rel_max": 0.008479952812194824,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 0.0003269016742706299,
+    "ncon_equal": 0.998046875,
+    "ncon_mean": 3.59375,
+    "flags": 0,
+    "newton_iterations_max": 8,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/t1/t1_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.658576070766253e-06,
+     "qvel_rel_p99": 0.05956519150802264,
+     "qpos_abs_median": 1.913831486621831e-07,
+     "qpos_abs_max": 0.001255881358683486,
+     "agree_share": 0.625
+    },
+    "qpos": {
+     "rel_median": 9.220412417854134e-05,
+     "rel_p90": 0.16032054430613119,
+     "rel_p99": 1.1347475904297264,
+     "agree_rel_median": 2.5881644168723434e-05,
+     "agree_rel_p90": 0.0001871505830658368
+    },
+    "qvel": {
+     "rel_median": 3.348499055538643e-05,
+     "rel_p90": 0.09853000954316227,
+     "rel_p99": 0.8124938149133156,
+     "agree_rel_median": 7.054439887209326e-06,
+     "agree_rel_p90": 0.00010932680255208867
+    },
+    "ctrl": {
+     "rel_median": 1.4627259928192552e-06,
+     "rel_p90": 0.09889426149287883,
+     "rel_p99": 1.4460199518425723,
+     "agree_rel_median": 5.737619723939989e-07,
+     "agree_rel_p90": 2.672420019175965e-06
+    }
+   }
+  },
+  "anymal_b": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.0821345313161146e-06,
+    "qvel_rel_p99": 0.00030982698081061244,
+    "qvel_rel_max": 0.0020254268310964108,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 0.0004162639379501343,
+    "ncon_equal": 1.0,
+    "ncon_mean": 2.458984375,
+    "flags": 0,
+    "newton_iterations_max": 7,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/anymal_b/anymal_b_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 7.514601984025284e-07,
+     "qvel_rel_p99": 3.0842994996003272e-06,
+     "qpos_abs_median": 7.83929086645152e-08,
+     "qpos_abs_max": 2.2433846547098568e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 2.1629318972511555e-06,
+     "rel_p90": 2.0355101211282953e-05,
+     "rel_p99": 0.008293099457981196,
+     "agree_rel_median": 2.1629318972511555e-06,
+     "agree_rel_p90": 2.0355101211282953e-05
+    },
+    "qvel": {
+     "rel_median": 1.6911945589048745e-06,
+     "rel_p90": 1.6873853821355576e-05,
+     "rel_p99": 0.017943322470874094,
+     "agree_rel_median": 1.6911945589048745e-06,
+     "agree_rel_p90": 1.6873853821355576e-05
+    },
+    "ctrl": {
+     "rel_median": 9.10825169077013e-07,
+     "rel_p90": 1.0025428495610711e-05,
+     "rel_p99": 0.011608008056293114,
+     "agree_rel_median": 9.10825169077013e-07,
+     "agree_rel_p90": 1.0025428495610711e-05
+    }
+   },
+   "provenance": {
+    "commit": null,
+    "gpu": {
+     "name": "Tesla V100-SXM2-16GB",
+     "compute_cap": "7.0",
+     "driver": "550.90.07"
+    },
+    "api": "jax",
+    "grad": 64,
+    "commit_note": "a revision before this repository's history: not recorded"
+   }
+  },
+  "barkour_v0": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.4619806734117446e-06,
+    "qvel_rel_p99": 5.762060027336702e-06,
+    "qvel_rel_max": 1.0236812158836983e-05,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 5.364418029785156e-07,
+    "ncon_equal": 1.0,
+    "ncon_mean": 2.75390625,
+    "flags": 0,
+    "newton_iterations_max": 4,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/barkour_v0/barkour_v0_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.170872685635426e-06,
+     "qvel_rel_p99": 4.424223153013051e-06,
+     "qpos_abs_median": 1.077705868990364e-07,
+     "qpos_abs_max": 2.294719108064669e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 9.880329830164888e-07,
+     "rel_p90": 1.1241007211986741e-05,
+     "rel_p99": 3.241808181024171e-05,
+     "agree_rel_median": 9.880329830164888e-07,
+     "agree_rel_p90": 1.1241007211986741e-05
+    },
+    "qvel": {
+     "rel_median": 7.887181551329347e-07,
+     "rel_p90": 9.333576776601342e-06,
+     "rel_p99": 0.0001568031658199382,
+     "agree_rel_median": 7.887181551329347e-07,
+     "agree_rel_p90": 9.333576776601342e-06
+    },
+    "ctrl": {
+     "rel_median": 4.814572143247537e-07,
+     "rel_p90": 4.329788967477667e-06,
+     "rel_p99": 0.0001347518675106459,
+     "agree_rel_median": 4.814572143247537e-07,
+     "agree_rel_p90": 4.329788967477667e-06
+    }
+   },
+   "provenance": {
+    "commit": null,
+    "gpu": {
+     "name": "Tesla V100-SXM2-16GB",
+     "compute_cap": "7.0",
+     "driver": "550.90.07"
+    },
+    "api": "jax",
+    "grad": 64,
+    "commit_note": "a revision before this repository's history: not recorded"
+   }
+  },
+  "barkour_vb": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 2.5090866984101012e-06,
+    "qvel_rel_p99": 1.0389128874521703e-05,
+    "qvel_rel_max": 2.4244962332886644e-05,
+    "qpos_abs_median": 1.341104507446289e-07,
+    "qpos_abs_max": 2.041459083557129e-06,
+    "ncon_equal": 1.0,
+    "ncon_mean": 2.994140625,
+    "flags": 0,
+    "newton_iterations_max": 6,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/barkour_vb/barkour_vb_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.715821690304825e-06,
+     "qvel_rel_p99": 5.9005773323635536e-06,
+     "qpos_abs_median": 1.2075790398191621e-07,
+     "qpos_abs_max": 2.7305834693347464e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 2.8096814042154406e-06,
+     "rel_p90": 1.6172383134401938e-05,
+     "rel_p99": 0.0002520480299641925,
+     "agree_rel_median": 2.8096814042154406e-06,
+     "agree_rel_p90": 1.6172383134401938e-05
+    },
+    "qvel": {
+     "rel_median": 1.1630878232559373e-06,
+     "rel_p90": 6.699450501739384e-06,
+     "rel_p99": 1.5281351725999012e-05,
+     "agree_rel_median": 1.1630878232559373e-06,
+     "agree_rel_p90": 6.699450501739384e-06
+    },
+    "ctrl": {
+     "rel_median": 9.361557570833564e-07,
+     "rel_p90": 3.4623622658233286e-06,
+     "rel_p99": 1.4685624108573652e-05,
+     "agree_rel_median": 9.361557570833564e-07,
+     "agree_rel_p90": 3.4623622658233286e-06
+    }
+   },
+   "provenance": {
+    "commit": null,
+    "gpu": {
+     "name": "Tesla V100-SXM2-16GB",
+     "compute_cap": "7.0",
+     "driver": "550.90.07"
+    },
+    "api": "jax",
+    "grad": 64,
+    "commit_note": "a revision before this repository's history: not recorded"
+   }
+  },
+  "spot_arm": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 1.1683059710776433e-06,
+    "qvel_rel_p99": 4.458419425645843e-06,
+    "qvel_rel_max": 0.0027316766791045666,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 0.0004968643188476562,
+    "ncon_equal": 1.0,
+    "ncon_mean": 1.88671875,
+    "flags": 0,
+    "newton_iterations_max": 5,
+    "at_iteration_limit": 0.0
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/spot_arm/spot_arm_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 1.8239158596767531e-06,
+     "qvel_rel_p99": 4.51365680918623e-06,
+     "qpos_abs_median": 2.8850727495921547e-07,
+     "qpos_abs_max": 5.454062947940486e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 2.448704237740108e-06,
+     "rel_p90": 3.0414078974703544e-05,
+     "rel_p99": 0.002317318404182658,
+     "agree_rel_median": 2.448704237740108e-06,
+     "agree_rel_p90": 3.0414078974703544e-05
+    },
+    "qvel": {
+     "rel_median": 2.9305492188786397e-06,
+     "rel_p90": 2.3721180552244927e-05,
+     "rel_p99": 0.0002240855184579909,
+     "agree_rel_median": 2.9305492188786397e-06,
+     "agree_rel_p90": 2.3721180552244927e-05
+    },
+    "ctrl": {
+     "rel_median": 1.6276932995562872e-06,
+     "rel_p90": 8.320514414291552e-06,
+     "rel_p99": 2.4097757580179077e-05,
+     "agree_rel_median": 1.6276932995562872e-06,
+     "agree_rel_p90": 8.320514414291552e-06
+    }
+   },
+   "provenance": {
+    "commit": null,
+    "gpu": {
+     "name": "Tesla V100-SXM2-16GB",
+     "compute_cap": "7.0",
+     "driver": "550.90.07"
+    },
+    "api": "jax",
+    "grad": 64,
+    "commit_note": "a revision before this repository's history: not recorded"
+   }
+  },
+  "g1_with_hands": {
+   "forward_vs_mjw": {
+    "nworld": 512,
+    "qvel_rel_median": 9.320555705016886e-07,
+    "qvel_rel_p99": 1.3568560461862944e-05,
+    "qvel_rel_max": 3.064482007175684e-05,
+    "qpos_abs_median": 1.1920928955078125e-07,
+    "qpos_abs_max": 4.649162292480469e-06,
+    "ncon_equal": 1.0,
+    "ncon_mean": 1.025390625,
+    "flags": 0,
+    "newton_iterations_max": 10,
+    "at_iteration_limit": 0.00390625
+   },
+   "gradient_vs_mujoco_c64": {
+    "nworld": 64,
+    "model": "fixtures/robots/g1_with_hands/g1_with_hands_flat",
+    "iterations": 50,
+    "clamp_kv": 1,
+    "normal": 0,
+    "api": "jax",
+    "forward": {
+     "qvel_rel_median": 9.339867358693674e-07,
+     "qvel_rel_p99": 3.070094444324354e-06,
+     "qpos_abs_median": 1.3411475374702775e-07,
+     "qpos_abs_max": 2.717018021403117e-07,
+     "agree_share": 1.0
+    },
+    "qpos": {
+     "rel_median": 2.772775895121089e-06,
+     "rel_p90": 0.0001063765883738096,
+     "rel_p99": 0.3702177621594889,
+     "agree_rel_median": 2.772775895121089e-06,
+     "agree_rel_p90": 0.0001063765883738096
+    },
+    "qvel": {
+     "rel_median": 2.4396994013277996e-06,
+     "rel_p90": 3.491458648819147e-05,
+     "rel_p99": 0.00022290999617880826,
+     "agree_rel_median": 2.4396994013277996e-06,
+     "agree_rel_p90": 3.491458648819147e-05
+    },
+    "ctrl": {
+     "rel_median": 5.586213851363914e-07,
+     "rel_p90": 6.343319462632483e-06,
+     "rel_p99": 0.0001941783740717502,
+     "agree_rel_median": 5.586213851363914e-07,
+     "agree_rel_p90": 6.343319462632483e-06
+    }
+   },
+   "provenance": {
+    "commit": null,
+    "gpu": {
+     "name": "Tesla V100-SXM2-16GB",
+     "compute_cap": "7.0",
+     "driver": "550.90.07"
+    },
+    "api": "jax",
+    "grad": 64,
+    "commit_note": "a revision before this repository's history: not recorded"
+   }
+  }
+ },
+ "revision_note": "rev A, rev B: revisions of the development repository before this repository's history, labelled in order of first mention"
+}

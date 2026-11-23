@@ -1,136 +1,36 @@
-"""CUDA source of the G1 engine's analytic adjoint: the VJP of a control step from its forward tape.
-
-One warp per world, state in shared memory (struct Adj), one launch per control step: k_adjoint reads the forward tape
-(nablaengine.g1_engine.tape) and runs the VJPs of the substeps in reverse order (adj_substep, k = nsub - 1 .. 0), with
-the cotangents of the control step's output state as input and the gradients of its input qpos, qvel and ctrl (the sum
-over the substeps) as output; the warm start, friction and COM offset get none. Per substep, the phases A0-A8 (the
-labels of PROF_DESIGN and of the code's comments):
-
-  A0  the record: input state q, v, final Newton acceleration a*, a_adv = Q^-1 M a*, clamp mask, header
-  A1  integrator VJP (the quaternion in MuJoCo Warp's smooth form, also where the forward skipped the integration at
-      w' = 0) and implicitfast: y = Q^-1 a_adv bar with L_Q, a* bar = M y = a_adv bar - h kv y (Q y = a_adv bar; the
-      product form L_Q (L_Q' y) - h kv y loses ~cond(Q) eps in float32)
-  A2  IFT: lambda = H^-1 a* bar with L_H
-  A3  root-to-leaf sweeps, lane b = body b, one tree level at a time: poses and the RNE's channel 1 (twist of v,
-      accelerations at a* with gravity) by the forward's fwd_body in adj_poses (explicit roundings, source.DEVICE: the
-      poses, and the contact replay from them, are bitwise the forward's), then hinge axes, channel 2
-      (accelerations at a~ = a* - a_adv, v = 0, no gravity) and the twists of lambda and -y
-  A4  each body's local RNE VJP: cotangents of its twists, accelerations and own pose (f bar, tau bar)
-  A5  A6  the constraint rows (DK_ADJ_STAGE >= 2), between A4 and A7 (they add per-body pose cotangents f bar, tau bar
-      and per-dof P_q, P_v; the device functions are nablaengine.g1_engine.adjoint_contact):
-      adj_limits  one lane per dof: the hinge-limit rows replayed with the forward's test, the tape's zone bit,
-                  kbimp_d / efc_D_d / limit_row_vjp -> P_q, P_v of the dof
-      adj_contacts  the collision geoms' world poses (geom_poses of the forward, bitwise), then the tape's contacts
-                  in batches of 32, one lane per contact: replay (adj_pair_geom: the forward's dist, pos, frame
-                  bitwise), impedance with the forward's expressions (mu: the world's foot friction on foot pairs),
-                  the contact point's motions V_* = sum over the support dofs of s_i col_i (v, a*, lam)_i (the dofs on
-                  exactly one of the two bodies' chains, as the forward's Jacobian) and their angular parts,
-                  contact_psi_vjp, p bar in closed form (contact_pbar_motion), the primitive's VJP and
-                  geom_to_body_vjp, into the contact lane's registers; then one lane per body sums the batch in
-                  contact order (shuffles from the contacts' lanes; deterministic, no atomics): the support-dof terms
-                  of its own dof (G_i -> f bar, tau bar of the body, P_v of the dof; lanes 0 and 31 take two of the
-                  root's rotation dofs and hand them to lane 1) and the geometry's pose cotangents of the body
-  A7  leaf-to-root sweep: the RNE reverse of both channels and both twists and the pose sweep in one pass (a parent
-      pulls its children's finished cotangents: deterministic) -> P_q (dof tangent), P_v
-  A8  actuator and the composition: q bar = q bar_dir - dof_to_qpos(P_q; xi_k), v bar = v' bar - P_v, u bar += kp
-      lambda on the unclamped dofs (DK_ADJ_CLAMP_KV=2: also kp w lambda on the clamped ones)
-
-Compile-time options (defaults: the exact clamp derivative DK_ADJ_CLAMP_KV=1 and the frozen self-contact normal
-DK_ADJ_NORMAL=3; the JAX interface's defaults are clamp_kv=0, normal=3: jax_ffi.CLAMP_KV, jax_ffi.NORMAL):
-  DK_ADJ_STAGE     3 (default): limit rows and all contacts; 2: limit rows and the plane contacts (self contacts are
-                   skipped and set ADJ_ROWS_SKIPPED); 1: no constraint rows (records with contacts or rows set
-                   ADJ_ROWS_SKIPPED). 1 and 2 are for bisection
-  DK_ADJ_CLAMP_KV  the derivative on a dof whose actuator force is clamped at its limit (the record's clamp mask):
-                   1 (default): the actuator damping -kv lambda is dropped from the qvel VJP of clamped dofs (exact);
-                   0: kept (as MuJoCo Warp's adjoint); 2: the soft clamp, a surrogate gradient: on a clamped dof all
-                   three actuator paths (P_q kp, P_v kv, u bar kp) take w lambda instead of the exact derivative's 0,
-                   w = exp(-o / delta), o = (|f| - tau_max) / tau_max >= 0 the relative overshoot of the unclamped PD
-                   force f = kp (u - q) - kv v over its bound, so the derivative is continuous at the bound (w = 1)
-                   and delta -> 0 is 1's; delta = k_adjoint's run-time argument clamp_soft (delta <= 0: exactly 1's
-                   gradients), and the kernel needs ctrl (the tape has q, v per substep, not u)
-  DK_ADJ_NORMAL, DK_ADJ_NORMAL_EPS  the normal derivative of the self contacts (adjoint_contact.header): default 3
-                   (frozen where nu < 1e-3 m), 0 exact (MuJoCo Warp's)
-  DK_ADJ_PARALLEL, DK_ADJ_PARALLEL_EPS  the segment parameters of a capsule-capsule contact with both free (the
-                   near-parallel capsule rule, adjoint_contact.header): 1 held constant where sin^2(theta) < 1.2e-3
-                   (finite), 0 exact (MuJoCo Warp's 1 / sin^2 derivative); default DK_ADJ_NORMAL != 0, so 1 with the
-                   default normal option and 0 with the exact one (DK_ADJ_NORMAL=0)
-  DK_ADJ_DEBUG     the kernel writes, per world and substep, its intermediates with MuJoCo Warp's adjoint names and
-                   conventions (DEBUG_FIELDS: res_* in qpos form, split by source: RNE, actuator, limit rows,
-                   contacts), per contact its replayed distance, the cotangents of (dist, pos, frame), row values x_e,
-                   force and the diagnostics of the state groups (nablaengine.reference.adjoint_groups), and the
-                   residual r(a*) = ID + arm a* - tau - J'f, a built-in check of the solves (J'f from the replayed
-                   rows' forces -D x on their quadratic zones); needs ctrl for tau
-  DK_PROFILE       per-phase clock64() cycles (PROF_PHASES); the marks are empty in every other build, so the
-                   production code does not change with them
-  DK_ADJ_WORLDS_PER_SM  the launch's worlds per SM (host, adj_launch_smem): -1 (default) the choice for the GPU (4 on
-                   V100, as many as fit elsewhere), 0 as many as fit, N > 0 at most N
-
-Launch (host, in this compilation unit): smem = adj_launch_smem() (or adj_launch_smem(-1, &err)) on the current device,
-then k_adjoint<<<nw, 32, smem, stream>>>(...) (stream: e.g. XLA's in the FFI handler; the default stream when left
-out). adj_launch_smem() also sets the kernel's shared-memory opt-in on that device, so it is called once per device
-(e.g. where the constants are uploaded) and its size kept for the launches; it returns 0 on failure (the CUDA error in
-err), which the caller must treat as an error: a launch with 0 bytes is not rejected, the kernel would use shared
-memory it was not given.
-
-Records the forward flagged (REFACT, NONCONV, SINGULAR, unsupported bits) are processed as any other and only
-reported in info. Self-checks in info: ADJ_REPLAY_MISMATCH (a replayed contact is not penetrating, or the replayed limit
-rows are not the tape's count).
-
-The adjoint is for the mjlab model (no boxes, no frictionloss rows; header() asserts both). cuda_source(m) is one
-compilation unit with the forward (source.DEVICE, step.STEP_DEVICE / STEP_KERNEL: shared DKC constants and device
-functions) and the contact VJPs (adjoint_contact.source); the caller adds its __global__ forward kernel and host code
-(the adjoint check binary of nablaengine.checks).
-"""
+"""CUDA source of the G1 engine's analytic adjoint: the VJP of a control step from its forward tape."""
 
 import numpy as np
 
-from nablaengine.g1_engine import adjoint_contact, model_hooks, source, step, tape
+from nablaengine.dual import DUAL_DEVICE
+from nablaengine.g1_engine import adjoint_contact, condim4, elliptic, model_hooks, motor_hooks, source, step, tape
 
-ADJ_ROWS_SKIPPED = 1 << 12  # info: a record has contacts or constraint rows that this build does not differentiate
-ADJ_REPLAY_MISMATCH = 1 << 13  # info: a replayed contact is not penetrating, or the replayed limit rows differ in number
-NO_ROW = 1e30  # debug: the kink and basis diagnostics of a contact or dof without that row / property
+ADJ_ROWS_SKIPPED = 1 << 12
+ADJ_REPLAY_MISMATCH = 1 << 13
+NO_ROW = 1e30
 
-# -DDK_PROFILE: clock64() cycles of lane 0 per phase, summed over the substeps, as the
-# forward's step.PROF_PHASES. The first PROF_PARTITION phases partition the kernel: per substep record (A0), poses (A3,
-# adj_poses), integrator (A1), solve_Q (A1: L_Q, y, a* bar), solve_H (A2: L_H, lambda), tree_down (A3 + A4),
-# limits (A5 / A6), contact_setup (geom poses, root axes), contact_rows (per batch: zones and adj_contact_one),
-# contact_reduce (per batch: the lane-per-body sums), tree_up (A7), compose (A8); io is the kernel's prologue and
-# epilogue (cotangents in, gradients out). The counts follow (per kernel: summed over substeps): contacts in the tape's
-# tables, contacts with a quadratic row (the ones adj_contact_one differentiates), limit rows
 PROF_PHASES = ("record", "poses", "integrator", "solve_Q", "solve_H", "tree_down", "limits", "contact_setup",
                "contact_rows", "contact_reduce", "tree_up", "compose", "io", "count_contacts",
                "count_contacts_active", "count_limit_rows")
 PROF_PARTITION = 13
 PROF_DESIGN = dict(record="A0", poses="A3", integrator="A1", solve_Q="A1", solve_H="A2", tree_down="A3+A4",
                    limits="A5+A6", contact_setup="A5", contact_rows="A5+A6", contact_reduce="A6", tree_up="A7",
-                   compose="A8", io="kernel")  # the phases' labels A0-A8 (module docstring)
+                   compose="A8", io="kernel")
 
-# per world and substep with -DDK_ADJ_DEBUG (float32 words); lengths in units of "nq", "nv", "nu", "mc" (the contact
-# capacity) or a number, optionally times a width: (unit, width) -> (..., unit, width) when decoded. Keys and
-# conventions of MuJoCo Warp's adjoint: qpos-form residuals res_* = dof_to_qpos(P_source; xi_k) (the engine's P is
-# MuJoCo Warp's res), adj_qpos_M = +grad_q[y' M(q) a~] (the integrator's mass-matrix term), w_dir = a~
 DEBUG_FIELDS = (
-    ("g_qpos_out", "nq"), ("g_qvel_out", "nv"),  # cotangents of the substep's output state
-    ("adj_qpos_int", "nq"), ("adj_qvel_int", "nv"), ("adj_qacc_adv", "nv"),  # integrator VJP alone (A1)
-    ("y", "nv"), ("adj_qacc", "nv"), ("lam", "nv"), ("w_dir", "nv"),  # A1, A2
+    ("g_qpos_out", "nq"), ("g_qvel_out", "nv"),
+    ("adj_qpos_int", "nq"), ("adj_qvel_int", "nv"), ("adj_qacc_adv", "nv"),
+    ("y", "nv"), ("adj_qacc", "nv"), ("lam", "nv"), ("w_dir", "nv"),
     ("adj_qpos_M", "nq"), ("res_qpos_rne", "nq"), ("res_qpos_act", "nq"), ("res_qvel_rne", "nv"), ("res_qvel_act", "nv"),
     ("res_qpos_contact", "nq"), ("res_qvel_contact", "nv"), ("res_qpos_limit", "nq"), ("res_qvel_limit", "nv"),
-    ("grad_qpos_in", "nq"), ("grad_qvel_in", "nv"), ("grad_ctrl_k", "nu"),  # the substep's input cotangents
-    ("resid", "nv"), ("resid_norm", 1), ("tau_norm", 1), ("id_norm", 1),  # r(a*) = ID + arm a* - tau - J'f
-    ("ma_norm", 1),  # |M a*| (= L_Q (L_Q' a*) - h kv a*): the scale of the forward's solve M a* = tau - bias + J'f
-    ("jtf_norm", 1),  # |J'f| of the replayed rows
-    # per contact of the tape's table (stages >= 2; zeros past ncon and for skipped contacts): replayed distance and
-    # position, MuJoCo Warp's con_dist_bar / con_pos_bar / con_frame_bar (zero when no row is on its quadratic zone),
-    # x_e = J_e a* - aref_e of its rows (pyramid order), its force sum_e -D x_e u_e (world), the adj_contact_geom branch
-    # bits, and the group diagnostics: kink min_e |x_e| / (|J_e a*| + |aref_e|), basis margin (self contact
-    # | |n_y| - 0.5 |, plane-capsule |beta - 0.5|, else NO_ROW), sin(angle) of capsule-capsule with both parameters free
-    # (else NO_ROW)
+    ("grad_qpos_in", "nq"), ("grad_qvel_in", "nv"), ("grad_ctrl_k", "nu"),
+    ("resid", "nv"), ("resid_norm", 1), ("tau_norm", 1), ("id_norm", 1),
+    ("ma_norm", 1),
+    ("jtf_norm", 1),
     ("con_dist", "mc"), ("con_pos", ("mc", 3)), ("con_dist_bar", "mc"), ("con_pos_bar", ("mc", 3)),
     ("con_frame_bar", ("mc", 9)), ("con_x", ("mc", 4)), ("con_force", ("mc", 3)), ("con_br", "mc"),
     ("con_kink", "mc"), ("con_basis", "mc"), ("con_sin_free", "mc"),
-    # per dof: its limit row (if any) x, force -D x (on the quadratic zone, else 0) and kink (NO_ROW without a row)
     ("lim_x", "nv"), ("lim_force", "nv"), ("lim_kink", "nv"),
-    # the poses the contact stage replays from: bodies (quaternion, origin) and collision geoms (centre, quaternion)
     ("body_q", ("nb", 4)), ("body_x", ("nb", 3)), ("geom_x", ("ng", 3)), ("geom_q", ("ng", 4)),
 )
 
@@ -162,7 +62,7 @@ def solimp_powers(m):
     """The solimp powers of the model's constraint rows as the engine packs them (float32): the hinge limits'
     (step.pair_constants: c_jsolimp, one set for all joints) and the contact pairs' parameter sets (c_pset)."""
     sets = np.asarray(step.pair_param_sets(m)[0], np.float32)
-    fl = {float(np.float32(x)) for x in m.dof_solimp[m.dof_frictionloss > 0, 4]}  # (none for the G1)
+    fl = {float(np.float32(x)) for x in m.dof_solimp[m.dof_frictionloss > 0, 4]}
     return sorted({float(np.float32(m.jnt_solimp[1][4]))} | {float(x) for x in sets[:, 3 + 4]} | fl)
 
 
@@ -176,13 +76,13 @@ def header(m):
              f"#define DBG_NO_ROW {NO_ROW:.0e}f", f"#define DBG_WORDS {nw}  // -DDK_ADJ_DEBUG record",
              f"#define NAPROF {len(PROF_PHASES)}  // -DDK_PROFILE: PROF_PHASES"]
     lines += [f"#define APROF_{k.upper()} {i}" for i, k in enumerate(PROF_PHASES)]
-    dof0 = int(m.body_dofadr[2]) - 2  # adj_contact_one walks the support's hinge bodies in index order
+    dof0 = int(m.body_dofadr[2]) - 2
     assert m.body_dofadr[1] == 0 and m.body_dofnum[1] == 6 and all(
         m.body_dofnum[b] == 1 and m.body_dofadr[b] == b + dof0 for b in range(2, m.nbody)), \
         "a free root (dofs 0-5), then one hinge dof per body, in body order"
     lines.append(f"#define ADJ_HINGE_DOF0 {dof0}  // the hinge dof of body b >= 2 is b + ADJ_HINGE_DOF0")
     pw = solimp_powers(m)
-    if len(pw) == 1:  # one power for every row: adj_row_impedance passes it as a constant
+    if len(pw) == 1:
         lines.append(f"#define ADJ_SOLIMP_POWER {pw[0].hex()}f  // {pw[0]:g}, every row's solimp power")
     lines += [f"#define DBG_{k.upper()} {o}" for k, (o, n, _) in lay.items()]
     return "\n" + "\n".join(lines) + "\n"
@@ -313,6 +213,12 @@ struct Adj {
 #endif
 #if DK_ADJ_CLAMP_KV == 2
   float u[NV - 6], soft;  // the world's ctrl and delta (clamp_soft) for lam_soft (120 B: still 9 worlds per SM)
+#endif
+#if DK_CLAMP_IMPLICIT
+  float kvi[NV];  // the substep's implicit actuator damping per dof (the forward's Q = M + h diag(kvi))
+#endif
+#if DK_CLAMP_IMPLICIT == 2
+  float kvw[NV];  // the record's sign(f) w per dof (step.py; 1 where unclamped)
 #endif
 };
 
@@ -785,17 +691,27 @@ __device__ void adj_integrator(Adj& s, int lane) {
 __device__ __noinline__ void adj_solves(Adj& s, const float* rec, int lane) {
   LANE_BOUND(lane);
   const float h = c_misc[0];
+#if DK_CLAMP_IMPLICIT == 1
+  for (int i = lane; i < NV; i += 32)  // MuJoCo 4.0: no implicit damping on a clamped dof (the record's mask)
+    s.kvi[i] = (s.clamp[i >> 5] >> (i & 31)) & 1u ? 0.f : c_kv[i];
+#elif DK_CLAMP_IMPLICIT == 2
+  for (int i = lane; i < NV; i += 32) {  // the recorded weights: kv w, w = |sign(f) w|
+    const float wv = __ldcs(rec + OFF_KVW + i);
+    s.kvw[i] = wv;
+    s.kvi[i] = c_kv[i] * fabsf(wv);
+  }
+#endif
   for (int e = lane; e < NTRI; e += 32) s.L[e] = __ldcs(rec + OFF_LQ + e);
   for (int i = lane; i < NV; i += 32) s.y[i] = s.abar[i];
   tri_solve_packed(s.L, s.y, lane);
-  for (int i = lane; i < NV; i += 32) { s.abar[i] -= h * c_kv[i] * s.y[i]; s.ny[i] = -s.y[i]; }
+  for (int i = lane; i < NV; i += 32) { s.abar[i] -= h * KVI(i) * s.y[i]; s.ny[i] = -s.y[i]; }
   __syncwarp();
   APROF(APROF_SOLVE_Q);
 #ifdef DK_ADJ_DEBUG
   {  // |M a*| for the residual check's scale
     tri_mul_llt(s.L, s.a, s.tmp, s.did, lane);
     float acc = 0.f;
-    for (int i = lane; i < NV; i += 32) { float x = s.did[i] - h * c_kv[i] * s.a[i]; acc += x * x; }
+    for (int i = lane; i < NV; i += 32) { float x = s.did[i] - h * KVI(i) * s.a[i]; acc += x * x; }
     acc = warp_sum(acc);
     if (lane == 0) s.ma_norm = sqrtf(acc);
     __syncwarp();
@@ -836,6 +752,23 @@ __device__ __forceinline__ float lam_soft(const Adj& s, int i) {
 // kp lam~; DK_ADJ_CLAMP_KV=2: lam~ of lam_soft), then the substep's input cotangents q bar = q bar_dir -
 // dof_to_qpos(P_q; xi_k) (MuJoCo Warp's _dof_to_qpos: 2 xi (0, P_rot), xi not normalized) and v bar = v' bar - P_v
 __device__ void adj_compose(Adj& s, int lane) {
+#if DK_CLAMP_IMPLICIT == 2
+  {  // the fading implicit damping kv w(f) of the clamped dofs: Q's diagonal h kv w gets w bar = h kv ny a_adv (the
+     // armature's and damping's rule, y = -ny; a_adv = a* - a~, s.aadv is dead here), w = exp(-o / delta) gives
+     // f bar = w bar dw/df with dw/df = -sign(f) w / (delta tau) where o > 0 (|wv| < 1 on a clamped dof), and
+     // f = kp (u - q) - kv v takes f bar as the force's lam does
+    const float h = c_misc[0];
+    for (int i = 6 + lane; i < NV; i += 32) {
+      const float wv = s.kvw[i];
+      if (!((s.clamp[i >> 5] >> (i & 31)) & 1u) || !(fabsf(wv) < 1.f)) continue;
+      const float fb = h * c_kv[i] * s.ny[i] * (s.a[i] - s.at[i]) * (-wv / (DK_CLAMP_IMPLICIT_DELTA * c_frclim[i]));
+      s.Pq[i] += c_kp[i] * fb;
+      s.Pv[i] += c_kv[i] * fb;
+      s.ubar[i - 6] += c_kp[i] * fb;
+    }
+    __syncwarp();
+  }
+#endif
   for (int i = 6 + lane; i < NV; i += 32) {
     float lt = LAM_ACT(s, i), kl = c_kp[i] * lt;
     s.Pq[i] += kl;
@@ -1471,8 +1404,94 @@ static inline size_t adj_launch_smem(int worlds_per_sm = -1, cudaError_t* err = 
 
 
 
-# terrain builds (nablaengine.terrain): the contact table's 10-bit pairs and terrain elements, and the terrain
-# contacts' replay / VJP (adjoint_contact.TERRAIN_DEVICE); applied by cuda_source to the adjoint's text
+def capbox_dual_source():
+    """step.py's capsule-box terrain geometry (terrain_capbox_segs with capbox_segs, capbox_point, terrain_sphere_box
+    with sphere_box) as templates over the scalar type (name_t), generated from their text: with T = D1
+    (nablaengine.dual) the contact adjoint replays a capsule-box terrain contact once per pose direction of the capsule
+    (ADJ_CAPBOX_DUAL), the candidate parameter's slide included."""
+    import re
+    names = ("sphere_box", "capbox_segs", "capbox_point", "terrain_sphere_box", "terrain_capbox_segs")
+    texts = []
+    src = step.STEP_DEVICE + step.TERRAIN_DEVICE + step.capbox_segs_source()
+    for nm in names:
+        m = re.search(r"__device__ (?:__noinline__ )?(?:void|int) " + nm + r"\(", src)
+        if m is None:
+            raise RuntimeError(f"capbox_dual_source: no {nm}")
+        a = m.start()
+        b = src.index("\n}\n", a) + 3
+        texts.append(src[a:b])
+    body = "\n".join(texts)
+    body = re.sub(r"\bfloat\b", "T", body)
+    body = re.sub(r"\b(fabs|sqrt|fmin|fmax)f\(", r"t_\1(", body)
+    body = re.sub(r"\b(mv3|mtv3|mm3|mmt3|dot3|safe_div)\(", r"t_\1(", body)
+    for nm in names:
+        body = re.sub(r"\b" + nm + r"\(", nm + "_t(", body)
+    body = re.sub(r"__device__ (__noinline__ )?(void|int) ", r"template <class T>\n__device__ \1\2 ", body)
+    return "// step.py's capsule-box terrain geometry over a scalar type (adjoint.capbox_dual_source)\n" + body + "\n"
+
+
+ADJ_CAPBOX_DUAL = """  if (box && gt == 2 && cot) {  // capsule-box (adjoint.ADJ_CAPBOX_DUAL): the contact replayed over duals (D1) once per
+    // pose direction of the capsule (cbter_dir_vjp; DK_CAPBOX_COOP: in adj_contacts' cooperative pass instead)
+#if !CB_COOP_ON
+    const float* b = ter_box(e);
+    float nbar[3];
+    make_frame_vjp(fr, cot + 4, nbar);
+    for (int j = 0; j < 6; j++) gb[6 + j] = cbter_dir_vjp(j, k, b, p2, axis, sz, cot, nbar);
+#endif
+    return br;
+  }
+"""
+
+ADJ_CAPBOX_DUAL_LOOP = ("""    for (int j = 0; j < 6; j++) gb[6 + j] = cbter_dir_vjp(j, k, b, p2, axis, sz, cot, nbar);
+""", """    D1 B[15];  // (adjoint.ADJ_CAPBOX_DUAL_LOOP: cbter_dir_vjp's body, the duals of the box once)
+    for (int t = 0; t < 15; t++) B[t] = D1(b[t]);
+    for (int j = 0; j < 6; j++) {
+      D1 P[3], A[3], segs[2], C[3], dd, pp[3], nn[3];
+      float ea[3] = {0.f, 0.f, 0.f}, ta[3];
+      ea[j % 3] = 1.f;
+      cross(ea, axis, ta);
+      for (int t = 0; t < 3; t++) {
+        P[t] = D1(p2[t], j < 3 && t == j ? 1.f : 0.f);
+        A[t] = D1(axis[t], j >= 3 ? ta[t] : 0.f);
+      }
+      terrain_capbox_segs_t<D1>(P, A, D1(sz[1]), B, segs);
+      capbox_point_t<D1>(P, A, D1(sz[1]), B, segs[k], C);
+      terrain_sphere_box_t<D1>(C, D1(sz[0]), B, &dd, pp, nn);
+      float g = cot[0] * dd.d;
+      for (int t = 0; t < 3; t++) g += cot[1 + t] * pp[t].d + nbar[t] * nn[t].d;
+      gb[6 + j] = g;
+    }
+""")
+ADJ_CAPBOX_DUAL_TREE = ADJ_CAPBOX_DUAL.replace(*ADJ_CAPBOX_DUAL_LOOP)
+assert ADJ_CAPBOX_DUAL_TREE != ADJ_CAPBOX_DUAL
+
+CBTER_DIR_VJP = """// (adjoint.CBTER_DIR_VJP) pose direction j of the capsule in a terrain capsule-box contact, gb[6 + j]
+__device__ __noinline__ float cbter_dir_vjp(int j, int k, const float* b, const float* p2, const float* axis,
+                                            const float* sz, const float* cot, const float* nbar) {
+  D1 B[15];
+  for (int t = 0; t < 15; t++) B[t] = D1(b[t]);
+  D1 P[3], A[3], segs[2], C[3], dd, pp[3], nn[3];
+  float ea[3] = {0.f, 0.f, 0.f}, ta[3];
+  ea[j % 3] = 1.f;
+  cross(ea, axis, ta);
+  for (int t = 0; t < 3; t++) {
+    P[t] = D1(p2[t], j < 3 && t == j ? 1.f : 0.f);
+    A[t] = D1(axis[t], j >= 3 ? ta[t] : 0.f);
+  }
+  terrain_capbox_segs_t<D1>(P, A, D1(sz[1]), B, segs);
+  capbox_point_t<D1>(P, A, D1(sz[1]), B, segs[k], C);
+  terrain_sphere_box_t<D1>(C, D1(sz[0]), B, &dd, pp, nn);
+  float g = cot[0] * dd.d;
+  for (int t = 0; t < 3; t++) g += cot[1 + t] * pp[t].d + nbar[t] * nn[t].d;
+  return g;
+}
+
+"""
+
+CBTER_DIR_VJP_TREE = CBTER_DIR_VJP.replace("__device__ __noinline__ float cbter_dir_vjp(",
+                                           "__device__ __forceinline__ float cbter_dir_vjp(")
+assert CBTER_DIR_VJP_TREE != CBTER_DIR_VJP
+
 ADJ_TERRAIN_HOOKS = (
     ("""// adj_contact_geom for contact (pair, slot) of the engine's pair table""",
      adjoint_contact.TERRAIN_DEVICE.lstrip("\n") + """
@@ -1502,7 +1521,6 @@ ADJ_TERRAIN_HOOKS = (
 )
 
 
-# native heightfield builds, after ADJ_TERRAIN_HOOKS: the contacts' candidate ids (taux) into adj_terrain_geom
 ADJ_NATIVE_HOOKS = (
     ("""  unsigned telem[(MAXCON + 1) / 2];  // the contacts' terrain elements, 16 bits each
 """,
@@ -1532,19 +1550,95 @@ __device__ __forceinline__ int adj_pair_geom_aux(int pair, int slot, unsigned au
      """adj_pair_geom_aux(pair, slot, s.taux[c], s.gx, s.gq, &d2, p2, fr2, &nu2, cot, gb)"""),
 )
 
-def cuda_source(m, max_contacts=None, terrain=None):
+ADJ_TREE_CHOL_HOOKS = (
+    ("  tri_solve_packed(s.L, s.y, lane);\n", "  chol_tree_solve(s.L, s.y, lane);  // (DK_TREE_CHOL: L_Q is R)\n"),
+    ("    tri_mul_llt(s.L, s.a, s.tmp, s.did, lane);\n",
+     "    tri_mul_rtr(s.L, s.a, s.tmp, s.did, lane);  // (DK_TREE_CHOL: L_Q is R)\n"),
+)
+ADJ_TREE_CHOL_NEWTON_HOOKS = (
+    ("  tri_solve_packed(s.L, s.lam, lane);\n", "  chol_tree_solve(s.L, s.lam, lane);  // (DK_TREE_CHOL: L_H is R)\n"),
+)
+
+
+def tree_chol_hooks(m):
+    """The adjoint's DK_TREE_CHOL hooks for model m (() when off; the forward's: step.tree_chol_hooks)."""
+    st = step.tree_chol_stages(m)
+    if st is None:
+        return ()
+    return ADJ_TREE_CHOL_HOOKS + (ADJ_TREE_CHOL_NEWTON_HOOKS if st["newton"] else ())
+
+
+ADJ_BOUNDS_BLOCK = """// ADJ_MAXNREG (defined and > 0): k_adjoint's register cap as __maxnreg__(N) (nvcc 12.4+); this block is inserted
+// only where the build target sets it (nablaengine.cuda.adjoint_defines: sm_103 120; tree_adj_cap_defines: sm_90 168 on
+// terrain builds). Register allocation only: the
+// gradients are bitwise those of the uncapped build.
+#if defined(ADJ_MAXNREG) && ADJ_MAXNREG > 0
+#if __CUDACC_VER_MAJOR__ * 100 + __CUDACC_VER_MINOR__ < 1204
+#error "ADJ_MAXNREG: __maxnreg__ needs nvcc 12.4 or newer"
+#endif
+#define ADJ_BOUNDS __maxnreg__(ADJ_MAXNREG)
+#else
+#define ADJ_BOUNDS
+#endif
+"""
+ADJ_KERNEL_DECL = "__global__ void k_adjoint("
+
+
+def with_adj_bounds(src):
+    """src (a unit's text with the G1 k_adjoint) with ADJ_BOUNDS_BLOCK before k_adjoint and k_adjoint declared with
+    ADJ_BOUNDS (its register cap under -DADJ_MAXNREG=N). Only for the units that get that define (cuda.adjoint_defines)."""
+    assert src.count(ADJ_KERNEL_DECL) == 1, "with_adj_bounds: one k_adjoint definition expected"
+    return src.replace(ADJ_KERNEL_DECL, ADJ_BOUNDS_BLOCK + "__global__ void ADJ_BOUNDS k_adjoint(")
+
+
+def cuda_source(m, max_contacts=None, terrain=None, params=None, max_rows=None, motor=None, bam=None):
     """The device code of the forward and the adjoint as one compilation unit, with k_adjoint's launch helpers
     (adj_launch_smem; no __global__ forward kernel, no host main). terrain: (TerrainConfig, robot geoms) for a terrain
-    build (nablaengine.terrain; step.step_header). Models outside the G1's structure get model_hooks' edits."""
+    build (nablaengine.terrain; step.step_header). Models outside the G1's structure get model_hooks' edits. params:
+    a nablaengine.params.PhysicsParams (per-world parameters: world_params; none: the text unchanged). max_contacts,
+    max_rows: the capacities per world (step.check_capacity; None: the defaults, the text unchanged). motor: a
+    nablaengine.motor.MotorLimits (torque-speed limits: motor_hooks; None: the text unchanged). $DK_TREE_CHOL
+    (step.tree_chol; default 0: the text unchanged) applies the tree-sparse factorizations' hooks. bam: a
+    nablaengine.actuators.Bam (the BAM servo model's forward: bam_hooks; None: the text unchanged)."""
+    step.check_capacity(m, max_contacts, max_rows, terrain)
+    condim4.check(m, terrain, params)
     maxd = source.max_depth(m)
     adj = adjoint_contact.source(m) + ADJ_DEVICE + ADJ_KERNEL
     if terrain is not None:
         adj = step.apply_hooks(adj, ADJ_TERRAIN_HOOKS)
+        adj = step.apply_hooks(adj, (
+            ("__device__ __noinline__ int adj_terrain_geom(", DUAL_DEVICE + capbox_dual_source() + CBTER_DIR_VJP_TREE
+             + "__device__ __noinline__ int adj_terrain_geom("),
+            ("  if (!cot) return br;\n  const float* pb = cot + 1;\n",
+             "  if (!cot) return br;\n" + ADJ_CAPBOX_DUAL_TREE + "  const float* pb = cot + 1;\n")))
+        adj = step.object_hooks(adj, step.OBJECT_ADJ_HOOKS, terrain)
         if terrain[0].mode == "native":
             adj = step.apply_hooks(adj, ADJ_NATIVE_HOOKS)
-    return model_hooks.apply(source.header(m, maxd, 1) + step.EXTRA_HEADER + step.step_header(m, max_contacts, terrain)
-                             + tape.header(m, max_contacts, tape.kind(terrain)) + header(m) + source.DEVICE
-                             + step.terrain_source(step.STEP_DEVICE + step.STEP_KERNEL, terrain) + adj, m)
+    src = model_hooks.apply(condim4.apply(step.apply_hooks(
+        source.header(m, maxd, 1) + step.EXTRA_HEADER + step.step_header(m, max_contacts, terrain, max_rows)
+        + tape.header(m, max_contacts, tape.kind(terrain), max_rows, motor is not None) + header(m) + source.DEVICE
+        + step.terrain_source(step.STEP_DEVICE + step.STEP_KERNEL, terrain) + adj,
+        step.capacity_hooks(m, max_rows, terrain) + elliptic.hooks(m, step.STEP_DEVICE + step.STEP_KERNEL)
+        + elliptic.adj_hooks(m) + motor_hooks.hooks(m, motor)), m), m)
+    import mujoco
+    if terrain is not None and any(int(m.geom_type[g]) == mujoco.mjtGeom.mjGEOM_BOX for g, _, _ in terrain[1]):
+        src = model_hooks._apply(src, model_hooks.terrain_box_geom_hooks(m))
+    robot_cb, terrain_cb = "cbt_dir_vjp(" in src, "cbter_dir_vjp(" in src
+    if robot_cb or terrain_cb:
+        src = model_hooks._apply(src, model_hooks.capbox_coop_hooks(model_hooks.tree_coop_dispatch(robot_cb, terrain_cb),
+                                                                    model_hooks.tree_coop_dev(robot_cb)))
+    src = step.apply_hooks(src, step.tree_chol_hooks(m) + tree_chol_hooks(m))
+    from nablaengine.g1_engine import world_params
+    from nablaengine.model import invweight
+    src = invweight.apply(src, m, step.collision_geoms(m))
+    src = world_params.apply(src, m, params, "engine", terrain[0].com_words() if terrain is not None else 3)
+    if bam is not None:
+        from nablaengine._optional import BAM, load
+        bam_hooks = load("nablaengine.g1_engine", BAM, "bam_hooks")
+        src = bam_hooks.engine(src, bam, m.nv)
+    from nablaengine.g1_engine import exact_replay, replay_guard
+    src = exact_replay.apply(src, m)
+    return replay_guard.apply(src, m, terrain)
 
 
 def engine_constants(m, foot_pairs, terrain=None, com_body=None):
@@ -1554,9 +1648,14 @@ def engine_constants(m, foot_pairs, terrain=None, com_body=None):
     c1, _ = source.constants(m, com_body)
     c2 = step.pair_constants(m, foot_pairs, terrain)
     dofbody, mask = step.extra_constants(m)
-    halves = np.stack([mask & 0xFFFF, mask >> 16], 1).ravel()
-    consts = np.concatenate([c1, c2, dofbody.astype(np.float32), halves.astype(np.float32)])
+    halves, alay = step.ancmask_packed(m, mask)
+    consts = np.concatenate([c1, c2, dofbody.astype(np.float32), halves])
     sizes = {"nb": m.nbody, "nv": m.nv, "one": 1, "nv2": 2 * m.nv}
     lays = (list(source.const_layout(m)) + [(s, k, n, 1) for s, k, n in step.const_layout(m, terrain)]
-            + [("c_dofbody", "i", "nv", 1), ("c_ancmask", "u", "nb", 1)])
+            + [("c_dofbody", "i", "nv", 1), alay])
+    from nablaengine.g1_engine import mesh
+    mc = mesh.constants(m)
+    if mc:
+        consts = np.concatenate([consts] + mc)
+        lays += [(s, k, n, 1) for s, k, n in mesh.layout(m)]
     return consts, lays, sizes

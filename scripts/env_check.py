@@ -2,13 +2,7 @@
 CUDA kernel compiled and run (with the device's shared-memory limits), JAX's devices, and, when installed, Warp and
 MuJoCo Warp. Those two are optional: the engine, the JAX interface and the checks do not need them (the checks read the
 committed MuJoCo Warp references, fixtures/mjlab/mjw317_<corpus>.npz); only regenerating a reference does
-(scripts/make_mjw_reference.py, in an environment with mujoco-warp 3.17.0).
-
-  PYTHONPATH=src python scripts/env_check.py
-
-Exit status 1 when a required part fails: no nvcc (or one older than release 12), the fixture model does not load, the
-test kernel does not compile or computes a wrong result, JAX is missing or sees no usable device; else 0.
-"""
+(scripts/make_mjw_reference.py, in an environment with mujoco-warp 3.17.0)."""
 
 import re
 import subprocess
@@ -37,7 +31,7 @@ def step(failures, name, f):
     """Run one part of the check; an exception is a failure of that part."""
     try:
         return f()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         failures.append(f"{name}: {type(e).__name__}: {str(e)[:300]}")
         print(f"{name}: FAILED ({type(e).__name__}: {str(e)[:300]})", flush=True)
         return None
@@ -45,7 +39,7 @@ def step(failures, name, f):
 
 def main():
     failures = []
-    try:  # optional: only regenerating the MuJoCo Warp references needs them
+    try:
         import warp as wp
         import mujoco_warp as mjw
         ref_error = None
@@ -60,7 +54,7 @@ def main():
     print("mujoco", mujoco.__version__, "| warp", wp.config.version if wp else "not installed",
           "| jax", jax.__version__ if jax else "not installed",
           "| mujoco_warp", getattr(mjw, "__version__", "installed") if mjw else "not installed", flush=True)
-    gpu = ["-i", cuda.visible_gpu()] if cuda.visible_gpu() else []  # the first visible GPU, else all
+    gpu = ["-i", cuda.visible_gpu()] if cuda.visible_gpu() else []
     print(step(failures, "nvidia-smi", lambda: subprocess.run(
         ["nvidia-smi", *gpu, "--query-gpu=name,compute_cap,driver_version,memory.total", "--format=csv,noheader"],
         stdout=subprocess.PIPE, universal_newlines=True, check=True).stdout.strip()), flush=True)

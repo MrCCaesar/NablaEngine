@@ -1,0 +1,146 @@
+<mujoco model="spot feetonly flat terrain scene">
+  <compiler angle="radian" meshdir="../../../../../mujoco_menagerie/boston_dynamics_spot/assets"/>
+
+  <option timestep="0.004" integrator="implicitfast" iterations="1" ls_iterations="5">
+    <flag eulerdamp="disable"/>
+  </option>
+
+  <size nkey="1"/>
+
+  <statistic meansize="0.04" extent="0.8" center="0 0 0.1"/>
+
+  <visual>
+    <global azimuth="120" elevation="-20"/>
+    <quality shadowsize="8192"/>
+    <headlight ambient="0.2 0.2 0.2" diffuse="0.8 0.8 0.8" specular="1 1 1"/>
+    <map force="0.01"/>
+    <scale forcewidth="0.3" contactwidth="0.5" contactheight="0.2"/>
+    <rgba force="1 0 0 1"/>
+  </visual>
+
+  <default>
+    <default class="spot">
+      <joint actuatorfrcrange="-1000 1000" armature="0.1" damping="2" frictionloss="0.2"/>
+      <geom contype="0" conaffinity="0" condim="1"/>
+      <general input="pos" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+      <default class="visual">
+        <geom type="mesh" group="2"/>
+      </default>
+      <default class="collision">
+        <geom group="3"/>
+        <default class="foot">
+          <geom size="0.036 0 0" conaffinity="1" solimp="0.9 0.95 0.036"/>
+          <site size="0.036 0.005 0.005" group="5"/>
+        </default>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" colorspace="auto" builtin="gradient" rgb1="1 1 1" rgb2="1 1 1" width="800" height="4800"/>
+    <texture type="2d" colorspace="auto" name="groundplane" builtin="checker" mark="edge" rgb1="1 1 1" rgb2="1 1 1" width="300" height="300"/>
+    <material name="BlackAbs" rgba="0.1 0.1 0.1 1"/>
+    <material name="wrap" rgba="0.878431 0.666666 0.22745 1"/>
+    <material name="groundplane" texture="groundplane" texrepeat="5 5" texuniform="true"/>
+  </asset>
+
+  <worldbody>
+    <geom name="floor" size="0 0 0.01" type="plane" contype="0" conaffinity="0" priority="1" friction="0.6" material="groundplane"/>
+    <light name="spotlight" target="body" pos="3 0 4" mode="targetbodycom"/>
+    <body name="body" childclass="spot" pos="0 0 0.75">
+      <inertial pos="0.0063944 -9.81216e-05 0.000911379" mass="32.86" diaginertia="0.13144 0.13144 0.13144"/>
+      <joint name="freejoint" type="free" actuatorfrcrange="0 0" armature="0" damping="0" frictionloss="0"/>
+      <site name="imu"/>
+      <camera name="track" quat="0.791164 0.554139 0.148485 0.211997" pos="0.846 -1.3 0.316" mode="trackcom"/>
+      <camera name="top" quat="0.653281 0.270598 -0.270598 -0.653281" pos="-1 0 1" mode="trackcom"/>
+      <camera name="side" quat="0.850651 0.525731 0 0" pos="0 -1.2 0.3" mode="trackcom"/>
+      <camera name="back" quat="0.601501 0.371748 -0.371748 -0.601501" pos="-1.2 0 0.3" mode="trackcom"/>
+      <body name="fl_hip" pos="0.29785 0.055 0">
+        <inertial pos="-0.00537435 0.0128418 9.87523e-05" quat="0.5 0.5 -0.5 0.5" mass="1.68" diaginertia="0.00226544 0.00211474 0.00181296"/>
+        <joint name="fl_hx" range="-0.785398 0.785398" axis="1 0 0"/>
+        <body name="fl_uleg" pos="0 0.1108 0">
+          <inertial pos="0.00514237 -0.00243237 -0.121009" mass="2.34" diaginertia="0.0275596 0.0273549 0.00284815"/>
+          <joint name="fl_hy" range="-0.898845 2.29511" axis="0 1 0"/>
+          <body name="fl_lleg" pos="0.025 0 -0.32">
+            <inertial pos="0.00225794 4.6076e-05 -0.180082" quat="0.707107 0 0 0.707107" mass="0.35" diaginertia="0.00405032 0.00399902 0.00014934"/>
+            <joint name="fl_kn" range="-2.7929 -0.254402" axis="0 1 0"/>
+            <geom name="FL" class="foot" pos="0 0 -0.3365" conaffinity="0"/>
+            <site name="FL" class="foot" pos="0 0 -0.3365"/>
+          </body>
+        </body>
+      </body>
+      <body name="fr_hip" pos="0.29785 -0.055 0">
+        <inertial pos="-0.00537435 -0.0128418 -9.87523e-05" quat="0.5 0.5 -0.5 0.5" mass="1.68" diaginertia="0.00226544 0.00211474 0.00181296"/>
+        <joint name="fr_hx" range="-0.785398 0.785398" axis="1 0 0"/>
+        <body name="fr_uleg" pos="0 -0.1108 0">
+          <inertial pos="0.00514237 0.00243237 -0.121009" mass="2.34" diaginertia="0.0275596 0.0273549 0.00284815"/>
+          <joint name="fr_hy" range="-0.898845 2.24363" axis="0 1 0"/>
+          <body name="fr_lleg" pos="0.025 0 -0.32">
+            <inertial pos="0.00225794 4.6076e-05 -0.180082" quat="0.707107 0 0 0.707107" mass="0.35" diaginertia="0.00405032 0.00399902 0.00014934"/>
+            <joint name="fr_kn" range="-2.7929 -0.255648" axis="0 1 0"/>
+            <geom name="FR" class="foot" pos="0 0 -0.3365" conaffinity="0"/>
+            <site name="FR" class="foot" pos="0 0 -0.3365"/>
+          </body>
+        </body>
+      </body>
+      <body name="hl_hip" pos="-0.29785 0.055 0">
+        <inertial pos="0.00537435 0.0128418 -9.87523e-05" quat="0.5 0.5 -0.5 0.5" mass="1.68" diaginertia="0.00226544 0.00211474 0.00181296"/>
+        <joint name="hl_hx" range="-0.785398 0.785398" axis="1 0 0"/>
+        <body name="hl_uleg" pos="0 0.1108 0">
+          <inertial pos="0.00514237 -0.00243237 -0.121009" mass="2.34" diaginertia="0.0275596 0.0273549 0.00284815"/>
+          <joint name="hl_hy" range="-0.898845 2.29511" axis="0 1 0"/>
+          <body name="hl_lleg" pos="0.025 0 -0.32">
+            <inertial pos="0.00225794 4.6076e-05 -0.180082" quat="0.707107 0 0 0.707107" mass="0.35" diaginertia="0.00405032 0.00399902 0.00014934"/>
+            <joint name="hl_kn" range="-2.7929 -0.247067" axis="0 1 0"/>
+            <geom name="HL" class="foot" pos="0 0 -0.3365" conaffinity="0"/>
+            <site name="HL" class="foot" pos="0 0 -0.3365"/>
+          </body>
+        </body>
+      </body>
+      <body name="hr_hip" pos="-0.29785 -0.055 0">
+        <inertial pos="0.00537435 -0.0128418 9.87523e-05" quat="0.5 0.5 -0.5 0.5" mass="1.68" diaginertia="0.00226544 0.00211474 0.00181296"/>
+        <joint name="hr_hx" range="-0.785398 0.785398" axis="1 0 0"/>
+        <body name="hr_uleg" pos="0 -0.1108 0">
+          <inertial pos="0.00514237 0.00243237 -0.121009" mass="2.34" diaginertia="0.0275596 0.0273549 0.00284815"/>
+          <joint name="hr_hy" range="-0.898845 2.29511" axis="0 1 0"/>
+          <body name="hr_lleg" pos="0.025 0 -0.32">
+            <inertial pos="0.00225794 4.6076e-05 -0.180082" quat="0.707107 0 0 0.707107" mass="0.35" diaginertia="0.00405032 0.00399902 0.00014934"/>
+            <joint name="hr_kn" range="-2.7929 -0.248282" axis="0 1 0"/>
+            <geom name="HR" class="foot" pos="0 0 -0.3365" conaffinity="0"/>
+            <site name="HR" class="foot" pos="0 0 -0.3365"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <pair geom1="floor" geom2="FL" name="p0_floor__FL" friction="0.6 0.6"/>
+    <pair geom1="floor" geom2="FR" name="p1_floor__FR" friction="0.6 0.6"/>
+    <pair geom1="floor" geom2="HL" name="p2_floor__HL" friction="0.6 0.6"/>
+    <pair geom1="floor" geom2="HR" name="p3_floor__HR" friction="0.6 0.6"/>
+    <exclude body1="body" body2="fl_uleg"/>
+    <exclude body1="body" body2="fr_uleg"/>
+    <exclude body1="body" body2="hl_uleg"/>
+    <exclude body1="body" body2="hr_uleg"/>
+  </contact>
+
+  <actuator>
+    <general name="fl_hx" joint="fl_hx" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="fl_hy" joint="fl_hy" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="fl_kn" joint="fl_kn" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="fr_hx" joint="fr_hx" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="fr_hy" joint="fr_hy" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="fr_kn" joint="fr_kn" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="hl_hx" joint="hl_hx" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="hl_hy" joint="hl_hy" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="hl_kn" joint="hl_kn" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="hr_hx" joint="hr_hx" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="hr_hy" joint="hr_hy" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+    <general name="hr_kn" joint="hr_kn" biastype="affine" gainprm="400" biasprm="0 -400 -20"/>
+  </actuator>
+
+  <keyframe>
+    <key name="home" qpos="0 0 0.46 1 0 0 0 0 1.04 -1.8 0 1.04 -1.8 0 1.04 -1.8 0 1.04 -1.8" ctrl="0 1.04 -1.8 0 1.04 -1.8 0 1.04 -1.8 0 1.04 -1.8"/>
+  </keyframe>
+</mujoco>

@@ -6,11 +6,13 @@ third-party software that the checks compare with but that the repository does n
 
 | Material | Licence | Copyright | Used in |
 |---|---|---|---|
-| MuJoCo Warp | Apache-2.0 | 2025 The Newton Developers | `src/nablaengine/g1_engine/step.py` (translated code); `src/nablaengine/g1_engine/adjoint_contact.py`, `src/nablaengine/reference/jax64.py` (built on those translations); conventions in `src/nablaengine/g1_engine/adjoint.py` and `benchmarks/bench/adapters/mjw_pr.py` |
+| MuJoCo Warp | Apache-2.0 | 2025 The Newton Developers | `src/nablaengine/g1_engine/step.py` (translated code); `src/nablaengine/g1_engine/adjoint_contact.py`, `src/nablaengine/reference/jax64.py` (built on those translations); conventions in `src/nablaengine/g1_engine/adjoint.py` and `benchmarks/bench/adapters/mjw_pr.py`; the collision code ported in `src/nablaengine/ccd.py` and `src/nablaengine/g1_engine/cylinder.py`, `cylccd.py`, `mesh.py`, `sphbox.py`, `elliptic.py` (each file header states the source and the changes) |
 | MuJoCo | Apache-2.0 | 2021 DeepMind Technologies Limited | through the MuJoCo Warp primitives in `step.py`; the model semantics the engine implements |
 | MuJoCo MJX | Apache-2.0 | 2023 DeepMind Technologies Limited | `src/nablaengine/g1_engine/kinematics.py` (reproduced semantics, no code) |
 | MuJoCo Menagerie, Unitree G1 | BSD-3-Clause | 2016-2023 HangZhou YuShu TECHNOLOGY CO.,LTD. ("Unitree Robotics") | `fixtures/mjlab/g1_train.mjb` |
 | mjlab | Apache-2.0 | 2025, The mjlab Developers | `fixtures/mjlab/g1_train.mjb` (parameter values) |
+| BAM (Better Actuator Models, <https://github.com/Rhoban/bam>) | Apache-2.0 | Marc Duclusaud, Grégoire Passault (Rhoban) | `src/nablaengine/actuators/bam_params/xl330/m6.json` (copied unchanged from `bam/params/xl330/m6.json` of Rhoban/bam@ea216102c0624f313d0ca6c0ec8f384008ff56c6), licence text in `src/nablaengine/actuators/bam_params/LICENSE`; `src/nablaengine/actuators/bam.py`, `src/nablaengine/g1_engine/bam_hooks.py`, `src/nablaengine/forest_engine/bam_hooks.py` (the M6 model reimplemented, no code copied) |
+| Livox MID-360 scan pattern (Livox-SDK livox_laser_simulation) | MIT | 2021 livox | `src/nablaengine/sensors/data/livox_mid360.npz` (`scan_mode/mid360.csv`: its 800000 firing directions, converted to npz), licence in `src/nablaengine/sensors/data/LIVOX_MID360_LICENSE` |
 
 ## 1. MuJoCo Warp
 

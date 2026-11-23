@@ -1,71 +1,5 @@
 """The MJX adapter: MuJoCo MJX (the mujoco-mjx package, impl='jax') run the way its users run it, on Track A (the
-mjlab G1 with per-world domain randomization) and Track B (Menagerie unitree_g1/scene_mjx.xml, native options).
-
-Everything goes through MJX's public API and plain JAX transforms: no monkeypatch, no replaced solver, no contact cap
-that the model does not declare itself (max_contact_points would be a model edit), no MJX-Warp (impl='warp').
-
-  fwd    jax.jit(jax.vmap(control_step)), compiled ahead of time in setup (lower_s + compile_s reported). control_step
-         takes (qpos, qvel, qacc_warmstart, ctrl) of one world and runs `substeps` mjx.step calls in a jax.lax.scan with
-         ctrl held (MuJoCo Playground's mjx_env.step pattern), returning every state output (qpos', qvel',
-         qacc_warmstart'). Per-world DR (Track A) is the standard MJX pattern: a Model whose pair_friction and
-         body_ipos carry a leading world axis, vmapped with in_axes 0 on those two fields and None on the others; the
-         values are problem.DR.batched(..., float32) (the corpus friction on the foot pairs, float32(ipos0) + com).
-  jac    the forward-mode Jacobian (native): jax.vmap over worlds of jax.jvp of control_step along the 2 nv + nu input
-         directions (qpos tangent, qvel, ctrl), chunked with jax.lax.map(batch_size=jac_chunk) inside one jitted call
-         (jac_chunk = 2 nv + nu is jax.jacfwd). Result (nworld, nq + nv, 2 nv + nu) float32: rows qpos' (qpos form)
-         then qvel'. The qpos-tangent directions are d/dh mj_integratePos(qpos, h e_j, 1) at h = 0 (hinge / slide: 1,
-         free joint position: identity, free / ball quaternion: 1/2 q (x) (0, e_i) / |q|, since mj_integratePos
-         renormalises), computed in float64 from the stored qpos and rounded to the model's dtype.
-  bwd, vjp   not supported natively: MJX's Newton / CG solver is a lax.while_loop with a data-dependent exit, which
-         JAX cannot transpose. setup attempts jax.vjp of the same control step on two worlds (tracing only:
-         jax.eval_shape, nothing runs on the device) and records the exact exception JAX raises as the message.
-  fwd_train  not supported (no reverse mode, hence no forward that keeps residuals for a backward).
-gradient(cot) = cot^T J of the forward-mode Jacobian (semantics()["gradient"] says so); jacobian() = op jac in float64
-(computed over slices of the worlds when the whole batch does not fit; never timed).
-
-Choosing jac_chunk K (directions per lax.map step; each step re-runs the primal once for its K tangents).
-  speed   K up to a cap, max(JAC_CHUNK_MIN, ceil(JAC_TARGET_ROWS / nworld)): once nworld x K world-directions fill the
-          GPU, a larger K only costs memory (V100, mjlab G1, 64 worlds: K = 1 5.8 s, 11 1.83 s, 33 2.0 s, 99 2.04 s
-          per Jacobian)
-  memory  the compiled forward's temp bytes per world f give the estimate f x (JAC_MEM_PRIMAL + JAC_MEM_PER_DIRECTION
-          x K) per world (mjlab G1, V100: 1.56 MB per world at K = 1, 6.7 at K = 11, 49 at K = 99, f = 0.51 MB),
-          within jac_mem_frac of the largest single allocation JAX's allocator can still serve (an executable's temp
-          memory is one buffer: the largest free block of the allocator's pool, or a new region within bytes_limit
-          and the device's free memory)
-The smaller of the two, balanced over the directions (the same number of steps with the smallest K; the last step is
-padded with zero directions), is compiled and its memory_analysis (temp + output bytes) checked against the budget
-measured again after the compile (XLA's autotuning allocates while compiling and, with XLA_PYTHON_CLIENT_PREALLOCATE=
-false, the allocator keeps what it grew). A smaller K and a recompile when it does not fit, up to JAC_PLAN_ATTEMPTS
-compiles; MemoryError (skipped:oom) when K = 1 does not fit, without a compile when the K = 1 estimate exceeds
-JAC_EARLY_OOM x the budget. The plan is in provenance()["jac"] and memory()["jac"].
-
-Variants and options (run --variant mjx=default,triton; run --opt mjx.<key>=<value>):
-  default       XLA's default GPU flags
-  triton        xla_triton=True: XLA_FLAGS gets --xla_gpu_triton_gemm_any=true, set in the worker process before
-                JAX is imported (this module imports JAX only in setup / check_env); the number of Triton GEMM
-                fusions in each compiled executable is recorded (XLA's Triton GEMM emitter needs an Ampere or
-                newer GPU: the count is 0 on a V100, sm_70).
-  jac_chunk     None (default: the plan above) or an int in 1..2 nv + nu (no memory check)
-  jac_mem_frac  0.85 (default): the share of the largest allocation the allocator can serve that a jac executable
-                may plan for
-  preallocate   None (default: the worker's XLA_PYTHON_CLIENT_PREALLOCATE, which the driver sets to false) or a
-                bool: XLA_PYTHON_CLIENT_PREALLOCATE for this worker, set before JAX is imported. JAX's own default is
-                true (one region of 75 % of the device memory up front); with false the allocator grows by regions it
-                keeps, so a large Jacobian may find less contiguous memory after the forward ran (the plan accounts
-                for it; on a 16 GB GPU that limits the chunk at 4096 worlds)
-  diagnostics   True (default): after the timed ops, run a second, untimed executable of the same control step that
-                also counts the contacts (dist < includemargin, MuJoCo C's criterion) and the constraint rows with a
-                non-zero Jacobian row per substep (diagnostics()); False skips it (no ncon / nefc)
-
-  python -m benchmarks.bench run --engines mjx --quick --out runs/bench/test_mjx/
-  python -m benchmarks.bench run --engines mjx --variant mjx=default,triton --nworld 4096 --ops fwd --out ...
-  python -m benchmarks.bench.adapters.mjx_check --out runs/bench/test_mjx/check.json   # accuracy self-check
-
-Environment (worker): XLA_PYTHON_CLIENT_PREALLOCATE=false (the driver's default) so memory figures are the
-allocator's own; XLA_FLAGS is read once, at JAX's backend start-up (the default variant refuses an XLA_FLAGS that
-already sets xla_gpu_triton_gemm_any, so the default row is never silently the Triton one). MJX runs in float32 (JAX's
-default); JAX_ENABLE_X64=1 would make it float64 and is recorded in provenance().
-"""
+mjlab G1 with per-world domain randomization) and Track B (Menagerie unitree_g1/scene_mjx.xml, native options)."""
 
 import importlib.metadata
 import math
@@ -81,16 +15,13 @@ from benchmarks.bench.adapters import base
 
 TRITON_FLAG = "--xla_gpu_triton_gemm_any=true"
 TRITON_KEY = "--xla_gpu_triton_gemm_any"
-JAC_TARGET_ROWS = 1024  # world-directions per lax.map step beyond which a larger chunk only costs memory (V100)
-JAC_CHUNK_MIN = 9  # ... but at least this many directions per step, to amortise the primal each step recomputes
-JAC_MEM_PRIMAL = 2.1  # per-world jac temp memory, in units of the compiled forward's temp bytes per world: primal
-JAC_MEM_PER_DIRECTION = 1.0  # ... and per direction of a chunk
+JAC_TARGET_ROWS = 1024
+JAC_CHUNK_MIN = 9
+JAC_MEM_PRIMAL = 2.1
+JAC_MEM_PER_DIRECTION = 1.0
 JAC_PLAN_ATTEMPTS = 4
-JAC_EARLY_OOM = 1.5  # an estimate above 1.5 x the budget at K = 1 is out of memory without a confirming compile
+JAC_EARLY_OOM = 1.5
 REVERSE_PROBE_WORLDS = 2
-# In-process caches of untimed work shared by the fresh adapters of one worker process (the state subsets of a unit
-# run one after another in it): the reverse-mode attempt (a property of the model and options, not of the states) and
-# the diagnostics executable (the states are its arguments). The timed executables are never cached.
 _REVERSE_CACHE = {}
 _DIAG_CACHE = {}
 
@@ -106,8 +37,6 @@ MJX_VERSION = _version("mujoco-mjx") or "?"
 
 
 def _xla_flags(triton):
-    """Put the Triton GEMM flag into XLA_FLAGS for the triton variant (before JAX is imported); refuse a conflicting
-    setting. Returns the effective XLA_FLAGS."""
     flags = os.environ.get("XLA_FLAGS", "")
     words = flags.split()
     has_key = any(w.split("=")[0] == TRITON_KEY for w in words)
@@ -127,8 +56,6 @@ def _xla_flags(triton):
 
 
 def _set_before_jax(name, value):
-    """Set an environment variable JAX reads when its backend starts; refuse when JAX is already imported with
-    another value."""
     if os.environ.get(name) == value:
         return
     if "jax" in sys.modules:
@@ -174,14 +101,14 @@ def tangent_map(m, qpos):
 def _count_triton(compiled):
     try:
         return compiled.as_text().count("__triton")
-    except Exception:  # noqa: BLE001  (text not available for this executable)
+    except Exception:
         return None
 
 
 def _mem_analysis(compiled):
     try:
         ma = compiled.memory_analysis()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
     if ma is None:
         return None
@@ -190,7 +117,6 @@ def _mem_analysis(compiled):
 
 
 def _first_lines(text, n=3):
-    """An exception text without JAX's traceback-filtering note."""
     lines = [ln for ln in str(text).splitlines() if ln.strip()]
     out = []
     for ln in lines:
@@ -208,7 +134,6 @@ class MjxAdapter(base.Adapter):
     tracks = ("A", "B")
     variants = {"default": {}, "triton": {"xla_triton": True}}
 
-    # ------------------------------------------------------------------ setup
     def setup(self, problem, states, nworld, iterations, xla_triton=False, jac_chunk=None, jac_mem_frac=0.85,
               diagnostics=True, preallocate=None):
         self.triton = _bool(xla_triton)
@@ -255,7 +180,6 @@ class MjxAdapter(base.Adapter):
         self.static = dict(ncon=int(self.d0._impl.contact.dist.shape[0]), nefc=int(self.d0._impl.efc_J.shape[0]))
         build_s = time.perf_counter() - t0
 
-        # inputs resident on the device (the stored float32 values; the batched model's DR fields)
         t0 = time.perf_counter()
         s = states.inputs()
         self.qpos_host = s["qpos"].astype(np.float64)
@@ -270,7 +194,6 @@ class MjxAdapter(base.Adapter):
         jax.block_until_ready((self.state, self.model))
         load_s = time.perf_counter() - t0
 
-        # the forward, AOT
         self.args = (self.model,) + self.state
         t0 = time.perf_counter()
         lowered = jax.jit(self._batched(self._step_world)).lower(*self.args)
@@ -282,7 +205,6 @@ class MjxAdapter(base.Adapter):
         self.mem = dict(fwd=_mem_analysis(self.fwd_exec))
         self.triton_fusions = dict(fwd=_count_triton(self.fwd_exec))
 
-        # reverse mode: attempted once, tracing only
         t0 = time.perf_counter()
         key = self._key()
         if key not in _REVERSE_CACHE:
@@ -303,14 +225,12 @@ class MjxAdapter(base.Adapter):
         return (p.id, p.model, self.iterations, self.substeps, self.xla_flags, str(self.dtype)) + extra
 
     def _step_world(self, m, qpos, qvel, warm, ctrl):
-        """One control step of one world: `substeps` mjx.step with ctrl held, every state output."""
         jax, mjx = self.jax, self.mjx
         d = self.d0.replace(qpos=qpos, qvel=qvel, qacc_warmstart=warm, ctrl=ctrl)
         d = jax.lax.scan(lambda d, _: (mjx.step(m, d), None), d, None, length=self.substeps)[0]
         return d.qpos, d.qvel, d.qacc_warmstart
 
     def _batched(self, f, extra_axes=()):
-        """jax.vmap of f(m, qpos, qvel, warm, ctrl, *extra) over worlds, the model batched on its DR fields only."""
         return self.jax.vmap(f, in_axes=(self.m_axes, 0, 0, 0, 0) + tuple(extra_axes))
 
     def _slice_model(self, a, b):
@@ -320,8 +240,6 @@ class MjxAdapter(base.Adapter):
                                         "body_ipos": self.model.body_ipos[a:b]})
 
     def _reverse_probe(self):
-        """jax.vjp of the control step (outputs qpos', qvel'; inputs qpos, qvel, ctrl) on the first worlds, traced with
-        jax.eval_shape; None when it traces, else {stage, type, message}."""
         jax = self.jax
         k = min(REVERSE_PROBE_WORLDS, self.nworld)
         mk = self._slice_model(0, k)
@@ -341,11 +259,10 @@ class MjxAdapter(base.Adapter):
 
         try:
             jax.eval_shape(pulled, q, v, u)
-        except Exception as e:  # noqa: BLE001  (the error is the result)
+        except Exception as e:
             return dict(stage=stage[0], type=type(e).__name__, message=_first_lines(e))
         return None
 
-    # ------------------------------------------------------------------ ops
     def _fwd(self):
         self._last = self.fwd_exec(*self.args)
         return self._last
@@ -385,8 +302,6 @@ class MjxAdapter(base.Adapter):
     def timing_hints(self, op):
         if op != "jac":
             return {}
-        # one Jacobian is 2 nv + nu tangent passes plus a primal per chunk (seconds per call): one call per round,
-        # 3 rounds at large batches, as the MuJoCo C FD cells
         h = dict(reps=1, warmup_calls=1)
         if self.nworld >= 1024:
             h["rounds"] = 3
@@ -396,11 +311,7 @@ class MjxAdapter(base.Adapter):
         if self._last is not None:
             self.jax.block_until_ready(self._last)
 
-    # ------------------------------------------------------------------ the forward-mode Jacobian
     def _jac_fn(self, chunk):
-        """f(m, qpos, qvel, warm, ctrl, Tq) -> (B, nq + nv, 2 nv + nu): vmap over worlds of lax.map(batch_size=chunk)
-        over the input directions of jax.jvp of the control step. The directions are padded with zero directions to a
-        multiple of chunk (fewer than one per lax.map step), so lax.map runs whole chunks only (one loop body)."""
         jax, jnp = self.jax, self.jnp
         nq, nv, nu, ndir = self.nq, self.nv, self.nu, self.ndir
         npad = math.ceil(ndir / chunk) * chunk - ndir
@@ -416,14 +327,13 @@ class MjxAdapter(base.Adapter):
             dv = jnp.concatenate([jnp.zeros((nv, nv), dt), jnp.eye(nv, dtype=dt), jnp.zeros((nu + npad, nv), dt)])
             du = jnp.concatenate([jnp.zeros((2 * nv, nu), dt), jnp.eye(nu, dtype=dt), jnp.zeros((npad, nu), dt)])
             cols = jax.lax.map(lambda t: jax.jvp(f, (q, v, u), t)[1], (dq, dv, du), batch_size=chunk)
-            return cols[:ndir].T  # (nq + nv, ndir)
+            return cols[:ndir].T
 
         return jax.jit(self._batched(world, extra_axes=(0,)))
 
     def _jac_args(self, idx):
-        """The jac executable's arguments for the worlds idx (an index array; repeats allowed, e.g. padding)."""
         idx = np.asarray(idx)
-        T = tangent_map(self.m, self.qpos_host[idx])  # (B, nq, nv)
+        T = tangent_map(self.m, self.qpos_host[idx])
         Tq = self.jax.device_put(np.ascontiguousarray(np.transpose(T, (0, 2, 1))).astype(self.dtype), self.dev)
         if np.array_equal(idx, np.arange(self.nworld)):
             return self.args + (Tq,)
@@ -434,7 +344,6 @@ class MjxAdapter(base.Adapter):
         return (model,) + tuple(x[j] for x in self.state) + (Tq,)
 
     def _plan_jac(self, idx):
-        """Compile the jac executable for the worlds idx: (executable, plan, args, {lower_s, compile_s})."""
         B = len(idx)
         args = self._jac_args(idx)
         free, stats = self._free_contiguous()
@@ -454,7 +363,7 @@ class MjxAdapter(base.Adapter):
             plan.update(rule="min(memory estimate, speed cap)", estimate_chunk=k_mem, speed_cap=cap,
                         estimate_max_worlds_chunk1=int(budget / (fwd_pw * (JAC_MEM_PRIMAL + JAC_MEM_PER_DIRECTION))))
             est1 = B * fwd_pw * (JAC_MEM_PRIMAL + JAC_MEM_PER_DIRECTION)
-            if est1 > JAC_EARLY_OOM * budget:  # clearly too large even at K = 1: no compile to confirm it
+            if est1 > JAC_EARLY_OOM * budget:
                 raise MemoryError(f"mjx: the forward-mode Jacobian of {B} worlds does not fit: the estimate at chunk 1 "
                                   f"is {est1 / 2**20:.0f} MiB, {budget / 2**20:.0f} MiB available "
                                   f"({self.jac_mem_frac:.2f} x the largest allocation JAX's allocator can serve; not "
@@ -473,8 +382,6 @@ class MjxAdapter(base.Adapter):
             times["compile_s"] += t2 - t1
             ma = _mem_analysis(ex)
             need = None if ma is None else ma["temp_bytes"] + ma["output_bytes"]
-            # XLA's autotuning allocates through the same allocator while compiling: with a growing pool
-            # (XLA_PYTHON_CLIENT_PREALLOCATE=false) what is left for the temp buffer is known only now
             free_after, st_after = self._free_contiguous()
             if budget is not None and free_after is not None:
                 budget = min(budget, self.jac_mem_frac * free_after)
@@ -495,32 +402,25 @@ class MjxAdapter(base.Adapter):
                           f"({self.jac_mem_frac:.2f} x the largest allocation JAX's allocator can serve)")
 
     def _free_contiguous(self):
-        """(bytes, allocator stats): the largest single allocation JAX's allocator can still serve (an executable's
-        temp memory is one buffer): the largest free block of its pool or a new region within bytes_limit and the
-        device's free memory (with XLA_PYTHON_CLIENT_PREALLOCATE=false the pool grows by regions that it keeps, so
-        after the forward's compile and run it can hold about twice the forward's peak)."""
         stats = self.dev.memory_stats() or {}
         keep = ("bytes_limit", "bytes_in_use", "pool_bytes", "largest_free_block_bytes", "peak_bytes_in_use")
         st = {k: stats.get(k) for k in keep}
         smi = prov._smi(("memory.free",)) or {}
         mib = prov._num(smi.get("memory.free"))
-        st["device_free_bytes"] = None if mib is None else int(mib * 2**20)  # all processes (nvidia-smi)
+        st["device_free_bytes"] = None if mib is None else int(mib * 2**20)
         limit = stats.get("bytes_limit")
         if limit is None:
             return None, st
         pool = stats.get("pool_bytes")
         new_region = limit - (pool if pool is not None else stats.get("bytes_in_use", 0))
-        if st["device_free_bytes"] is not None:  # another process on the GPU (not exclusive) takes its share
+        if st["device_free_bytes"] is not None:
             new_region = min(new_region, st["device_free_bytes"])
         return max(0, stats.get("largest_free_block_bytes") or 0, new_region), st
 
     def _chunk_cap(self, B):
-        """The largest chunk worth using at B worlds: B x chunk ~ JAC_TARGET_ROWS world-directions per lax.map step
-        (larger steps only cost memory), at least JAC_CHUNK_MIN, at most all directions."""
         return max(JAC_CHUNK_MIN, min(self.ndir, math.ceil(JAC_TARGET_ROWS / B)))
 
     def _balanced(self, k):
-        """The smallest chunk with the same number of lax.map steps as k (99 directions: 33 -> 33, 30 -> 25)."""
         n = math.ceil(self.ndir / max(1, k))
         return math.ceil(self.ndir / n)
 
@@ -531,7 +431,7 @@ class MjxAdapter(base.Adapter):
             self._J = np.asarray(self.jac_exec(*self.jac_args), np.float64)
             return self._J
         n = 1
-        while True:  # untimed: slices of the worlds when the whole batch does not fit
+        while True:
             size = math.ceil(self.nworld / n)
             try:
                 ex, plan, args, t = self._plan_jac(np.arange(size))
@@ -542,7 +442,7 @@ class MjxAdapter(base.Adapter):
                 n *= 2
         parts = []
         for a in range(0, self.nworld, size):
-            if a:  # the last slice is padded with repeats of the last world
+            if a:
                 args = self._jac_args(np.minimum(np.arange(a, a + size), self.nworld - 1))
             parts.append(np.asarray(ex(*args), np.float64)[:min(size, self.nworld - a)])
         self.jac_plan_dump = dict(plan, slices=len(parts), slice_worlds=size, **t)
@@ -552,14 +452,11 @@ class MjxAdapter(base.Adapter):
     def gradient(self, cot_qpos, cot_qvel):
         return base.vjp_from_jacobian(self.jacobian(), cot_qpos, cot_qvel)
 
-    # ------------------------------------------------------------------ results
     def outputs(self):
         o = self.fwd_exec(*self.args)
         return {k: np.asarray(v, np.float64) for k, v in zip(("qpos", "qvel", "qacc_warmstart"), o)}
 
     def _diag_fn(self):
-        """The control step that also returns, per substep, the contacts within their margin and the constraint rows
-        with a non-zero Jacobian row (the rows MuJoCo C would instantiate)."""
         jax, jnp, mjx = self.jax, self.jnp, self.mjx
 
         def world(m, qpos, qvel, warm, ctrl):
@@ -591,7 +488,7 @@ class MjxAdapter(base.Adapter):
             if key not in _DIAG_CACHE:
                 _DIAG_CACHE[key] = self._diag_fn().lower(*self.args).compile()
             ex = _DIAG_CACHE[key]
-            ncon, nefc = (np.asarray(x) for x in ex(*self.args))  # (B, substeps)
+            ncon, nefc = (np.asarray(x) for x in ex(*self.args))
             self._diag = dict(ncon=ncon, nefc=nefc, s=time.perf_counter() - t0)
         ncon, nefc = self._diag["ncon"].max(1), self._diag["nefc"].max(1)
         extra.update(counts="per world, the largest count over the substeps", diag_s=round(self._diag["s"], 3))
@@ -654,7 +551,7 @@ class MjxAdapter(base.Adapter):
     @classmethod
     def check_env(cls):
         import jax
-        from mujoco import mjx  # noqa: F401
+        from mujoco import mjx
         backend = jax.default_backend()
         if backend != "gpu":
             raise RuntimeError(f"JAX's default backend is {backend!r}, not 'gpu' (JAX_PLATFORMS="

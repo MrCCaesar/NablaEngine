@@ -1,28 +1,5 @@
 """Every field of MuJoCo's MjModel (mujoco 3.17), classified by what the engine does with it: the completeness proof
-behind the model validation (nablaengine.model.capability).
-
-Kinds:
-  consumed    read by the engine's code generation, constants or interface (nablaengine.g1_engine, jax_ffi); its
-              value is used, under the checks of the code given (e.g. jnt_margin: H20 requires 0)
-  checked     the engine does not model it; the capability check of the code given rejects the values it cannot
-              represent (e.g. opt.integrator: H23, implicitfast only; geom_contype: H15, no filter contacts)
-  default     the engine does not model it and has no check of its own: every row must equal MuJoCo's compile default
-              (default_rows(), from a probe model compiled by this MuJoCo), else an error under the code given. This is
-              where a physics field that a MuJoCo release adds lands first (actuator_damping, *_dampingpoly,
-              actuator_delay of 3.17), so a model that sets it is rejected instead of silently simulated without it
-  derived     computed by MuJoCo's compiler from fields classified elsewhere (addresses, sparsity, bounding volumes,
-              qpos0 inertias): no independent information
-  irrelevant  no effect on the engine's outputs (rendering, names, sensors, keyframes, user data, solver settings of
-              MuJoCo's own paths the engine does not take); the note says why
-
-classify(name) gives the Field of a name ("opt.<x>", "stat.<x>" for the option and statistics structs, "vis" for the
-whole visual struct); fields of element types the engine rejects as a whole (flexes, tendons, equality constraints,
-plugins: H25 checks their counts) and of purely visual / bookkeeping element types (cameras, lights, materials,
-textures, meshes, skins, height fields, sensors, sites, keyframes, names, custom data) are classified by prefix
-(PREFIXES). model_fields(m) lists the names of an MjModel; unclassified(m) those classify() does not know: a test
-(scripts/capability_check.py, section fields) and the checker's code F0 fail on any, so a MuJoCo upgrade that adds a
-field forces a decision.
-"""
+behind the model validation (nablaengine.model.capability)."""
 
 from dataclasses import dataclass
 from functools import lru_cache
@@ -50,10 +27,8 @@ FILTER = ("parameter of contype / conaffinity contacts (MuJoCo's mixing rules); 
           "which carry their own (H15 rejects filter contacts)")
 
 FIELDS = {
-    # ---- generalized coordinates
     "qpos0": _f("consumed", "H8", "the hinges' must be 0 (the engine's angle is qpos)"),
     "qpos_spring": _f("irrelevant", "H22", "spring reference poses; every stiffness is default (0, H22)"),
-    # ---- bodies
     "body_parentid": _f("consumed", "H9"), "body_rootid": _f("consumed", "H6"),
     "body_weldid": _f("derived", "H7"), "body_mocapid": _f("derived", "H25"),
     "body_jntnum": _f("consumed", "H7"), "body_jntadr": _f("consumed", "H7"),
@@ -68,7 +43,6 @@ FIELDS = {
     "body_plugin": _f("default", "H25", "body plugins"),
     "body_contype": _f("derived", "H15"), "body_conaffinity": _f("derived", "H15"),
     "body_bvhadr": _f("derived"), "body_bvhnum": _f("derived"),
-    # ---- joints
     "jnt_type": _f("consumed", "H7"), "jnt_qposadr": _f("consumed"), "jnt_dofadr": _f("consumed", "H11a"),
     "jnt_bodyid": _f("derived"), "jnt_actuatorid": _f("derived", "H11d", "the actuator whose damping / armature acts "
                                                       "on the joint (both default-checked)"),
@@ -79,7 +53,6 @@ FIELDS = {
     "jnt_axis": _f("consumed"), "jnt_stiffness": _f("default", "H22", "joint springs"),
     "jnt_stiffnesspoly": _f("default", "H22", "joint springs (higher order)"), "jnt_range": _f("consumed"),
     "jnt_margin": _f("consumed", "H20"), "jnt_user": _f("irrelevant", note=USER),
-    # ---- dofs
     "dof_bodyid": _f("consumed", "H7b"), "dof_jntid": _f("derived"), "dof_parentid": _f("derived"),
     "dof_treeid": _f("derived"), "dof_Madr": _f("derived"), "dof_simplenum": _f("derived"),
     "dof_solref": _f("consumed", "H19"), "dof_solimp": _f("consumed", "H20"),
@@ -87,11 +60,9 @@ FIELDS = {
     "dof_damping": _f("consumed", None, "joint damping (model_hooks.py: c_damp)"),
     "dof_dampingpoly": _f("default", "H22", "joint damping (higher order)"),
     "dof_invweight0": _f("consumed"), "dof_M0": _f("derived"), "dof_length": _f("derived"),
-    # ---- kinematic trees
     "tree_bodyadr": _f("derived", "H6"), "tree_bodynum": _f("derived", "H6"), "tree_dofadr": _f("derived"),
     "tree_dofnum": _f("derived"),
     "tree_sleep_policy": _f("irrelevant", "H24b", "island sleeping (mjENBL_SLEEP is rejected, H24b)"),
-    # ---- geoms
     "geom_type": _f("consumed", "H14a"), "geom_contype": _f("checked", "H15"),
     "geom_conaffinity": _f("checked", "H15"), "geom_condim": _f("irrelevant", "H15", FILTER),
     "geom_bodyid": _f("consumed"), "geom_dataid": _f("derived", "H14a", "mesh / height field of a geom (the "
@@ -107,7 +78,6 @@ FIELDS = {
     "geom_adhesion": _f("default", "H16", "contact adhesion"),
     "geom_fluid": _f("default", "H22", "the ellipsoid fluid model"), "geom_user": _f("irrelevant", note=USER),
     "geom_rgba": _f("irrelevant", note=VISUAL),
-    # ---- explicit contact pairs
     "pair_dim": _f("consumed", "H17"), "pair_geom1": _f("consumed", "H14a"), "pair_geom2": _f("consumed", "H14a"),
     "pair_signature": _f("derived"), "pair_solref": _f("consumed", "H19"),
     "pair_solreffriction": _f("default", "H16", "a separate solref of the friction rows"),
@@ -116,7 +86,6 @@ FIELDS = {
     "pair_friction": _f("consumed", "H16", "tangential friction; spin and rolling unused at condim 1 / 3 (H17)"),
     "exclude_signature": _f("irrelevant", "H15", "excluded body pairs of contype / conaffinity contacts (H15 "
                                                   "applies them)"),
-    # ---- actuators
     "actuator_trntype": _f("consumed", "H11a"), "actuator_dyntype": _f("checked", "H11b"),
     "actuator_gaintype": _f("checked", "H11b"), "actuator_biastype": _f("consumed", "H11a"),
     "actuator_ctrladr": _f("checked", "H11a"), "actuator_ctrlnum": _f("checked", "H11a"),
@@ -145,19 +114,15 @@ FIELDS = {
     "actuator_ctrllimited": _f("checked", "H11c"), "actuator_ctrlrange": _f("checked", "H11c"),
     "actuator_gear": _f("consumed", "H11a"), "actuator_acc0": _f("derived"), "actuator_length0": _f("derived"),
     "actuator_lengthrange": _f("derived", note="computed for muscles; no muscles (H11b)"),
-    # ---- flags (derived from the arrays above)
     "flg_gravcomp": _f("derived", "H22"), "flg_surfacevel": _f("derived", "H16"), "flg_adhesion": _f("derived", "H16"),
-    # ---- names, paths, signatures
     "names": _f("consumed", "H13", "the COM-offset body's name lookup"),
     "names_map": _f("derived"), "paths": _f("irrelevant", note="asset paths"),
     "signature": _f("irrelevant", note="the compiler's signature"),
-    # ---- sparse structures (derived from the tree)
     "B_rownnz": _f("derived"), "B_rowadr": _f("derived"), "B_colind": _f("derived"),
     "M_rownnz": _f("derived"), "M_rowadr": _f("derived"), "M_colind": _f("derived"),
     "D_rownnz": _f("derived"), "D_rowadr": _f("derived"), "D_diag": _f("derived"), "D_colind": _f("derived"),
     "mapM2M": _f("derived"), "mapM2D": _f("derived"), "mapD2M": _f("derived"),
     "plugin": _f("checked", "H25", "plugin instances (nplugin = 0)"),
-    # ---- options (mjOption)
     "opt.timestep": _f("consumed", "I1", "baked into the constants"),
     "opt.impratio": _f("consumed"), "opt.tolerance": _f("consumed", note="the Newton tolerance (scaled by "
                                                                           "stat.meaninertia, as MuJoCo)"),
@@ -186,14 +151,13 @@ FIELDS = {
     "opt.disableactuator": _f("checked", "H24b"),
     "opt.sdf_initpoints": _f("irrelevant", "H14a", "SDF collisions: none"),
     "opt.sdf_iterations": _f("irrelevant", "H14a", "SDF collisions: none"),
-    # ---- statistics (mjStatistic) and visual options
     "stat.meaninertia": _f("consumed", note="scales the Newton tolerance"),
     "stat.meanmass": _f("irrelevant", note=VISUAL), "stat.meansize": _f("irrelevant", note=VISUAL),
     "stat.extent": _f("irrelevant", note=VISUAL), "stat.center": _f("irrelevant", note=VISUAL),
     "vis": _f("irrelevant", note=VISUAL),
 }
 
-SIZES = {  # mjModel's sizes: consumed / checked as their arrays, derived counts, or of irrelevant element types
+SIZES = {
     "nq": _f("consumed"), "nv": _f("consumed", "H3"), "nu": _f("consumed", "H11a"),
     "nactuator": _f("checked", "H11a"), "nout": _f("checked", "H11a"), "na": _f("checked", "H11b"),
     "nbody": _f("consumed", "H1"), "njnt": _f("consumed"), "ngeom": _f("consumed"), "npair": _f("consumed", "H26b"),
@@ -219,14 +183,20 @@ SIZES = {  # mjModel's sizes: consumed / checked as their arrays, derived counts
         "narena", "nbuffer", "nemax", "njmax", "nconmax")},
 }
 
-PREFIXES = (  # (prefix, Field) for element types classified as a whole; checked after FIELDS and SIZES
+PREFIXES = (
     ("flex_", _f("checked", "H25", "flexes (nflex = 0)")),
     ("flexedge_", _f("checked", "H25", "flexes (nflex = 0)")),
     ("flexvert_", _f("checked", "H25", "flexes (nflex = 0)")),
     ("efm0_", _f("checked", "H25", "flexes (nflex = 0)")), ("efmC_", _f("checked", "H25", "flexes (nflex = 0)")),
-    ("eq_", _f("checked", "H25", "equality constraints (neq = 0)")),
-    ("tendon_", _f("checked", "H25", "tendons (ntendon = 0)")), ("ten_J_", _f("checked", "H25", "tendons")),
-    ("wrap_", _f("checked", "H25", "tendon wraps (nwrap = 0)")),
+    ("eq_", _f("checked", "H25", "equality constraints (neq = 0; the forest engine reads eq_type, obj1id, obj2id, "
+                                 "objtype, data, solref, solimp, active0 of the joint and connect equalities: H25e, "
+                                 "forest_engine.equality)")),
+    ("tendon_", _f("checked", "H25", "tendons (ntendon = 0; the forest engine reads the fixed tendons' adr, num, "
+                                     "limited, range, margin, solref_lim, solimp_lim, invweight0, length0, stiffness, "
+                                     "lengthspring, damping, armature, frictionloss: H25t, forest_engine.tendon)")),
+    ("ten_J_", _f("checked", "H25", "tendons")),
+    ("wrap_", _f("checked", "H25", "tendon wraps (nwrap = 0; the forest engine reads the fixed tendons' wrap_type, "
+                                   "objid, prm: H25 / H25t)")),
     ("plugin_", _f("checked", "H25", "plugin instances (nplugin = 0)")),
     ("bvh_", _f("derived", note="bounding volume hierarchy (MuJoCo's collision acceleration)")),
     ("oct_", _f("irrelevant", note="mesh octrees (SDF collisions: none)")),
@@ -239,7 +209,8 @@ PREFIXES = (  # (prefix, Field) for element types classified as a whole; checked
     ("sensor_", _f("irrelevant", note="sensors: the engine computes none (they do not act on the dynamics)")),
     ("key_", _f("irrelevant", note="keyframes: the engine takes its states as inputs")),
     ("name_", _f("irrelevant", note="name addresses")),
-    ("numeric_", _f("irrelevant", note=USER)), ("text_", _f("irrelevant", note=USER)),
+    ("numeric_", _f("irrelevant", note=USER + "; except the custom numeric nablaengine_geom_invweight, the per-geom "
+                    "contact inverse weights (nablaengine.model.invweight)")), ("text_", _f("irrelevant", note=USER)),
     ("tuple_", _f("irrelevant", note=USER)),
 )
 
@@ -265,7 +236,7 @@ def model_fields(m):
             continue
         try:
             v = getattr(m, k)
-        except Exception:  # noqa: BLE001  (an accessor MuJoCo does not implement for this model)
+        except Exception:
             continue
         if not callable(v):
             out.append(k)
@@ -285,8 +256,6 @@ def default_fields():
     return sorted(k for k, f in FIELDS.items() if f.kind == "default")
 
 
-# The probe model for default_rows(): one element of each kind the default fields belong to, nothing set beyond what
-# the element needs (row indices in PROBE_ROW)
 PROBE_XML = """
 <mujoco>
   <worldbody>

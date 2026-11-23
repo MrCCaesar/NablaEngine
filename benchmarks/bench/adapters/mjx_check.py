@@ -145,7 +145,7 @@ def direct_jvp_columns(adapter, cols):
     """Columns cols of the Jacobian by a direct, unchunked jax.vmap over worlds of jax.jvp (one direction each)."""
     jax, jnp = adapter.jax, adapter.jnp
     from benchmarks.bench.adapters import mjx as A
-    T = A.tangent_map(adapter.m, adapter.qpos_host)  # (B, nq, nv)
+    T = A.tangent_map(adapter.m, adapter.qpos_host)
     nq, nv, nu = adapter.nq, adapter.nv, adapter.nu
     dt = adapter.dtype
     step = adapter._step_world
@@ -167,7 +167,7 @@ def direct_jvp_columns(adapter, cols):
             tv[:, j - nv] = 1
         else:
             tu[:, j - 2 * nv] = 1
-        out[j] = np.asarray(fn(*adapter.args, tq, tv, tu), np.float64)  # (B, nq + nv)
+        out[j] = np.asarray(fn(*adapter.args, tq, tv, tu), np.float64)
     return out
 
 
@@ -185,14 +185,12 @@ def run(a):
     ok = True
     s = states_at(corpus, idx)
 
-    # 1. tangent map
     m0 = P.load_model(prob, iterations[0])
     worst = check_tangent_map(m0, s.qpos.astype(np.float64))
     res["tangent_map_max_rel"] = worst
     res["gates"]["tangent_map"] = worst < 1e-7
     print(f"tangent map vs mj_integratePos difference quotient: max rel {worst:.2e}", flush=True)
 
-    # G0 states for the Jacobian
     ex = corpus.extra
     if all(k in ex for k in G0_FALSE) and "label_ncon_max" in ex:
         g0 = np.ones(corpus.n, bool)
@@ -210,7 +208,6 @@ def run(a):
         key = f"it{'native' if it is None else it}"
         R = dict(iterations=it)
         mjc = MjcStep(prob, it)
-        # 2. forward
         ad = A.MjxAdapter()
         t0 = time.perf_counter()
         R["setup"] = ad.setup(prob, s, len(idx), it, **a.opts)
@@ -226,7 +223,7 @@ def run(a):
         for w in range(len(idx)):
             dq = np.zeros(mjc.m.nv)
             mjc.mujoco.mj_differentiatePos(mjc.m, dq, 1.0, rq[w], o["qpos"][w])
-            tan.append(np.linalg.norm(dq[3:]))  # both tracks: the free joint first
+            tan.append(np.linalg.norm(dq[3:]))
         R["forward"] = dict(finite=fin, vs_mjc_same_options_qpos=_stats(rel_err(o["qpos"], rq)),
                             vs_mjc_same_options_qvel=_stats(rel_err(o["qvel"], rv)),
                             qpos_tangent_without_base_translation=_stats(tan),
@@ -241,7 +238,6 @@ def run(a):
         ad.close()
         del ad
 
-        # 3. Jacobian on G0 states
         if len(jidx):
             sj = states_at(corpus, jidx)
             ad = A.MjxAdapter()
@@ -251,8 +247,8 @@ def run(a):
             jac_s = time.perf_counter() - t0
             cols = list(range(ad.ndir))
             direct = direct_jvp_columns(ad, cols)
-            D = np.stack([direct[j] for j in cols], 2)  # (B, nq + nv, ndir)
-            cr = np.linalg.norm(J - D, axis=1) / np.maximum(np.linalg.norm(D, axis=1), 1e-30)  # (B, ndir)
+            D = np.stack([direct[j] for j in cols], 2)
+            cr = np.linalg.norm(J - D, axis=1) / np.maximum(np.linalg.norm(D, axis=1), 1e-30)
             jvp_stats = dict(_stats(cr.ravel()), worst=[int(x) for x in np.unravel_index(cr.argmax(), cr.shape)])
             fd = []
             for w in range(len(jidx)):

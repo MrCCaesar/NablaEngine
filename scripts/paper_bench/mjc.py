@@ -1,26 +1,5 @@
 """Part `mjc`: MuJoCo C 3.17 (CPU, float64) per control step on the mjlab G1: forward, and its native derivative tooling
-(finite differences, mjd_transitionFD).
-
-Model: fixtures/mjlab/g1_train.mjb, iterations 10, tolerance 1e-8, ls_iterations 8, sensors disabled; per-world DR
-(foot-floor pair friction [:2], torso body_ipos += com; no mj_setConst, as MuJoCo Warp). Inputs: the corpus states
-(float32 rounded, as every engine gets them), qacc_warmstart included.
-  forward       mujoco.batch.Batch (C thread pool), nthread = the allocated cores (common.cpu_threads():
-                len(os.sched_getaffinity(0)), capped by the scheduler's CPU count when one is set;
-                PAPER_BENCH_MJC_THREADS overrides; never os.cpu_count()), --nworld worlds, Batch.step(nstep=4); the
-                state load is outside the timed region
-  forward_1t    the same with nthread = 1 at --single-B worlds (64)
-  fd_forward / fd_centered  the Jacobian d(qpos' (qpos form), qvel') / d(qpos tangent, qvel, ctrl) (71 x 99) by
-                mjd_transitionFD per substep (eps --eps, forward / centered differences, stage skipping), chained
-                A4 A3 A2 A1 and sum_k A4..A_{k+1} B_k, the output tangent mapped to qpos form; worlds split over
-                Python threads (the binding releases the GIL inside the C calls), --fd-B worlds; per-world time and the
-                linear extrapolation to --nworld worlds (labelled as such); on the first corpus also measured at
-                --nworld worlds (--fd-full-B, N = 1 call per round, --fd-rounds kept rounds; fd_*_full) and with one
-                thread at --single-B worlds (fd_*_1t)
-Timing: warm-up (>= 5 calls and >= 1 s; FD: one call), then rounds of one call each (round 0 dropped); a CPU engine
-needs no synchronization.
-
-  PYTHONPATH= python scripts/paper_bench/mjc.py --out <dir>/mjc.json
-"""
+(finite differences, mjd_transitionFD)."""
 import argparse
 import copy
 import sys
@@ -29,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common as C  # noqa: E402
+import common as C
 
 NSUB = 4
 
@@ -171,14 +150,14 @@ def main():
                                                       note=f"linear extrapolation from B = {a.fd_B}, not measured")
                 cell[mode] = r
                 res.cell(key, cell)
-            if ci == 0:  # measured at the full size (N = 1, R = fd_rounds) and single-threaded at small B
+            if ci == 0:
                 for mode, centered in (("fd_forward", False), ("fd_centered", True)):
                     if a.fd_full_B:
                         cell[f"{mode}_full"] = fd_cell(s, min(a.fd_full_B, a.nworld), centered, T, fd_rounds)
                         res.cell(key, cell)
                     cell[f"{mode}_1t"] = fd_cell(s, a.single_B, centered, 1, fd_rounds)
                     res.cell(key, cell)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             res.error(key, e)
     pool.shutdown()
     return 1 if res.data["errors"] else 0
@@ -217,7 +196,7 @@ def chain_one(m, d, q, v, u, w, eps, centered):
     A, Bm = np.zeros((2 * nv, 2 * nv)), np.zeros((2 * nv, nu))
     Jx, Ju = np.eye(2 * nv), np.zeros((2 * nv, nu))
     for _ in range(NSUB):
-        mujoco.mjd_transitionFD(m, d, eps, centered, A, Bm, None, None)  # restores d's state
+        mujoco.mjd_transitionFD(m, d, eps, centered, A, Bm, None, None)
         Jx = A @ Jx
         Ju = A @ Ju + Bm
         mujoco.mj_step(m, d)

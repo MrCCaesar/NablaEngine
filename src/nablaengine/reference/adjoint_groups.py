@@ -1,33 +1,4 @@
-"""State groups of the adjoint checks, labelled from MuJoCo Warp's own forward, and per-group statistics.
-
-A control step's gradient is labelled by what happened in any of its substeps. mjw_substep(mjm, d_in, d_out) reads one
-substep of MuJoCo Warp (d_out: the Data that mjw.step(m, d_in, d_out) filled; its contacts, rows and acceleration belong
-to the input state d_in) into numpy: contacts with their (pair, slot) identity (step.py's collide_pair: plane-capsule end
-0 = +axis, 1 = -axis; capsule-capsule 0, or the candidate 0..3 of the parallel branch; else 0), rows, x_e = J a* - aref,
-clamp flags and solver iterations. labels(mjm, subs, ...) turns a list of them into one boolean per world and group:
-
-  G1 axis < 5 mm   min nu < 5 mm over sphere / capsule self contacts (nu = dist + r1 + r2, the centre or axis distance
-                   before the radii); G1_lt_1mm likewise
-  G2 contact flip  substep 0's contact set differs from the corpus's reference (nablaengine.fixtures.load_contacts,
-                   by pair counts), or
-                   a contact has |dist| < 1e-6 m: one of MuJoCo Warp's, or a pair of MuJoCo C's float64 collision at the
-                   substep's input state with a 1e-5 m margin (catches the contacts float32 rounding left out of this
-                   run but that another run, or the engine, may have)
-  G3 kink          a row with |x_e| / (|J_e a*| + |aref_e|) < 1e-4
-  G4 clamped       a dof's actuator force at or beyond +-frcrange (MuJoCo Warp's _actuator_lam); G4_near: the unclamped
-                   PD force within 2% of the bound
-  G5 limits        a joint-limit row
-  G6 self contact  a contact between two robot geoms
-  G7 basis switch  a self contact with ||n_y| - 0.5| < 0.02, or a plane-capsule contact with |beta - 0.5| < 0.02
-                   (beta = |capsule axis projected on the plane|)
-  G8 near parallel capsule-capsule with both segment parameters inside (-1, 1) and sin(angle) < 0.05
-  G9 not converged solver iterations == the limit
-  G0 normal        none of G1, G2, G3, G7, G9
-
-Subgroups (SUBGROUPS, group_mask): G4, G5, G6 intersected with G0 ('<G>&G0', as the gradient acceptance gates them), and
-G0 without G4 ('G0_normal&~G4_clamped': the finite-difference check's G0, where the clamp option DK_ADJ_CLAMP_KV cannot
-matter).
-"""
+"""State groups of the adjoint checks, labelled from MuJoCo Warp's own forward, and per-group statistics."""
 
 import mujoco
 import numpy as np
@@ -35,9 +6,9 @@ import numpy as np
 GROUPS = ("all", "G0_normal", "G1_axis_lt_5mm", "G1_axis_lt_1mm", "G2_contact_flip", "G3_kink", "G4_clamped",
           "G4_near_clamp", "G5_limits", "G6_self_contact", "G7_basis_switch", "G8_near_parallel", "G9_nonconv")
 OUTSIDE_G0 = ("G1_axis_lt_5mm", "G2_contact_flip", "G3_kink", "G7_basis_switch", "G9_nonconv")
-SUBGROUPS = ("G4_clamped&G0", "G5_limits&G0", "G6_self_contact&G0", "G0_normal&~G4_clamped")  # group_mask
-PLANE, SPHERE, CAPSULE = 0, 2, 3  # mujoco.mjtGeom
-LIMIT_JOINT = 3  # mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
+SUBGROUPS = ("G4_clamped&G0", "G5_limits&G0", "G6_self_contact&G0", "G0_normal&~G4_clamped")
+PLANE, SPHERE, CAPSULE = 0, 2, 3
+LIMIT_JOINT = 3
 
 
 def pair_table(mjm):
@@ -76,7 +47,7 @@ def mjw_substep(mjm, d_in, d_out, pairs=None):
     clamped, near_clamp (W, nu), clamp_margin (W,), niter."""
     pairs = pairs or pair_table(mjm)
     W = d_in.qpos.shape[0]
-    g = lambda a: a.numpy().copy()  # noqa: E731  (copies: on the CPU .numpy() is a view)
+    g = lambda a: a.numpy().copy()
     out = dict(qpos=g(d_in.qpos).astype(np.float64), qvel=g(d_in.qvel).astype(np.float64), ctrl=g(d_in.ctrl),
                qacc=g(d_out.qacc), nefc=g(d_out.nefc), niter=g(d_out.solver_niter))
     for k in ("type", "id", "pos", "vel", "D", "aref", "state", "force"):
@@ -89,7 +60,6 @@ def mjw_substep(mjm, d_in, d_out, pairs=None):
             a, n = rowadr[w, r], rownnz[w, r]
             jac_a[w, r] = Jv[w, 0, a:a + n] @ out["qacc"][w, colind[w, 0, a:a + n]]
     out["jac_a"] = jac_a
-    # actuators: MuJoCo Warp's clamp test on qfrc_actuator; the unclamped PD law for the 2% band
     jid = mjm.actuator_trnid[:, 0]
     dadr, qadr = mjm.jnt_dofadr[jid], mjm.jnt_qposadr[jid]
     lim = np.where(mjm.jnt_actfrclimited[jid], mjm.jnt_actfrcrange[jid, 1], np.inf)
@@ -99,8 +69,7 @@ def mjw_substep(mjm, d_in, d_out, pairs=None):
     raw = mjm.actuator_gainprm[:, 0] * (out["ctrl"] - out["qpos"][:, qadr]) + mjm.actuator_biasprm[:, 2] * out["qvel"][:, dadr]
     out["near_clamp"] = np.abs(np.abs(raw) - lim) < 0.02 * lim
     margin = np.where(np.isfinite(lim), np.abs(np.abs(raw) - lim) / np.where(np.isfinite(lim), lim, 1.0), np.inf)
-    out["clamp_margin"] = margin.min(axis=1)  # relative distance of the PD force to the nearest bound
-    # contacts
+    out["clamp_margin"] = margin.min(axis=1)
     n = int(d_out.nacon.numpy()[0])
     geom, wid, dist, pos, frame, dim, adr = (g(x)[:n] for x in (d_out.contact.geom, d_out.contact.worldid,
                                                                d_out.contact.dist, d_out.contact.pos, d_out.contact.frame,
@@ -128,7 +97,7 @@ def mjw_substep(mjm, d_in, d_out, pairs=None):
                 x1, x2, _, cand = capsule_segments(gx[w, g1], ax1, mjm.geom_size[g1, 1], gx[w, g2], ax2,
                                                      mjm.geom_size[g2, 1])
                 e["sin"] = float(np.linalg.norm(np.cross(ax1, ax2)))
-                if x1 is None:  # parallel branch: the candidate whose midpoint is nearest
+                if x1 is None:
                     mid = [0.5 * (gx[w, g1] + ax1 * mjm.geom_size[g1, 1] * a + gx[w, g2] + ax2 * mjm.geom_size[g2, 1] * b)
                            for a, b in cand]
                     e["slot"] = int(np.argmin([np.linalg.norm(p - e["pos"]) for p in mid]))
@@ -241,7 +210,7 @@ def group_mask(lab, name):
     if "&" not in name:
         return lab[name]
     a, b = name.split("&")
-    full = lambda g: "G0_normal" if g == "G0" else g  # noqa: E731
+    full = lambda g: "G0_normal" if g == "G0" else g
     return lab[full(a)] & (~lab[full(b[1:])] if b.startswith("~") else lab[full(b)])
 
 

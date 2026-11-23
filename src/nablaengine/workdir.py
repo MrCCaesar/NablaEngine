@@ -1,12 +1,4 @@
-"""Temporary work directories of the check and benchmark scripts (scripts/).
-
-work_dir(prefix) makes a directory under $TMPDIR (tempfile.mkdtemp) and removes it when the Python process exits,
-also after an exception, unless keeping it was asked for: --keep-work on the scripts that take it (add_argument,
-configure), or DK_KEEP_WORK=1 in the environment (inherited by the scripts' own subprocesses, such as the sections of
-jax_ffi_check.py). A kept directory's path is printed to stderr. A process killed by a signal (SIGKILL, or SIGTERM
-from `timeout`) leaves its directory behind. A check binary's work directory holds its inputs and outputs (an
-engine_step_check.py run 15-110 MB, an adjoint check binary's about 300 MB), so leaving every one behind fills a disk.
-"""
+"""Temporary work directories of the check and benchmark scripts (scripts/)."""
 
 import atexit
 import os

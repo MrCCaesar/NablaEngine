@@ -1,54 +1,6 @@
 """The benchmark driver: plans the units of a job, runs each in a fresh worker process in its engine's interpreter,
 samples the GPU's clocks alongside, and rewrites the job's result JSON (schema dk-bench/1) after every unit so a run
-resumes where it stopped.
-
-  python -m benchmarks.bench run --machine rtx_pro_6000 --part gpu-fast --out runs/bench/rtx_pro_6000/
-  python -m benchmarks.bench run --engines null --quick --out runs/bench/test_null/
-  python -m benchmarks.bench env-check
-
-Units and processes. A unit is (engine, variant, problem, corpus, nworld, iterations, process) with its ops, timing
-modes and state subsets; each runs in its own fresh worker process (worker.py), so there is at least one process per
-(engine, model, nworld). Headline units (mjlab, 4096 worlds, 10 iterations, corpora
-HEADLINE_CORPORA) run in processes_headline (3) processes, the others in 1. nworld <= 256 runs SUBSETS_SMALL disjoint
-state subsets (<= 1024: 2, else 1) one after the other in the unit's process (a fresh adapter each), so small batches
-are averaged over several subsets. Units are ordered round-robin over the engines (A B C A B C ...), process index
-outermost. Every job gets a dk anchor unit (mjlab, 4096 worlds, 10 iterations, fwd + vjp; speed-ups only against
-the same job's anchor) when the dk adapter exists (--no-anchor: none). The parts (PARTS) name the engines of the
-public comparison; an adapter outside it joins a part with --add-engine E=REF (engine E wherever the part runs REF).
-
-Timing protocol (worker.py has the details): warm-up >= warmup_calls (5) calls and >= warmup_s (1 s); rounds (5)
-rounds of N back-to-back calls + one sync (throughput) and of N individually synchronised calls (latency); round 0
-dropped; N from the warm-up (>= round_min_s per round, >= min_reps_gpu (20) / min_reps_cpu (5) calls, <= round_max_s);
-compile / capture / first call timed separately; per-unit timeout timeout_s (skipped:time, the finished ops kept).
---quick: nworld 256 and 4096, one corpus, the first iteration count of each block, P = 1, one subset, 3 rounds,
-warm-up >= 0.5 s, op jac only at 256 worlds (QUICK_JAC_NWORLD), timeout 600 s per unit.
-
-GPU and CPU state. A separate `nvidia-smi --query-gpu=... -lms <clock_sample_ms>` process samples SM / memory clock,
-power, temperature, utilisation and the clock-event (throttle) reasons of the first visible GPU while a unit runs; each
-timed cell gets the summary of the samples inside its kept rounds. Only hardware slowdown, hardware thermal slowdown
-and power brake are flags (status flagged:<reasons>); nothing is re-run automatically. The job records the CPU
-(model, sockets, cores, threads, affinity, governor, NUMA) and every unit the load average before and after it and
-the number of other compute processes on the GPU when it started.
-
-Environments. benchmarks/envs/envs.toml maps each engine to a Python environment ([engine.<id>] env = ...) and each
-environment to its interpreter, extra PYTHONPATH entries and variables ([env.<name>]); interpreter candidates may use
-{driver} (this interpreter), {prefix} ($DK_BENCH_ENV_PREFIX, default runs/bench/envs), {repo} and {env:VAR}; the first
-existing one wins. Any other benchmarks/envs/*.toml (in name order; the definitions that come with an additional
-adapter) and then a local, untracked override file deep-merge over it: $DK_BENCH_ENVS, default
-runs/bench/envs.local.toml. Workers run with cwd = the repository, PYTHONPATH = the repository + the environment's
-entries (the driver's PYTHONPATH is not inherited), PYTHONNOUSERSITE=1, XLA_PYTHON_CLIENT_PREALLOCATE=false unless set.
-
-Result files. <out>/<job>.json, job = --job, else the part names joined by '+', else 'quick' / 'custom'. An existing
-file is resumed (its protocol and options must match; --fresh starts over); a file tracked by git is never written.
-Units whose cells all have a final status are skipped (--retry-errors re-runs error / skipped:time cells). Raw dumps
-go to <out>/raw/<job>/, logs of failed units to <out>/logs/. Exit status 1 when a cell ended in error or skipped:time.
-
-Environment variables (all optional): DK_BENCH_ENV_PREFIX (default runs/bench/envs: where benchmarks/envs/setup.sh
-puts the environments), DK_BENCH_ENVS (default runs/bench/envs.local.toml: the local override of envs.toml),
-DK_BENCH_PY_<ENV> (the interpreter of environment <ENV>, upper case, '-' as '_', e.g. DK_BENCH_PY_MJW_NATIVE),
-DK_BENCH_DATA (default benchmarks/data), DK_BENCH_FIXTURE_DIR (default unset) and DK_BENCH_MODELS (default
-runs/bench/models): see problem.py. None of them changes results; they only locate files.
-"""
+resumes where it stopped."""
 
 import copy
 import ctypes
@@ -72,7 +24,7 @@ from benchmarks.bench import problem as P
 
 try:
     import tomllib
-except ImportError:  # Python < 3.11
+except ImportError:
     try:
         import tomli as tomllib
     except ImportError:
@@ -88,17 +40,17 @@ PROTOCOL = dict(warmup_calls=5, warmup_s=1.0, rounds=5, drop_rounds=1, modes=["t
                 seed=P.SELECT_SEED)
 QUICK = dict(rounds=3, warmup_s=0.5, timeout_s=600.0)
 PROTOCOL_IDENTITY = ("warmup_calls", "warmup_s", "rounds", "drop_rounds", "modes", "round_min_s", "round_max_s",
-                     "min_reps_gpu", "min_reps_cpu", "processes_headline", "seed")  # must match on resume
+                     "min_reps_gpu", "min_reps_cpu", "processes_headline", "seed")
 
 HEADLINE_CORPORA = ("mf_s0", "mf_s1")
 MF_CORPORA = ("mf_s0", "mf_s1", "mf_s2", "mf_s3")
-DEFAULT_CORPUS = "mf_s0"  # of a custom job (--engines without --part or --corpora)
+DEFAULT_CORPUS = "mf_s0"
 TRACK_B_CORPORA = ("menagerie_s0",)
 SWEEP = (64, 256, 1024, 4096, 16384)
 QUICK_NWORLD = (256, 4096)
-QUICK_JAC_NWORLD = 256  # --quick times op jac only up to this batch (4096-world Jacobians take minutes on CPU / MJX)
-SUBSETS_SMALL = 4  # disjoint subsets at nworld <= 256 (2 at <= 1024, else 1)
-GPU_ENGINES = ("dk", "mjw", "mjw_pr1535", "mjw_pr1535_fix")  # the GPU engines of the comparison (--add-engine: more)
+QUICK_JAC_NWORLD = 256
+SUBSETS_SMALL = 4
+GPU_ENGINES = ("dk", "mjw", "mjw_pr1535", "mjw_pr1535_fix")
 TRAIN_OPS = ("fwd", "fwd_train", "bwd", "vjp")
 ANCHOR = dict(engine="dk", model="mjlab", nworld=4096, iterations=10, ops=("fwd", "vjp"))
 THROTTLE_FIELDS = {"hw_slowdown": "hw_slowdown", "hw_thermal_slowdown": "hw_thermal",
@@ -119,8 +71,6 @@ class Block:
     dump: tuple = ()
 
 
-# The job plan: parts of at most about an hour each (on a batch system one job per part; a local run does them all).
-# Variant names are those the adapters define (adapters/<engine>.py `variants`).
 PARTS = {
     "gpu-fast": (
         Block(GPU_ENGINES, HEADLINE_CORPORA, SWEEP, (10,), TRAIN_OPS),
@@ -154,7 +104,7 @@ class Unit:
     corpus: str
     subsets: tuple
     nworld: int
-    iterations: object  # int or None (native)
+    iterations: object
     process: int
     ops: tuple
     modes: tuple
@@ -193,7 +143,6 @@ class PlanError(ValueError):
     pass
 
 
-# ------------------------------------------------------------------------------------------------- environments
 
 def _merge(a, b):
     out = copy.deepcopy(a)
@@ -205,7 +154,7 @@ def _merge(a, b):
 @dataclass
 class Env:
     name: str
-    python: str  # absolute path of the interpreter
+    python: str
     pythonpath: list
     vars: dict
 
@@ -222,7 +171,7 @@ class Envs:
             raise RuntimeError("reading benchmarks/envs/envs.toml needs Python >= 3.11 (tomllib) or tomli")
         self.files = [path]
         self.conf = tomllib.loads(Path(path).read_text())
-        for extra in sorted(Path(path).parent.glob("*.toml")):  # definitions that come with additional adapters
+        for extra in sorted(Path(path).parent.glob("*.toml")):
             if extra.resolve() != Path(path).resolve():
                 self.conf = _merge(self.conf, tomllib.loads(extra.read_text()))
                 self.files.append(extra)
@@ -237,7 +186,6 @@ class Envs:
             self.prefix = REPO / self.prefix
 
     def _subst(self, s):
-        """s with {driver} {prefix} {repo} {env:VAR} filled in; None when it names an unset variable."""
         out = str(s)
         while "{env:" in out:
             a = out.index("{env:")
@@ -302,11 +250,8 @@ class Envs:
         return e
 
 
-# ------------------------------------------------------------------------------------------------- GPU sampler
 
 def _child_setup():
-    """In a child process: die with the driver (Linux PR_SET_PDEATHSIG), so a killed driver leaves no worker or
-    nvidia-smi sampler behind."""
     try:
         ctypes.CDLL("libc.so.6", use_errno=True).prctl(1, signal.SIGKILL)
     except (OSError, AttributeError):
@@ -391,7 +336,7 @@ def clock_summary(samples, window, max_sm=None):
         return None
     w0, w1 = window
     sel = [s for s in samples if w0 - 0.05 <= s["t"] <= w1 + 0.05]
-    if not sel:  # a window shorter than the sampling interval: the nearest sample
+    if not sel:
         sel = [min(samples, key=lambda s: abs(s["t"] - 0.5 * (w0 + w1)))]
         if abs(sel[0]["t"] - 0.5 * (w0 + w1)) > 1.0:
             return None
@@ -413,7 +358,6 @@ def clock_summary(samples, window, max_sm=None):
                 flags=[f for f in schema.THROTTLE_FLAGS if f in reasons])
 
 
-# ------------------------------------------------------------------------------------------------- planning
 
 def default_corpus():
     """The corpus of a custom job: DEFAULT_CORPUS (benchmarks/data/mf_s0.npz)."""
@@ -455,7 +399,7 @@ def make_blocks(a):
     out = []
     for b in blocks:
         kw = dict(b.__dict__)
-        for e, ref in added:  # an adapter outside the default plan joins the blocks that run its reference engine
+        for e, ref in added:
             if ref in kw["engines"] and e not in kw["engines"]:
                 kw["engines"] = kw["engines"] + (e,)
         if a.engines and a.part:
@@ -486,7 +430,7 @@ def make_blocks(a):
 def make_plan(a, prot, registry):
     """[Unit] in run order (round-robin over engines), the anchor's cell ids (or None) and warnings."""
     warnings = []
-    slots = {}  # slot -> {engine: Unit}, insertion-ordered
+    slots = {}
     sizes = {}
     problems = {}
     for b in make_blocks(a):
@@ -527,7 +471,7 @@ def make_plan(a, prot, registry):
                         else:
                             sl[e] = u
     units = [u for sl in slots.values() for u in sl.values()]
-    units.sort(key=lambda u: u.process)  # stable: every engine's p0 units first, the repeats spread over the job
+    units.sort(key=lambda u: u.process)
     missing = sorted({u.engine for u in units} - set(registry))
     if missing:
         if a.skip_missing:
@@ -565,7 +509,6 @@ def make_plan(a, prot, registry):
     return units, anchor, warnings, problems
 
 
-# ------------------------------------------------------------------------------------------------- running
 
 class Driver:
     def __init__(self, a, prot):
@@ -584,7 +527,7 @@ class Driver:
         doc.setdefault("units", {})[key] = info
         try:
             env = self.envs.resolve(u.engine)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             msg = prov.scrub(f"{type(e).__name__}: {e}")
             info.update(status="error", message=msg)
             return [self._placeholder(u, pl, schema.status("error", "env"), msg) for pl in planned]
@@ -597,7 +540,7 @@ class Driver:
                               headline=u.headline),
                     protocol=self.prot, deadline_unix=time.time() + self.prot["timeout_s"] - 5.0,
                     raw_dir=str(self.out / "raw" / doc["job"]["name"]) if u.dump else None, cmd=doc["job"]["cmd"],
-                    env=env.name)  # per job: two jobs in one --out directory never share a dump file
+                    env=env.name)
         d = Path(tempfile.mkdtemp(prefix="unit_", dir=self.tmp))
         spec_p, out_p, log_p = d / "spec.json", d / "result.json", d / "worker.log"
         spec_p.write_text(json.dumps(spec))
@@ -654,7 +597,6 @@ class Driver:
                     c["status"] = schema.status("flagged", "+".join(c["clocks"]["flags"]))
             c.setdefault("elapsed_s", round(time.time() - t0, 3))
             out.append(c)
-        # the job-level records of this unit
         info.update(status=res.get("status", "timeout" if timed_out else "error"), rc=rc, timed_out=timed_out,
                     elapsed_s=round(time.time() - t0, 3), message=res.get("message"), setup=res.get("setup"),
                     states=res.get("states"), pid_python=res.get("python"),
@@ -782,8 +724,8 @@ def run(a, argv):
     for m, prob in problems.items():
         doc["models"].setdefault(m, prob.describe())
     doc = schema.write(path, doc)
-    work = drv.out / ".work"  # per-driver scratch (unit specs, worker results, logs, clock samples); a killed
-    for old_dir in work.glob("*"):  # driver's is removed by the next run
+    work = drv.out / ".work"
+    for old_dir in work.glob("*"):
         try:
             os.kill(int(old_dir.name), 0)
         except (ValueError, ProcessLookupError):
@@ -842,7 +784,6 @@ def run(a, argv):
     return 1 if bad else 0
 
 
-# ------------------------------------------------------------------------------------------------- env-check
 
 def env_check(a):
     """`env-check`: the GPU and CPU state, the sampler, and each engine's environment (interpreter, adapter import,
@@ -871,7 +812,7 @@ def env_check(a):
         if dk:
             print(f"nablaengine: arch {dk.get('arch')}, nvcc {dk.get('nvcc')}, "
                   f"commit {dk['nablaengine'].get('commit')}")
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         print("nablaengine provenance:", e)
     registry = adapters.discover()
     engines = a.engines or sorted(set(registry) | set(envs.engines()))
@@ -880,7 +821,7 @@ def env_check(a):
     for e in engines:
         try:
             env = envs.resolve(e)
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             print(f"{e:16s} NOT INSTALLED: {prov.scrub(ex)}{'' if e in registry else ' (and no adapter yet)'}")
             failed += bool(a.engines or a.strict)
             continue

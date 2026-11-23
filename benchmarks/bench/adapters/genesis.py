@@ -1,75 +1,6 @@
 """The Genesis adapter 'genesis': genesis-world 1.4.5 from PyPI (its rigid solver, quadrants 1.3.3), unmodified, through
 its public API (gs.Scene, gs.morphs.MJCF, the entity setters and getters, scene.backward). Track A only. Environment
-'genesis' (benchmarks/envs/envs.toml, requirements-genesis.txt).
-
-The model. Genesis's MJCF importer compiles the file with MuJoCo and reads the compiled arrays, but it never reads
-explicit <pair> contacts, and it imports a geom with contype = conaffinity = 0 as visual only. The mjlab G1 declares all
-of its 502 contacts as <pair>s between geoms with contype = conaffinity = 0, so loaded as it is the robot has no
-collision geometry at all. The adapter therefore writes an MJCF of the problem's compiled model (MjSpec,
-mjcf_from_model) with one edit: contype = conaffinity = 1 on every robot geom, and no <pair> block. Genesis's own
-collision filter (its defaults: self collision on, parent-child pairs off, pairs that touch in the neutral
-configuration qpos0 off) then gives exactly the 502 explicit pairs: setup checks the pair set against the model's
-(pair_set_equal in provenance). What the importer keeps and drops is recorded in provenance()["model"]; the deviations
-from the problem in provenance()["deviations"]:
-  - condim: Genesis has no per-contact condim; the model's condim-1 (frictionless) pairs become frictional, with the
-    friction of the geoms (the larger of the two, as MuJoCo's pair default);
-  - solref: the model's (0.02, 1) everywhere; Genesis replaces an MJCF default solref by its own constraint_timeconst,
-    which the adapter sets to the model's value (a documented option), so contacts and joint limits use 0.02;
-  - no qacc warm start input: every control step starts the constraint solver cold (set_qpos resets it), later
-    substeps warm-start from the previous one inside Genesis;
-  - Genesis-specific contact generation at its defaults (multi-contact, contact pruning tolerance 0.02, MPR in the
-    forward, GJK in the differentiable scene), and Genesis's own inverse weights (recomputed from the model, also
-    after the COM shift; MuJoCo keeps invweight0 under the problem's DR);
-  - V100 (sm_70) only: quadrants' 'func_solve_decomposed' constraint-solver kernel does not compile for sm_70 (LLVM:
-    "Cannot select: intrinsic %llvm.nvvm.activemask"), so the worker sets quadrants' dispatch override
-    QD_PERFDISPATCH_FORCE=func_solve_body:func_solve_body_monolith (Genesis's other solver kernel) before Genesis is
-    imported; never on other GPUs.
-
-The problem's options map to RigidOptions: Newton, the cell's iterations, ls_iterations 8, tolerance 1e-8, the
-model's cone (pyramidal) and integrator (implicitfast, which Genesis implements "consistent with MuJoCo"), gravity, and
-the control step as SimOptions(dt = substeps x timestep, substeps = 4) with the PD targets held: the MJCF's
-general / affine actuators become Genesis's position controller (control_dofs_position: force = kp (ctrl - q) - kv
-qdot, clamped by the joints' actuatorfrcrange); the corpus ctrl is inside ctrlrange on every state.
-
-Per-world DR through Genesis's batched setters. Torso COM: set_links_COM (body_ipos0[torso] + com per world,
-RigidOptions(batch_links_info=True)). Foot friction: Genesis gives a contact the larger of its two geoms' friction x
-friction ratio (set_friction_ratio, per world and link), so the floor-sole friction f of every world is set exactly
-with ratios on the floor (min(f, floor) / floor) and on the two sole links (min(f, sole) / sole for f <= floor, f /
-sole above); the other pairs of the floor keep the model's friction. Unavoidable side effect, recorded per unit
-(provenance()["dr"]): the sole capsules' contacts with other robot geoms then use the soles' scaled friction, which
-differs from the model's when f > floor friction or f < sole friction.
-
-  fwd    one control step from the loaded states: set_qpos, set_dofs_velocity, control_dofs_position, scene.step()
-         (the forward scene: requires_grad=False, the problem's integrator)
-  gradient(cot)  Genesis's native backward (SimOptions(requires_grad=True), a second scene of grad_chunk worlds):
-         per chunk of states, set the state with qvel as a torch leaf that requires grad, one control step, the
-         scalar loss cot_qpos . qpos' + cot_qvel . qvel' from the queried solver state, scene.backward(loss); the
-         VJP with respect to the initial qvel is the leaf's .grad. Genesis 1.4.5 differentiates only approximate_
-         implicitfast (it raises for any other integrator), so the gradient is that of the approximate integrator's
-         step (recorded in semantics()). The qpos-tangent and ctrl blocks are not supported natively
-         (gradient_not_supported() records Genesis's own behaviour: set_qpos records no gradient, PD targets raise).
-         Genesis aborts a whole backward with GenesisException("Nan grad in qpos or dofs_vel found at step ...") when
-         any world's gradient is not finite: such a chunk is retried once, then bisected (each half padded to the
-         chunk by repeating its own states) down to single states; a state that still aborts gets a NaN gradient (a
-         non-finite state of the scorers). Counts and state indices: gradient_report(). Genesis's forward is
-         reproducible bitwise from process to process; its backward is not (the same VJP repeated in one process
-         differs on most states, with a heavy tail), and the guard does not fire on the same batches every time.
-  bwd, vjp, fwd_train, jac   not supported as the benchmark defines them (a VJP with respect to every input, or the
-         full Jacobian); Genesis's partial backward is in the accuracy dumps.
-
-Variants (cell ids genesis~<variant>; options also with run --opt genesis.<key>=<value>):
-  default    float32 (gs.init's default precision)
-  fp64       precision "64" (labelled: a diagnostic of Genesis's own numerical error, never a headline row)
-  approx     integrator approximate_implicitfast in the forward scene too (Genesis's default integrator and the
-             gradient's primal; labelled)
-Options: precision ("32" | "64"), integrator ("model" | "approximate_implicitfast" | "implicitfast"), grad_chunk
-(worlds per differentiable scene, default 512 in float32 and 256 in float64), grad_retries (default 1),
-performance_mode (default false: gs.init's default; true: gs.init(performance_mode=True), Genesis's documented
-static-array mode, set before the first scene of the process; the same physics).
-
-  python -m benchmarks.bench run --machine <tag> --part accuracy --no-anchor --engines genesis \
-      --add-engine genesis=mjx --job acc_genesis --out runs/bench/<dir>
-"""
+'genesis' (benchmarks/envs/envs.toml, requirements-genesis.txt)."""
 
 import importlib.metadata
 import os
@@ -101,7 +32,6 @@ def _version(name):
 
 
 def _compute_cap():
-    """The compute capability of the first visible GPU as (major, minor), or None."""
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"], capture_output=True,
                              text=True, timeout=30).stdout.split()
@@ -122,8 +52,6 @@ def _compute_cap():
 
 
 def _dispatch_override():
-    """Set quadrants' dispatch override on sm_70 before Genesis / quadrants are imported (module docstring); returns
-    the value in effect."""
     cur = os.environ.get("QD_PERFDISPATCH_FORCE")
     cc = _compute_cap()
     if cc is not None and cc[0] == 7 and cc[1] == 0 and cur is None:
@@ -134,7 +62,6 @@ def _dispatch_override():
     return os.environ.get("QD_PERFDISPATCH_FORCE")
 
 
-# ------------------------------------------------------------------------------------------------- the model
 
 def mjcf_from_model(m, collide_robot=True, pairs=False):
     """An MJCF string of a compiled MjModel (MjSpec; mj_saveLastXML needs an XML-loaded model). Covers what the mjlab
@@ -162,8 +89,8 @@ def mjcf_from_model(m, collide_robot=True, pairs=False):
     spec.compiler.balanceinertia = False
     spec.compiler.degree = False
     T = mujoco.mjtObj
-    nm = lambda t, i: mujoco.mj_id2name(m, t, i)  # noqa: E731
-    lim = lambda x: mujoco.mjtLimited.mjLIMITED_TRUE if x else mujoco.mjtLimited.mjLIMITED_FALSE  # noqa: E731
+    nm = lambda t, i: mujoco.mj_id2name(m, t, i)
+    lim = lambda x: mujoco.mjtLimited.mjLIMITED_TRUE if x else mujoco.mjtLimited.mjLIMITED_FALSE
     gname = [nm(T.mjOBJ_GEOM, g) or f"geom_{g}" for g in range(m.ngeom)]
     bodies = {0: spec.worldbody}
     for b in range(1, m.nbody):
@@ -272,7 +199,6 @@ def model_record(m):
         cone=mujoco.mjtCone(int(m.opt.cone)).name, integrator=mujoco.mjtIntegrator(int(m.opt.integrator)).name)
 
 
-# ------------------------------------------------------------------------------------------------- the adapter
 
 class GenesisAdapter(base.Adapter):
     id = "genesis"
@@ -363,7 +289,6 @@ class GenesisAdapter(base.Adapter):
                              "(the quadrants offline cache) makes later processes faster")
         return dict(build_s=build_s, load_s=load_s, import_s=import_s)
 
-    # ------------------------------------------------------------------ scenes
     def _rigid_options(self, requires_grad):
         gs, prob = self.gs, self.problem
         integ = "approximate_implicitfast" if requires_grad else self.integrator
@@ -400,9 +325,7 @@ class GenesisAdapter(base.Adapter):
         return dict(genesis_pairs=len(gen), model_pairs=len(mj), pair_set_equal=gen == mj,
                     only_genesis=sorted(gen - mj)[:20], only_model=sorted(mj - gen)[:20])
 
-    # ------------------------------------------------------------------ DR
     def _dr_tensors(self):
-        """Per-world friction ratios of (floor link, sole links) and torso COM (module docstring)."""
         m, mujoco = self.m, self.mujoco
         self.dr_rec = None
         if not self.dr:
@@ -458,7 +381,6 @@ class GenesisAdapter(base.Adapter):
         r = torch.tensor(self.dr_ratio[np.resize(rows, n_envs)], dtype=gs.tc_float, device=gs.device)
         robot.set_friction_ratio(r, self.dr_links)
 
-    # ------------------------------------------------------------------ ops
     def _fwd(self):
         r = self.fwd_robot
         r.set_qpos(self.qpos, zero_velocity=False)
@@ -487,7 +409,7 @@ class GenesisAdapter(base.Adapter):
                 c = r.get_contacts()
                 vm = c.get("valid_mask")
                 self._ncon = None if vm is None else vm.sum(-1).cpu().numpy()
-            except Exception as e:  # noqa: BLE001  (a diagnostic only)
+            except Exception as e:
                 self._ncon = f"{type(e).__name__}: {e}"[:200]
         return dict(self._outs)
 
@@ -499,20 +421,17 @@ class GenesisAdapter(base.Adapter):
             out["extra"]["contacts_error"] = self._ncon
         return out
 
-    # ------------------------------------------------------------------ gradient
     def _ensure_grad_scene(self):
         if self.grad_scene is None:
             t0 = time.perf_counter()
             n = self.grad_n = min(self.grad_chunk, self.nworld)
             self.grad_scene, self.grad_robot = self._scene(n, requires_grad=True)
-            self._apply_com(self.grad_robot, np.arange(n), n)  # replaced per chunk
+            self._apply_com(self.grad_robot, np.arange(n), n)
             self.report["grad_scene_build_s"] = time.perf_counter() - t0
             self.report["grad_pair_check"] = self._check_pairs(self.grad_scene)
         return self.grad_scene
 
     def _run(self, rows, cq, cv):
-        """VJP w.r.t. the initial qvel of the worlds rows (len <= chunk; padded with repeats of rows): (len(rows), nv)
-        array, or None when Genesis's NaN guard aborted the backward."""
         torch, gs = self.torch, self.gs
         scene, robot = self.grad_scene, self.grad_robot
         n = self.grad_n
@@ -541,7 +460,6 @@ class GenesisAdapter(base.Adapter):
         return v0.grad.detach().double().cpu().numpy()[:len(rows)]
 
     def _solve(self, rows, cq, cv, out, aborted, top=False):
-        """Run rows; on Genesis's NaN guard retry, then bisect down to single states (module docstring)."""
         g = self._run(rows, cq, cv)
         if g is None and top:
             self.report["aborted_batches"] += 1
@@ -605,7 +523,7 @@ class GenesisAdapter(base.Adapter):
                 g = leaf.grad
                 return ("no gradient path: the leaf's .grad is None after scene.backward" if g is None else
                         "a gradient arrived (not expected)")
-            except Exception as e:  # noqa: BLE001  (the engine's own message is the result)
+            except Exception as e:
                 return f"raises {type(e).__name__}: {prov.scrub(str(e))[:300]}"
 
         def qpos_leaf():
@@ -635,7 +553,6 @@ class GenesisAdapter(base.Adapter):
         r["aborted_state_count"] = {k: len(v) for k, v in r["aborted_states"].items()}
         return r
 
-    # ------------------------------------------------------------------ records
     def provenance(self):
         gs = self.gs
         return dict(
@@ -701,14 +618,14 @@ class GenesisAdapter(base.Adapter):
             try:
                 if s is not None:
                     s.destroy()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
     @classmethod
     def check_env(cls):
         force = _dispatch_override()
         import torch
-        import genesis  # noqa: F401
+        import genesis
         return dict(genesis=_version("genesis-world"), quadrants=_version("quadrants"), torch=torch.__version__,
                     torch_cuda=torch.version.cuda, cuda=torch.cuda.is_available(),
                     device=torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,

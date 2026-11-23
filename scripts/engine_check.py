@@ -1,12 +1,4 @@
-"""Check (and time) the G1 engine's smooth-dynamics stage against MuJoCo on corpus states.
-
-One warp per world (nablaengine.g1_engine.source): forward kinematics, inverse dynamics qfrc = M(q) qacc + c(q, qvel), and
-the dense joint-space mass matrix M (composite rigid bodies, with armature). Compared with MuJoCo's mj_rne(flg_acc=1)
-and mj_crb + mj_fullM on --check worlds; timed against MuJoCo Warp's kinematics + com_pos + crb + com_vel +
-rne(flg_acc) on the same states. Timings are only indicative when the GPU is shared with another job.
-
-  PYTHONPATH=src python scripts/engine_check.py --out runs/engine_smooth.json
-"""
+"""Check (and time) the G1 engine's smooth-dynamics stage against MuJoCo on corpus states."""
 
 import argparse
 import json
@@ -265,12 +257,12 @@ def main():
             entry["M_worst_entry"] = [int(x) for x in np.unravel_index(np.abs(Me - rM).max(0).argmax(), (m.nv, m.nv))]
         try:
             entry["mujoco_warp_ms"] = mjw_baseline(m, qpos, qvel, qacc, args.reps)
-        except Exception as e:  # noqa: BLE001 - the baseline is optional
+        except Exception as e:
             entry["mujoco_warp_error"] = repr(e)[:300]
         res["runs"].append(entry)
         print(json.dumps(entry), flush=True)
         if "provenance" not in res:
-            res["provenance"] = provenance.provenance()  # commit, GPU, driver, nvcc, packages, MuJoCo Warp
+            res["provenance"] = provenance.provenance()
         Path(args.out).write_text(json.dumps(res, indent=1))
 
 

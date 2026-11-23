@@ -1,0 +1,26 @@
+<mujoco model="margin_boxprim">
+  <option timestep="0.002" cone="pyramidal"><flag nativeccd="disable"/></option>
+  <asset>
+    <mesh name="hex" vertex="0.09000 0.00000 -0.05 0.04500 0.07794 -0.05 -0.04500 0.07794 -0.05 -0.09000 0.00000 -0.05 -0.04500 -0.07794 -0.05 0.04500 -0.07794 -0.05 0.09000 0.00000 0.05 0.04500 0.07794 0.05 -0.04500 0.07794 0.05 -0.09000 0.00000 0.05 -0.04500 -0.07794 0.05 0.04500 -0.07794 0.05"/>
+    <mesh name="oct" vertex="0.07 0 0  -0.07 0 0  0 0.06 0  0 -0.06 0  0 0 0.05  0 0 -0.05  0.03 0.03 0.03"/>
+  </asset>
+  <default><geom margin="0.003" condim="3" friction="0.8 0.005 0.0001" contype="0" conaffinity="0"/></default>
+  <worldbody>
+    <geom name="floor" type="plane" size="5 5 0.1" margin="0.002"/>
+    <body name="b0" pos="0.0 0.0 0.063" euler="0 0 0"><freejoint/><geom name="b0" type="box" size="0.08 0.07 0.06"/></body>
+    <body name="t0" pos="0.01 0.0 0.182" euler="4 3 0"><freejoint/><geom name="t0" type="box" size="0.06 0.05 0.05"/></body>
+    <body name="b1" pos="0.4 0.0 0.063" euler="0 0 7"><freejoint/><geom name="b1" type="box" size="0.08 0.07 0.06"/></body>
+    <body name="t1" pos="0.41000000000000003 0.0 0.192" euler="4 3 11"><freejoint/><geom name="t1" type="box" size="0.08 0.07 0.06"/></body>
+    <body name="b2" pos="0.8 0.0 0.053000000000000005" euler="0 0 14"><freejoint/><geom name="b2" type="box" size="0.06 0.05 0.05"/></body>
+    <body name="t2" pos="0.81 0.0 0.16200000000000003" euler="4 3 22"><freejoint/><geom name="t2" type="box" size="0.06 0.05 0.05"/></body>
+  </worldbody>
+  <contact>
+    <pair geom1="floor" geom2="b0" margin="0.005"/>
+    <pair geom1="b0" geom2="t0" margin="0.006"/>
+    <pair geom1="floor" geom2="b1" margin="0.005"/>
+    <pair geom1="b1" geom2="t1" margin="0.007"/>
+    <pair geom1="floor" geom2="b2" margin="0.005"/>
+    <pair geom1="b2" geom2="t2" margin="0.008"/>
+  </contact>
+  <keyframe><key name="home" qpos="9.52121e-07 4.93537e-06 0.0648464 1 -1.22158e-05 2.71063e-05 2.40502e-06 0.00774113 0.00267464 0.180692 0.999999 -1.22069e-05 2.7185e-05 0.00171176 0.39997 2.26787e-05 0.0647928 0.998133 -2.9112e-05 5.52054e-05 0.0610762 0.407362 0.00363912 0.191643 0.995316 -6.24472e-05 0.000300528 0.0966748 0.799991 2.37898e-05 0.0547929 0.992554 -4.78002e-05 9.79894e-05 0.121807 0.80722 0.00377693 0.162646 0.981282 -0.000100927 0.000319 0.192577"/></keyframe>
+</mujoco>

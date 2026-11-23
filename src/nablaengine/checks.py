@@ -1,24 +1,5 @@
 """Shared code of the verification scripts: the adjoint check binary (the forward kernel k_substep, the tape and the
-analytic adjoint k_adjoint with a small host program) and the digest manifest of the forward outputs.
-
-Adjoint check binary (scripts/jax_ffi_check.py, scripts/identity_gate.py, scripts/paper_bench/ours_bare.py):
-  build(m, mt, work, tag, defines)   compile it with -D options (e.g. DK_ADJ_CLAMP_KV=1, DK_ADJ_NORMAL=0); where the
-                                     forward unit has architecture flags of its own (sm_120: from compute_90 PTX) the
-                                     same source is also built as the forward unit and run() takes the forward and
-                                     the tape from that build
-  write_inputs(work, corpus_inputs(z))   the corpus's inputs and its three output cotangents as the binary's files
-  run(binary, work, m, nw, iterations, nsub, ncot, reps, debug, timeout)   (its JSON line, outputs: tape, info, con,
-                                     qpos, qvel, grad{c}_qpos / qvel / ctrl, adj_info{c})
-
-Forward digests: a committed manifest (DIGESTS, fixtures/mjlab/engine_digests.json; $DK_DIGESTS names a further
-manifest, e.g. a local one for a toolchain without committed entries) of sha256 digests of the forward outputs of
-scripts/engine_step_check.py, keyed by the corpus (name and input digest), the model file, the run (substeps,
-iterations, worlds, world selection, tape, fused or split forward) and the build (target architecture, nvcc release,
-the forward unit's architecture flags and -D options). digest_check: "match" (an entry with this key, every digest
-equal), "mismatch" (an entry with this key, a digest different: the forward changed) or "unanchored" (no entry for
-this key, e.g. another GPU architecture or nvcc release: bit identity with the released forward is not checked there,
-the tolerance gates against MuJoCo Warp and MuJoCo C still apply). Comments in the generated CUDA source do not
-change the outputs, so the source itself is not part of the key (its sha256 is recorded)."""
+analytic adjoint k_adjoint with a small host program) and the digest manifest of the forward outputs."""
 
 import datetime
 import hashlib
@@ -185,7 +166,7 @@ LOAD_CONSTS
 """
 
 
-FORWARD_OF = {}  # build(): an adjoint binary -> the same source built as the forward unit, where its flags differ
+FORWARD_OF = {}
 
 
 def binary_source(m, mt):
@@ -214,11 +195,15 @@ def build(m, mt, work, tag, defines, flags=()):
     unit, so it also gets the target's forward-unit -D options (nablaengine.cuda.unit_defines: the register caps on
     sm_90), as the FFI library's unit with the forward kernels."""
     src, consts = binary_source(m, mt)
-    (work / f"{tag}.cu").write_text(src)
-    consts.tofile(work / "consts.bin")
     extra = [f"-D{d}" for d in defines] + list(flags)
+    adj_caps = cuda.adjoint_defines(None, extra)
+    adj_caps += cuda.tree_adj_cap_defines(None, extra + adj_caps)
+    extra += cuda.capbox_coop_defines(None, src, extra)
+    (work / f"{tag}.cu").write_text(adjoint.with_adj_bounds(src) if adj_caps else src)
+    consts.tofile(work / "consts.bin")
     for suffix, unit in binary_builds():
-        compile_cuda(work / f"{tag}.cu", work / f"{tag}{suffix}", extra, unit=unit)
+        ex = extra + (adj_caps if not suffix else [])
+        compile_cuda(work / f"{tag}.cu", work / f"{tag}{suffix}", ex, unit=unit)
         if suffix:
             FORWARD_OF[work / tag] = work / f"{tag}{suffix}"
     return work / tag
@@ -249,7 +234,7 @@ def run(binary, work, m, nw, iterations, nsub, ncot, reps, debug, timeout, block
                          clamp_soft, tape_in=tin)
         finally:
             tin.unlink(missing_ok=True)
-        for n, b in keep.items():  # the forward unit's outputs, as callers also read them from work
+        for n, b in keep.items():
             (work / n).write_bytes(b)
         out.update({k: fo[k] for k in ("info", "con", "qpos", "qvel")})
         r.update(ms_forward_tape=rf["ms_forward_tape"], blocks_per_sm_forward=rf["blocks_per_sm_forward"],
@@ -264,12 +249,12 @@ def run(binary, work, m, nw, iterations, nsub, ncot, reps, debug, timeout, block
     if r["err"] != "no error":
         raise RuntimeError(f"CUDA error: {r['err']}")
     prof = [json.loads(line) for line in o.splitlines() if line.startswith('{"prof_launches"')]
-    if prof:  # a -DDK_PROFILE build: the phase cycles of the first forward and adjoint launches, each of one launch
+    if prof:
         if (prof[0]["prof_launches"], prof[0]["adj_prof_launches"]) != (1, 1):
             raise RuntimeError(f"profile counters summed over several launches: {prof[0]['prof_launches']} forward, "
                                f"{prof[0]['adj_prof_launches']} adjoint")
         r.update(prof[0])
-    f = lambda name, dt=np.float32: np.fromfile(work / name, dt)  # noqa: E731
+    f = lambda name, dt=np.float32: np.fromfile(work / name, dt)
     out = dict(tape=f("tape.bin").reshape(nw, nsub, tape.rec_words(m)), info=f("out_info.bin", np.int32).reshape(nw, 4),
                qpos=f("out_qpos.bin").reshape(nw, m.nq), qvel=f("out_qvel.bin").reshape(nw, m.nv),
                con=f("out_con.bin").reshape(nw, step.maxcon(m), 8))
@@ -297,7 +282,6 @@ def corpus_inputs(z, q=None):
     return arrs
 
 
-# ---------------------------------------------------------------- forward digests
 
 def array_digest(a):
     """{shape, dtype, sha256} of an array (sha256 of its C-order bytes)."""

@@ -1,53 +1,4 @@
-"""nvcc and target architecture for the hand-written CUDA kernels.
-
-nvcc (nvcc()): $NVCC, else nvcc on PATH, else $CUDA_HOME/bin/nvcc, else a pip package nvidia.cuda_nvcc that has one (the
-nvidia-cuda-nvcc-cu12 wheel of the JAX stack ships only ptxas, not nvcc), else /usr/local/cuda/bin/nvcc. Architecture:
-$DK_ARCH (e.g. sm_70 for V100, sm_120 for RTX PRO 6000 Blackwell), else the compute capability of the first visible GPU
-(the first entry of $CUDA_VISIBLE_DEVICES, else GPU 0) from nvidia-smi. CUDA 13 dropped Volta (sm_70), and sm_120 needs
-CUDA 12.8 or newer: CUDA 12.8 / 12.9 covers every GPU tested.
-
-Architecture flags per compilation unit (arch_flags, virtual_arch): every unit is built with -arch=<arch>, except on
-sm_120. There nvcc 12.8 / 12.9 compile compute_120 with the NVVM 20 front end, and both the forward and the adjoint
-are faster built from compute_90 PTX (the NVVM 7 front end, assembled by ptxas for sm_120: -arch=compute_90
--code=sm_120). RTX PRO 6000 Server Edition, 4096 worlds: the NVVM 7 forward 0.955 against the native one (the native
-forward 1.0475 against it), the NVVM 7 adjoint 0.893 against the native one (cycles -11.1%): with 10108 B of shared
-memory per world (struct Adj) the native k_adjoint (238 registers) is register-limited to 8 worlds per SM, the NVVM 7
-one (about 127 registers) fits the 9 that shared memory allows. So on sm_120 every unit (forward, kinematics, the
-adjoint variants, the FFI unit) takes the NVVM 7 path by default. Switches:
-
-  DK_SM120_FRONTEND          n7 (default) | split | native: on sm_120, n7 builds every unit from compute_90 PTX; split
-                             only the forward / kinematics unit (the adjoint units -arch=sm_120); native every unit
-                             -arch=sm_120. It changes bits on sm_120: the forward's between native and n7 / split (n7
-                             and split have the same forward bits, so their forward references share the tag
-                             +fwd-compute_90), the gradients' between n7 and split / native; other architectures are not
-                             affected. n7 / split take effect only where the PTX headers confirm them (nvvm_version:
-                             compute_90 is NVVM 7 and the native compute_120 is not); otherwise every unit keeps the
-                             native build, with a note on stderr.
-  DK_SM120_FORWARD_FRONTEND  deprecated alias, read only where DK_SM120_FRONTEND is unset (with a DeprecationWarning):
-                             n7 -> n7, native -> native.
-  DK_TEST_FORWARD_VIRTUAL_ARCH  testing only (default unset): on any GPU, build the forward unit from this virtual
-                             architecture's PTX (e.g. compute_70 on a V100: -arch=compute_70 -code=sm_70): the split
-                             structure (a forward unit of its own, check binaries in pairs) without an sm_120 GPU.
-  DK_TEST_VIRTUAL_ARCH       testing only (default unset): every unit from this virtual architecture's PTX (sm_120's
-                             default structure: one set of flags, the forward reference tagged +fwd-<virtual>). Both are
-                             bitwise the native build where that PTX is the native one (compute_70 on sm_70).
-
-Defines per compilation unit (unit_defines): the forward unit (whatever holds the split forward kernels k_pre / k_post:
-the FFI library's and the check binaries') gets register caps on some targets (REG_CAPS), decided by the build target,
-not by __CUDA_ARCH__ in the CUDA source (sm_120's units are compiled from compute_90 PTX, where __CUDA_ARCH__ is 900 as
-well). All of them are bitwise unchanged (outputs, contacts and tape):
-  sm_90 / sm_90a  -DSPLIT_PRE_MINB=16 -DSPLIT_POST_MAXNREG=128 (g1_engine/host.py: k_pre at 16 blocks per SM, i.e. 128
-                  registers, and k_post __maxnreg__(128)): on the H100 SXM5 16 worlds per SM for both kernels and a
-                  10.8% faster forward (k_pre's cap alone -3.6%, k_post's -7.1%; 4096 worlds, nvcc 12.8). Switch
-                  DK_SM90_REG_CAPS 1 (default) | 0. Needs nvcc 12.4+ (__maxnreg__): an older nvcc builds without the
-                  caps, with a note on stderr.
-  sm_120          -DSPLIT_PRE_MINB=16 with the NVVM 7 forward (DK_SM120_FRONTEND n7 or split; not native): on the RTX
-                  PRO 6000 k_pre at 128 registers is 1.3% faster (0.987 against the uncapped build, no occupancy change
-                  there, shared memory allows 12 k_pre blocks: code generation only). k_post's __maxnreg__(128) is not
-                  taken there (1.004 alone, 0.992 with k_pre's cap). Switch DK_SM120_PRE_CAP 1 (default) | 0.
-  A caller's own -DSPLIT_PRE_MINB (k_pre), -DSPLIT_POST_MAXNREG or -DSPLIT_POST_MINB (k_post) replaces the cap of that
-  kernel. sm_86 / sm_70 get none (the V100: forced caps 4% slower, shared memory allows 12 k_post blocks).
-"""
+"""nvcc and target architecture for the hand-written CUDA kernels."""
 
 import functools
 import os
@@ -60,19 +11,36 @@ import warnings
 from pathlib import Path
 
 FRONTEND_VAR = "DK_SM120_FRONTEND"
-LEGACY_FRONTEND_VAR = "DK_SM120_FORWARD_FRONTEND"  # deprecated alias (n7 / native)
+LEGACY_FRONTEND_VAR = "DK_SM120_FORWARD_FRONTEND"
 FRONTENDS = ("n7", "split", "native")
 TEST_FORWARD_VAR = "DK_TEST_FORWARD_VIRTUAL_ARCH"
 TEST_VAR = "DK_TEST_VIRTUAL_ARCH"
-N7_VIRTUAL = {"sm_120": "compute_90"}  # architecture -> the virtual architecture of its NVVM 7 units
+N7_VIRTUAL = {"sm_120": "compute_90", "sm_103": "compute_90"}
+SM103_FRONTEND_VAR = "DK_SM103_FRONTEND"
+SM103_FRONTENDS = ("adjoint", "n7", "native")
 SM90_CAPS = ("SPLIT_PRE_MINB=16", "SPLIT_POST_MAXNREG=128")
-# build target -> (its switch, the forward unit's register caps, only with the NVVM 7 forward); module docstring
 REG_CAPS = {"sm_90": ("DK_SM90_REG_CAPS", SM90_CAPS, False),
             "sm_90a": ("DK_SM90_REG_CAPS", SM90_CAPS, False),
-            "sm_120": ("DK_SM120_PRE_CAP", ("SPLIT_PRE_MINB=16",), True)}
-# a cap's macro -> the macros by which a caller already bounds that kernel
-CAP_BOUNDS = {"SPLIT_PRE_MINB": ("SPLIT_PRE_MINB",), "SPLIT_POST_MAXNREG": ("SPLIT_POST_MAXNREG", "SPLIT_POST_MINB")}
-MAXNREG_NVCC = (12, 4)  # __maxnreg__ (SPLIT_POST_MAXNREG): nvcc 12.4 or newer
+            "sm_120": ("DK_SM120_PRE_CAP", ("SPLIT_PRE_MINB=16",), True),
+            "sm_103": ("DK_SM103_REG_CAPS", SM90_CAPS, False)}
+ADJ_CAPS = {"sm_103": ("DK_SM103_REG_CAPS", ("ADJ_MAXNREG=120",))}
+FOREST_ADJ_CAPS = {"sm_103": ("DK_SM103_REG_CAPS", ("ADJ_MAXNREG=128",))}
+FOREST_POST_VAR = "DK_FOREST_POST_CAP"
+FOREST_ADJ_VAR = "DK_SM103_FOREST_ADJ_CAP"
+CAPBOX_COOP_OFF = ("sm_90", "sm_90a")
+CAPBOX_COOP_VAR = "DK_SM90_CAPBOX_COOP"
+TREE_ADJ_CAPS = {"sm_90": ("ADJ_MAXNREG=168",), "sm_90a": ("ADJ_MAXNREG=168",)}
+TREE_ADJ_VAR = "DK_SM90_ADJ_CAP"
+FOREST_TER_CAP_VAR = "DK_SM90_FOREST_ADJ_CAP"
+FOREST_HOLD_TARGETS = ("sm_90", "sm_90a")
+FOREST_HESS_VAR = "DK_FOREST_HESS_UNROLL"
+FOREST_CHOL_VAR = "DK_FOREST_CHOL_REG"
+FOREST_WIDE_VAR = "DK_FOREST_CHOL_WIDE"
+FOREST_CCD_COOP_VAR = "DK_FOREST_CCD_COOP"
+FOREST_FREE_GYRO_VAR = "DK_FOREST_FREE_GYRO"
+CAP_BOUNDS = {"SPLIT_PRE_MINB": ("SPLIT_PRE_MINB",), "SPLIT_POST_MAXNREG": ("SPLIT_POST_MAXNREG", "SPLIT_POST_MINB"),
+              "ADJ_MAXNREG": ("ADJ_MAXNREG",)}
+MAXNREG_NVCC = (12, 4)
 
 
 def nvcc():
@@ -107,7 +75,7 @@ def visible_gpu():
 def device_arch():
     """sm_XY of the first visible GPU (nvidia-smi), None without nvidia-smi or a GPU."""
     q = ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"]
-    for cmd in ([*q, "-i", visible_gpu()] if visible_gpu() else None, q):  # an id nvidia-smi rejects: GPU 0
+    for cmd in ([*q, "-i", visible_gpu()] if visible_gpu() else None, q):
         if cmd is None:
             continue
         try:
@@ -135,7 +103,7 @@ def arch():
         return a
     a = device_arch()
     if a is None:
-        raise RuntimeError("no GPU found by nvidia-smi: set DK_ARCH (e.g. sm_70, sm_86, sm_90, sm_120) to build "
+        raise RuntimeError("no GPU found by nvidia-smi: set DK_ARCH (e.g. sm_70, sm_86, sm_87, sm_90, sm_120) to build "
                            "without one")
     return a
 
@@ -155,6 +123,20 @@ def frontend():
     if v not in FRONTENDS:
         raise ValueError(f"${FRONTEND_VAR}={v!r}: must be one of {', '.join(FRONTENDS)}")
     return v
+
+
+def sm103_frontend():
+    """$DK_SM103_FRONTEND: 'adjoint' (the default), 'n7' or 'native' (module docstring)."""
+    v = (os.environ.get(SM103_FRONTEND_VAR) or "adjoint").strip().lower()
+    if v not in SM103_FRONTENDS:
+        raise ValueError(f"${SM103_FRONTEND_VAR}={v!r}: must be one of {', '.join(SM103_FRONTENDS)}")
+    return v
+
+
+def frontend_of(target):
+    """The front-end switch value of a build target with NVVM 7 units (N7_VIRTUAL): $DK_SM103_FRONTEND on sm_103,
+    $DK_SM120_FRONTEND (frontend()) on sm_120."""
+    return sm103_frontend() if target == "sm_103" else frontend()
 
 
 @functools.lru_cache(maxsize=None)
@@ -189,7 +171,8 @@ def _n7_applies(target, nvcc_path):
     native, n7 = nvvm_version("compute_" + target[3:], nvcc_path), nvvm_version(virt, nvcc_path)
     if n7 and n7.startswith("NVVM 7.") and not (native or "").startswith("NVVM 7."):
         return virt
-    print(f"nablaengine.cuda: {FRONTEND_VAR}={frontend()} not applied on {target} (front ends: compute_{target[3:]} "
+    var = SM103_FRONTEND_VAR if target == "sm_103" else FRONTEND_VAR
+    print(f"nablaengine.cuda: {var}={frontend_of(target)} not applied on {target} (front ends: compute_{target[3:]} "
           f"{native}, {virt} {n7}): every unit keeps the native build", file=sys.stderr)
     return None
 
@@ -205,7 +188,8 @@ def virtual_arch(unit=None, target=None, nvcc_path=None):
     (-arch=<target>). unit 'forward': the forward / kinematics unit; anything else: the adjoint units, the FFI unit and
     test programs. sm_120 (see the module docstring): compute_90 for every unit with $DK_SM120_FRONTEND n7 (the
     default), for the forward unit only with split, none with native (n7 / split only where the PTX headers confirm
-    it). The testing switches take precedence on any target: $DK_TEST_FORWARD_VIRTUAL_ARCH for the forward unit,
+    it). sm_103: compute_90 for every unit but the forward one with $DK_SM103_FRONTEND adjoint (the default), every
+    unit with n7, none with native. The testing switches take precedence on any target: $DK_TEST_FORWARD_VIRTUAL_ARCH for the forward unit,
     $DK_TEST_VIRTUAL_ARCH for every unit."""
     target = target or arch()
     fwd = unit == "forward"
@@ -216,8 +200,8 @@ def virtual_arch(unit=None, target=None, nvcc_path=None):
             return test
     if target not in N7_VIRTUAL:
         return None
-    mode = frontend()
-    if mode == "native" or (mode == "split" and not fwd):
+    mode = frontend_of(target)
+    if mode == "native" or (mode == "split" and not fwd) or (mode == "adjoint" and fwd):
         return None
     return _n7_applies(target, nvcc_path or nvcc())
 
@@ -245,7 +229,7 @@ def forward_tag(target=None, nvcc_path=None):
 
 def reg_caps(target=None):
     """The register-cap switch of the build target (REG_CAPS: $DK_SM90_REG_CAPS on sm_90 / sm_90a, $DK_SM120_PRE_CAP on
-    sm_120): True for 1 (the default), False for 0; None for a target without caps."""
+    sm_120, $DK_SM103_REG_CAPS on sm_103): True for 1 (the default), False for 0; None for a target without caps."""
     target = target or arch()
     if target not in REG_CAPS:
         return None
@@ -290,21 +274,195 @@ def _maxnreg_ok(nvcc_path, var):
     return False
 
 
-def unit_defines(unit=None, target=None, options=(), nvcc_path=None):
+FOREST_POST_DROP = ("sm_90", "sm_90a")
+
+
+def forest_post_cap(target=None):
+    """$DK_FOREST_POST_CAP: True for 1 (the forest engine keeps k_post's __maxnreg__ cap), False for 0; unset: the
+    target's default, False on sm_90 / sm_90a (ptxas's lane rematerialization, module docstring), True elsewhere
+    (sm_103: bitwise the uncapped forward, B300 G1 4096 worlds k_post 1.260 -> 1.167 ms)."""
+    v = (os.environ.get(FOREST_POST_VAR) or "").strip()
+    if v not in ("", "0", "1"):
+        raise ValueError(f"${FOREST_POST_VAR}={v!r}: must be 0 or 1")
+    if v == "":
+        return (target or arch()) not in FOREST_POST_DROP
+    return v == "1"
+
+
+def unit_defines(unit=None, target=None, options=(), nvcc_path=None, forest=False):
     """The -D options a compilation unit gets for its build target besides the caller's nvcc options: unit 'forward'
     (the split forward kernels' unit; see the module docstring) gets the target's register caps (REG_CAPS: sm_90 /
-    sm_90a ['-DSPLIT_PRE_MINB=16', '-DSPLIT_POST_MAXNREG=128'], sm_120 with the NVVM 7 forward ['-DSPLIT_PRE_MINB=16'])
+    sm_90a and sm_103 ['-DSPLIT_PRE_MINB=16', '-DSPLIT_POST_MAXNREG=128'], sm_120 with the NVVM 7 forward
+    ['-DSPLIT_PRE_MINB=16'])
     where its switch is 1 (the default), each unless `options` already bound that kernel; every other unit and target:
-    none."""
+    none. forest: a forest-engine unit, which gets no SPLIT_POST_MAXNREG where forest_post_cap(target) is False (by
+    default on sm_90 / sm_90a: ptxas's miscompile, module docstring)."""
     if unit != "forward":
         return []
     target = target or arch()
     if not reg_caps(target):
         return []
     var, caps, needs_n7 = REG_CAPS[target]
+    if forest and not forest_post_cap(target):
+        caps = tuple(c for c in caps if not c.startswith("SPLIT_POST_MAXNREG="))
     if needs_n7 and not forward_virtual_arch(target, nvcc_path):
         return []
     if any(c.startswith("SPLIT_POST_MAXNREG=") for c in caps) and not _maxnreg_ok(nvcc_path or nvcc(), var):
+        return []
+    return reg_caps_defines(options, caps)
+
+
+def forest_hold_defines(target=None, text="", options=()):
+    """The -D options of a forest-engine unit (its text) on a build target of FOREST_HOLD_TARGETS (sm_90 / sm_90a),
+    decided by the target (not __CUDA_ARCH__: sm_120's and sm_103's units from compute_90 PTX see 900 too):
+    ['-DDK_FOREST_HESS_UNROLL=0'] for a text with the forest hessian()'s unrolled contact-mask loops (DK_HESS_UNROLLED)
+    unless $DK_FOREST_HESS_UNROLL is set (forest_engine.step then defines it in the text, every target); and
+    ['-DDK_FOREST_SM90_SMALL=1'] (chol_solve_small for NV <= 32 as before 2026-11-16 instead of chol_solve_reg) for a
+    text with CHOL_SMALL's choice unless $DK_FOREST_CHOL_REG is 1; ['-DCHOL_BCAST_WIDE=0'] (36 <= NV <= 48: the
+    previous CHOL_SOLVE instead of chol_solve_bcast_wide, and with it no NEWTON_REUSE for those sizes) for a text with
+    chol_solve_bcast_wide unless $DK_FOREST_CHOL_WIDE is 1; ['-DDK_CCD_COOP=0'] (native-CCD box-box contacts: their VJP
+    passes on the contact's lane as before, forest_engine.ccd_coop) for a text with that pass unless $DK_FOREST_CCD_COOP
+    is 1; ['-DDK_FREE_GYRO=0'] (standalone free bodies in implicitfast without MuJoCo 3.17's gyroscopic block, as
+    before, forest_engine.free_gyro) for a text with that block unless $DK_FOREST_FREE_GYRO is 1. A caller's own option
+    of the same macro wins. [] on every other target."""
+    target = target or arch()
+    if target not in FOREST_HOLD_TARGETS:
+        return []
+    out = []
+    own = lambda name: any(o == f"-D{name}" or o.startswith(f"-D{name}=") for o in options)
+    if "DK_HESS_UNROLLED" in text and not (os.environ.get(FOREST_HESS_VAR) or "").strip() \
+            and not own("DK_FOREST_HESS_UNROLL"):
+        out.append("-DDK_FOREST_HESS_UNROLL=0")
+    v = (os.environ.get(FOREST_CHOL_VAR) or "0").strip()
+    if v not in ("0", "1"):
+        raise ValueError(f"${FOREST_CHOL_VAR}={v!r}: must be 0 or 1")
+    if "DK_FOREST_SM90_SMALL" in text and v == "0" and not own("DK_FOREST_SM90_SMALL") and not own("CHOL_SMALL"):
+        out.append("-DDK_FOREST_SM90_SMALL=1")
+    w = (os.environ.get(FOREST_WIDE_VAR) or "0").strip()
+    if w not in ("0", "1"):
+        raise ValueError(f"${FOREST_WIDE_VAR}={w!r}: must be 0 or 1")
+    nv = re.search(r"^#define NV (\d+)", text, re.M)
+    if "chol_solve_bcast_wide" in text and w == "0" and not own("CHOL_BCAST_WIDE") and nv \
+            and 36 <= int(nv.group(1)) <= 48:
+        out.append("-DCHOL_BCAST_WIDE=0")
+    c = (os.environ.get(FOREST_CCD_COOP_VAR) or "0").strip()
+    if c not in ("0", "1"):
+        raise ValueError(f"${FOREST_CCD_COOP_VAR}={c!r}: must be 0 or 1")
+    if "DK_CCD_COOP" in text and c == "0" and not own("DK_CCD_COOP"):
+        out.append("-DDK_CCD_COOP=0")
+    g = (os.environ.get(FOREST_FREE_GYRO_VAR) or "0").strip()
+    if g not in ("0", "1"):
+        raise ValueError(f"${FOREST_FREE_GYRO_VAR}={g!r}: must be 0 or 1")
+    if "DK_FREE_GYRO" in text and g == "0" and not own("DK_FREE_GYRO"):
+        out.append("-DDK_FREE_GYRO=0")
+    return out
+
+
+def capbox_coop_defines(target=None, text="", options=(), forest=False):
+    """['-DDK_CAPBOX_COOP=0'] for a tree-engine unit whose text has the cooperative box contact VJP pass (the macro
+    DK_CAPBOX_COOP in text), or a forest-engine unit of a terrain build with it (cbter_dir_vjp in text: the terrain
+    capsule-box contacts' pass), on a build target of CAPBOX_COOP_OFF (sm_90 / sm_90a) where $DK_SM90_CAPBOX_COOP is 0
+    (the default), unless `options` already define DK_CAPBOX_COOP; else [] (forest units without terrain, other
+    targets, texts without the pass, the switch at 1). Bitwise unchanged: both paths give the same gradients (module
+    docstring)."""
+    target = target or arch()
+    if target not in CAPBOX_COOP_OFF or "DK_CAPBOX_COOP" not in text or (forest and "cbter_dir_vjp(" not in text):
+        return []
+    v = (os.environ.get(CAPBOX_COOP_VAR) or "0").strip()
+    if v not in ("0", "1"):
+        raise ValueError(f"${CAPBOX_COOP_VAR}={v!r}: must be 0 or 1")
+    if v == "1" or any(o == "-DDK_CAPBOX_COOP" or o.startswith("-DDK_CAPBOX_COOP=") for o in options):
+        return []
+    return ["-DDK_CAPBOX_COOP=0"]
+
+
+def tree_adj_cap():
+    """$DK_SM90_ADJ_CAP: None for 1 (the default: TREE_ADJ_CAPS on terrain builds), 0 for no cap, N for ADJ_MAXNREG=N on
+    every tree-engine unit that launches k_adjoint (64..255; experiments, e.g. a bitwise check of other models)."""
+    v = (os.environ.get(TREE_ADJ_VAR) or "1").strip()
+    if v == "1":
+        return None
+    if v == "0":
+        return 0
+    if v.isdigit() and 64 <= int(v) <= 255:
+        return int(v)
+    raise ValueError(f"${TREE_ADJ_VAR}={v!r}: must be 1, 0 or a register count 64..255")
+
+
+def tree_adj_cap_defines(target=None, options=(), nvcc_path=None, forest=False, terrain=False):
+    """The tree engine's k_adjoint register cap on sm_90 / sm_90a (TREE_ADJ_CAPS: ['-DADJ_MAXNREG=168']) for a unit that
+    launches k_adjoint of a terrain build (terrain) where $DK_SM90_ADJ_CAP is 1 (the default); ['-DADJ_MAXNREG=N'] on
+    every tree-engine such unit with N. Forest units (forest): the same for a terrain build's units (the tree engine's
+    terrain VJP device code; since 2026-11-15) only where $DK_SM90_FOREST_ADJ_CAP is 1 (default 0: no cap until
+    verified on sm_90), none without terrain. None with 0, for other targets, a caller's own
+    -DADJ_MAXNREG, or an nvcc older than 12.4. The unit's text needs with_adj_bounds (g1_engine.adjoint). Register
+    allocation only (bitwise unchanged; module docstring)."""
+    target = target or arch()
+    if target not in TREE_ADJ_CAPS or (forest and not terrain):
+        return []
+    if forest:
+        v = (os.environ.get(FOREST_TER_CAP_VAR) or "0").strip()
+        if v not in ("0", "1"):
+            raise ValueError(f"${FOREST_TER_CAP_VAR}={v!r}: must be 0 or 1")
+        if v == "0":
+            return []
+    n = tree_adj_cap()
+    if n == 0 or (n is None and not terrain):
+        return []
+    caps = TREE_ADJ_CAPS[target] if n is None else (f"ADJ_MAXNREG={n}",)
+    if not _maxnreg_ok(nvcc_path or nvcc(), TREE_ADJ_VAR):
+        return []
+    return reg_caps_defines(options, caps)
+
+
+def forest_adj_cap():
+    """$DK_SM103_FOREST_ADJ_CAP: None for 1 (the default: FOREST_ADJ_CAPS' value where forest_adj_light), 0 for no
+    cap, N for a register cap of N on every forest model (64..255; e.g. for a timing sweep). Read only where FOREST_ADJ_CAPS has the build target and its register-cap
+    switch is 1."""
+    v = (os.environ.get(FOREST_ADJ_VAR) or "1").strip()
+    if v == "1":
+        return None
+    if v == "0":
+        return 0
+    if v.isdigit() and 64 <= int(v) <= 255:
+        return int(v)
+    raise ValueError(f"${FOREST_ADJ_VAR}={v!r}: must be 1, 0 or a register count 64..255")
+
+
+def forest_adj_light(m):
+    """Whether the forest engine's sm_103 adjoint cap applies to model m by default (FOREST_ADJ_CAPS under
+    $DK_SM103_FOREST_ADJ_CAP=1): every contact pair between planes, spheres and capsules (no box, mesh, cylinder,
+    ellipsoid or height-field pair, whose contact VJPs and replays take k_adjoint to 236-255 registers) and the
+    pyramidal cone. ptxas 12.9 (NVVM 7 adjoint on sm_103): such models' uncapped k_adjoint stays at about 120-150
+    registers, so the cap at 128 costs a few spilled bytes for up to 16 worlds per SM (B300: G1 on the forest engine
+    backward -12.5%); with box pairs it costs 1.3-2.4 KB of spills and was slower (B300: +7.3% backward on a
+    hand scene)."""
+    import mujoco
+    light = {int(mujoco.mjtGeom.mjGEOM_PLANE), int(mujoco.mjtGeom.mjGEOM_SPHERE), int(mujoco.mjtGeom.mjGEOM_CAPSULE)}
+    if int(m.opt.cone) != int(mujoco.mjtCone.mjCONE_PYRAMIDAL):
+        return False
+    return all(int(m.geom_type[g]) in light for g in list(m.pair_geom1) + list(m.pair_geom2))
+
+
+def adjoint_defines(target=None, options=(), nvcc_path=None, forest=False, light=True):
+    """The -D options of a unit that launches k_adjoint (the FFI library's adjoint variant units, the adjoint check
+    binary) for its build target (ADJ_CAPS: sm_103 ['-DADJ_MAXNREG=120'] where $DK_SM103_REG_CAPS is 1, the default),
+    unless `options` already bound k_adjoint; every other target: none. forest: a forest-engine unit (FOREST_ADJ_CAPS:
+    sm_103 ['-DADJ_MAXNREG=128'] where `light` (forest_adj_light of the model) and $DK_SM103_FOREST_ADJ_CAP is 1, the
+    default; none with 0; ['-DADJ_MAXNREG=N'] for every forest model with N). Register allocation only (bitwise
+    unchanged)."""
+    target = target or arch()
+    table = FOREST_ADJ_CAPS if forest else ADJ_CAPS
+    if target not in table or not reg_caps(target):
+        return []
+    var, caps = table[target]
+    if forest:
+        n = forest_adj_cap()
+        if n == 0 or (n is None and not light):
+            return []
+        if n is not None:
+            caps = (f"ADJ_MAXNREG={n}",)
+    if not _maxnreg_ok(nvcc_path or nvcc(), var):
         return []
     return reg_caps_defines(options, caps)
 

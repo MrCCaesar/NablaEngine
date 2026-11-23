@@ -1,0 +1,211 @@
+<mujoco model="anymal_b scene">
+  <compiler angle="radian" meshdir="assets" texturedir="assets"/>
+
+  <option impratio="100" integrator="implicitfast"/>
+
+  <visual>
+    <global azimuth="120" elevation="-20"/>
+    <headlight ambient="0.3 0.3 0.3" diffuse="0.6 0.6 0.6" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+  </visual>
+
+  <default>
+    <default class="anymal_b">
+      <mesh scale="0.001 0.001 0.001"/>
+      <joint damping="1" frictionloss="0.1"/>
+      <site group="3" rgba="1 0 0 0.66"/>
+      <default class="HAA">
+        <joint axis="1 0 0"/>
+      </default>
+      <default class="HFE">
+        <joint axis="0 1 0"/>
+      </default>
+      <default class="KFE">
+        <joint axis="0 1 0"/>
+      </default>
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2"/>
+        <default class="visual_zflip"/>
+      </default>
+      <default class="collision">
+        <geom group="3"/>
+        <default class="haa_actuator">
+          <geom size="0.05 0.05 0" type="cylinder"/>
+        </default>
+        <default class="belly_plate_bump">
+          <geom size="0.05 0.05 0.035" type="box"/>
+        </default>
+        <default class="mount">
+          <geom size="0.01 0.135 0.045" type="box"/>
+        </default>
+        <default class="protector">
+          <geom size="0.08 0.05 0" type="cylinder"/>
+        </default>
+        <default class="heatfins">
+          <geom size="0.045 0.015 0" type="cylinder"/>
+        </default>
+        <default class="thigh_with_fins">
+          <geom size="0.04 0.02 0.125" type="box"/>
+        </default>
+        <default class="kfe_actuator">
+          <geom size="0.06 0.06 0" type="cylinder"/>
+        </default>
+        <default class="upper_protector">
+          <geom size="0.066 0.06 0" type="cylinder"/>
+        </default>
+        <default class="shank">
+          <geom size="0.04 0.034 0.065" type="box"/>
+        </default>
+        <default class="adapter">
+          <geom size="0.015 0.14 0" type="cylinder"/>
+        </default>
+        <default class="foot">
+          <geom size="0.031 0 0" condim="6" priority="1" friction="0.8 0.02 0.01" solimp="0.015 1 0.031"/>
+        </default>
+      </default>
+      <default class="affine">
+        <general ctrlrange="-6.28 6.28" forcerange="-40 40" input="pos" biastype="affine" gainprm="100" biasprm="0 -100"/>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" colorspace="auto" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" colorspace="auto" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="light_gray" rgba="0.8 0.8 0.8 1"/>
+    <material name="dark_gray" rgba="0.64 0.64 0.64 1"/>
+    <material name="alu_eloxiert" rgba="0.1139 0.1139 0.1139 1"/>
+    <material name="any_blau" rgba="0.2399 0.3499 0.5899 1"/>
+    <material name="carbon_fibre_logo" specular="1" shininess="1"/>
+    <material name="rot_emcy" rgba="0.2611 0.09645 0.0735 1"/>
+    <material name="yellow_emcy" rgba="0.5987 0.4607 0.2442 1"/>
+    <material name="copper" rgba="0.8 0.4673 0.284 1"/>
+    <material name="foam_dark" rgba="0.1 0.1 0.1 1"/>
+    <material name="carbon_fibre" specular="1" shininess="1"/>
+    <material name="groundplane" texture="groundplane" texrepeat="5 5" texuniform="true" reflectance="0.2"/>
+  </asset>
+
+  <worldbody>
+    <geom name="floor" size="0 0 0.05" type="plane" contype="0" conaffinity="0" material="groundplane"/>
+    <light name="spotlight" target="base" pos="0 -1 2" cutoff="30" mode="targetbodycom"/>
+    <light pos="0 0 1.5" type="directional"/>
+    <body name="base" childclass="anymal_b" pos="0 0 0.58" quat="0 0 0 1">
+      <inertial pos="0.0025 0 0.0502071" quat="0.5 0.5 0.5 0.5" mass="19.2035" diaginertia="0.639559 0.624031 0.217374"/>
+      <joint type="free" damping="0" frictionloss="0"/>
+      <geom name="base_collision0" class="collision" size="0.2655 0.135 0.12" pos="0 0 0.08" type="box" contype="0" conaffinity="0" mass="0"/>
+      <geom name="base_collision1" class="haa_actuator" pos="0.227 0.116 0" quat="0.707107 0 0.707107 0" contype="0" conaffinity="0" mass="0"/>
+      <geom name="base_collision2" class="haa_actuator" pos="0.227 -0.116 0" quat="0.707107 0 0.707107 0" contype="0" conaffinity="0" mass="0"/>
+      <geom name="base_collision3" class="haa_actuator" pos="-0.227 0.116 0" quat="0.707107 0 0.707107 0" contype="0" conaffinity="0" mass="0"/>
+      <geom name="base_collision4" class="haa_actuator" pos="-0.227 -0.116 0" quat="0.707107 0 0.707107 0" contype="0" conaffinity="0" mass="0"/>
+      <geom name="base_collision5" class="belly_plate_bump" pos="0.2155 0 -0.09" contype="0" conaffinity="0" mass="0"/>
+      <geom name="base_collision6" class="belly_plate_bump" pos="-0.2155 0 -0.09" contype="0" conaffinity="0" mass="0"/>
+      <geom name="base_collision7" class="collision" size="0.2655 0.01 0.035" pos="0 0 -0.09" type="box" contype="0" conaffinity="0" mass="0"/>
+      <body name="LF_HIP" pos="0.277 0.116 0">
+        <inertial pos="0.0645163 -0.0037871 -0.000152184" quat="0.996866 0.0379822 0.0252009 -0.0646548" mass="1.42462" diaginertia="0.00243341 0.00230249 0.00197758"/>
+        <joint name="LF_HAA" class="HAA" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+        <geom name="LF_HIP_collision0" class="protector" pos="0.0635 -0.009 0" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+        <geom name="LF_HIP_collision1" class="heatfins" pos="0.0635 -0.074 0" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+        <body name="LF_THIGH" pos="0.0635 0.041 0">
+          <inertial pos="-0.00389797 0.0542266 -0.214583" quat="0.74395 -0.0633414 0.0362707 0.664237" mass="1.63498" diaginertia="0.0122697 0.0120427 0.00228302"/>
+          <joint name="LF_HFE" class="HFE" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+          <geom name="LF_THIGH_collision0" class="thigh_with_fins" pos="0 0.035 -0.125" quat="0.997373 0.0724365 0 0" contype="0" conaffinity="0" mass="0"/>
+          <geom name="LF_THIGH_collision1" class="kfe_actuator" pos="0 0.069 -0.25" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+          <geom name="LF_THIGH_collision2" class="upper_protector" pos="0 -0.005 0" quat="0.654029 0.75647 0 0" contype="0" conaffinity="0" mass="0"/>
+          <body name="LF_SHANK" pos="0 0.109 -0.25">
+            <inertial pos="0.0696396 -0.0132494 -0.150905" quat="0.677954 -0.0950614 -0.0578104 0.726636" mass="0.472163" diaginertia="0.0116034 0.0110666 0.000723761"/>
+            <joint name="LF_KFE" class="KFE" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+            <geom name="LF_SHANK_collision0" class="shank" pos="0.065 -0.015 0.01" quat="0.707107 0 0.707107 0" contype="0" conaffinity="0" mass="0"/>
+            <geom name="LF_SHANK_collision1" class="adapter" pos="0.1 -0.02 -0.160625" contype="0" conaffinity="0" mass="0"/>
+            <geom name="LF_SHANK_foot" class="foot" pos="0.1 -0.02 -0.298" contype="0" conaffinity="0" mass="0"/>
+          </body>
+        </body>
+      </body>
+      <body name="RF_HIP" pos="0.277 -0.116 0">
+        <inertial pos="0.0645163 0.0037871 -0.000152184" quat="0.996866 -0.0379822 0.0252009 0.0646548" mass="1.42462" diaginertia="0.00243341 0.00230249 0.00197758"/>
+        <joint name="RF_HAA" class="HAA" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+        <geom name="RF_HIP_collision0" class="protector" pos="0.0635 0.009 0" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+        <geom name="RF_HIP_collision1" class="heatfins" pos="0.0635 0.074 0" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+        <body name="RF_THIGH" pos="0.0635 -0.041 0">
+          <inertial pos="-0.00389797 -0.0542266 -0.214583" quat="0.664237 0.0362707 -0.0633414 0.74395" mass="1.63498" diaginertia="0.0122697 0.0120427 0.00228302"/>
+          <joint name="RF_HFE" class="HFE" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+          <geom name="RF_THIGH_collision0" class="thigh_with_fins" pos="0 -0.035 -0.125" quat="0.997373 -0.0724365 0 0" contype="0" conaffinity="0" mass="0"/>
+          <geom name="RF_THIGH_collision1" class="kfe_actuator" pos="0 -0.069 -0.25" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+          <geom name="RF_THIGH_collision2" class="upper_protector" pos="0 0.005 0" quat="0.654029 -0.75647 0 0" contype="0" conaffinity="0" mass="0"/>
+          <body name="RF_SHANK" pos="0 -0.109 -0.25">
+            <inertial pos="0.0696396 0.0132494 -0.150905" quat="0.726636 -0.0578104 -0.0950614 0.677954" mass="0.472163" diaginertia="0.0116034 0.0110666 0.000723761"/>
+            <joint name="RF_KFE" class="KFE" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+            <geom name="RF_SHANK_collision0" class="shank" pos="0.065 0.015 0.01" quat="0.707107 0 0.707107 0" contype="0" conaffinity="0" mass="0"/>
+            <geom name="RF_SHANK_collision1" class="adapter" pos="0.1 0.02 -0.160625" contype="0" conaffinity="0" mass="0"/>
+            <geom name="RF_SHANK_foot" class="foot" pos="0.1 0.02 -0.298" contype="0" conaffinity="0" mass="0"/>
+          </body>
+        </body>
+      </body>
+      <body name="LH_HIP" pos="-0.277 0.116 0">
+        <inertial pos="-0.0645163 -0.0037871 -0.000152184" quat="0.996866 0.0379822 -0.0252009 0.0646548" mass="1.42462" diaginertia="0.00243341 0.00230249 0.00197758"/>
+        <joint name="LH_HAA" class="HAA" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+        <geom name="LH_HIP_collision0" class="protector" pos="-0.0635 -0.009 0" quat="0.707107 -0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+        <geom name="LH_HIP_collision1" class="heatfins" pos="-0.0635 -0.074 0" quat="0.707107 -0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+        <body name="LH_THIGH" pos="-0.0635 0.041 0">
+          <inertial pos="0.00389797 0.0542266 -0.214583" quat="0.664237 -0.0362707 0.0633414 0.74395" mass="1.63498" diaginertia="0.0122697 0.0120427 0.00228302"/>
+          <joint name="LH_HFE" class="HFE" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+          <geom name="LH_THIGH_collision0" class="thigh_with_fins" pos="0 0.035 -0.125" quat="0.997373 0.0724365 0 0" contype="0" conaffinity="0" mass="0"/>
+          <geom name="LH_THIGH_collision1" class="kfe_actuator" pos="0 0.069 -0.25" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+          <geom name="LH_THIGH_collision2" class="upper_protector" pos="0 -0.005 0" quat="0.654029 0.75647 0 0" contype="0" conaffinity="0" mass="0"/>
+          <body name="LH_SHANK" pos="0 0.109 -0.25">
+            <inertial pos="-0.0696396 -0.0132494 -0.150905" quat="0.726636 0.0578104 0.0950615 0.677954" mass="0.472163" diaginertia="0.0116034 0.0110666 0.000723761"/>
+            <joint name="LH_KFE" class="KFE" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+            <geom name="LH_SHANK_collision0" class="shank" pos="-0.065 -0.015 0.01" quat="0.707107 0 0.707107 0" contype="0" conaffinity="0" mass="0"/>
+            <geom name="LH_SHANK_collision1" class="adapter" pos="-0.1 -0.02 -0.160625" contype="0" conaffinity="0" mass="0"/>
+            <geom name="LH_SHANK_foot" class="foot" pos="-0.1 -0.02 -0.298" contype="0" conaffinity="0" mass="0"/>
+          </body>
+        </body>
+      </body>
+      <body name="RH_HIP" pos="-0.277 -0.116 0">
+        <inertial pos="-0.0645163 0.0037871 -0.000152184" quat="0.996866 -0.0379822 -0.0252009 -0.0646548" mass="1.42462" diaginertia="0.00243341 0.00230249 0.00197758"/>
+        <joint name="RH_HAA" class="HAA" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+        <geom name="RH_HIP_collision0" class="protector" pos="-0.0635 0.009 0" quat="0.707107 -0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+        <geom name="RH_HIP_collision1" class="heatfins" pos="-0.0635 0.074 0" quat="0.707107 -0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+        <body name="RH_THIGH" pos="-0.0635 -0.041 0">
+          <inertial pos="0.00389797 -0.0542266 -0.214583" quat="0.74395 0.0633414 -0.0362707 0.664237" mass="1.63498" diaginertia="0.0122697 0.0120427 0.00228302"/>
+          <joint name="RH_HFE" class="HFE" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+          <geom name="RH_THIGH_collision0" class="thigh_with_fins" pos="0 -0.035 -0.125" quat="0.997373 -0.0724365 0 0" contype="0" conaffinity="0" mass="0"/>
+          <geom name="RH_THIGH_collision1" class="kfe_actuator" pos="0 -0.069 -0.25" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" mass="0"/>
+          <geom name="RH_THIGH_collision2" class="upper_protector" pos="0 0.005 0" quat="0.654029 -0.75647 0 0" contype="0" conaffinity="0" mass="0"/>
+          <body name="RH_SHANK" pos="0 -0.109 -0.25">
+            <inertial pos="-0.0696396 0.0132494 -0.150905" quat="0.677954 0.0950614 0.0578104 0.726636" mass="0.472163" diaginertia="0.0116034 0.0110666 0.000723761"/>
+            <joint name="RH_KFE" class="KFE" actuatorfrcrange="-40 40" actuatorfrclimited="true"/>
+            <geom name="RH_SHANK_collision0" class="shank" pos="-0.065 0.015 0.01" quat="0.707107 0 0.707107 0" contype="0" conaffinity="0" mass="0"/>
+            <geom name="RH_SHANK_collision1" class="adapter" pos="-0.1 0.02 -0.160625" contype="0" conaffinity="0" mass="0"/>
+            <geom name="RH_SHANK_foot" class="foot" pos="-0.1 0.02 -0.298" contype="0" conaffinity="0" mass="0"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <pair geom1="floor" geom2="LF_SHANK_foot" name="p0_floor__LF_SHANK_foot" friction="0.8 0.8 0.02 0.01 0.01" solimp="0.015 1 0.031"/>
+    <pair geom1="floor" geom2="RF_SHANK_foot" name="p1_floor__RF_SHANK_foot" friction="0.8 0.8 0.02 0.01 0.01" solimp="0.015 1 0.031"/>
+    <pair geom1="floor" geom2="LH_SHANK_foot" name="p2_floor__LH_SHANK_foot" friction="0.8 0.8 0.02 0.01 0.01" solimp="0.015 1 0.031"/>
+    <pair geom1="floor" geom2="RH_SHANK_foot" name="p3_floor__RH_SHANK_foot" friction="0.8 0.8 0.02 0.01 0.01" solimp="0.015 1 0.031"/>
+    <exclude body1="base" body2="LF_THIGH"/>
+    <exclude body1="base" body2="RF_THIGH"/>
+    <exclude body1="base" body2="LH_THIGH"/>
+    <exclude body1="base" body2="RH_THIGH"/>
+  </contact>
+
+  <actuator>
+    <general name="LF_HAA" joint="LF_HAA" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="LF_HFE" joint="LF_HFE" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="LF_KFE" joint="LF_KFE" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="RF_HAA" joint="RF_HAA" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="RF_HFE" joint="RF_HFE" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="RF_KFE" joint="RF_KFE" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="LH_HAA" joint="LH_HAA" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="LH_HFE" joint="LH_HFE" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="LH_KFE" joint="LH_KFE" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="RH_HAA" joint="RH_HAA" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="RH_HFE" joint="RH_HFE" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="RH_KFE" joint="RH_KFE" ctrlrange="-6.28 6.28" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+  </actuator>
+</mujoco>

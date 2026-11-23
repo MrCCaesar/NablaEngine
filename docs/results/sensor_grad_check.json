@@ -1,0 +1,259 @@
+{
+ "provenance": {
+  "commit": null,
+  "date": "2026-11-13",
+  "gpu": "Tesla V100-SXM2-16GB",
+  "driver": "550.90.07",
+  "jax": "0.12.0.1",
+  "torch": "2.14.1+cu126",
+  "mujoco": "3.17.0",
+  "commit_note": "a revision before this repository's history: not recorded"
+ },
+ "nworld": 32,
+ "objects": 4,
+ "depth": "64x48",
+ "height_scan": [
+  11,
+  17
+ ],
+ "h": 1e-05,
+ "min_cos": 0.01,
+ "ref_seconds": 26.1,
+ "bitwise_forward_none_vs_first_order": {
+  "depth": true,
+  "height_scan": true,
+  "lidar": true,
+  "lidar_seg": true,
+  "seg": true
+ },
+ "fd": {
+  "depth": {
+   "per_category": {
+    "terrain_box": {
+     "n": 8651,
+     "rel_median": 1.3752155640684259e-07,
+     "rel_p99": 5.047761254699858e-06,
+     "rel_max": 0.000136372397659218,
+     "abs_median": 2.052361016691151e-07,
+     "abs_p99": 6.505228506092919e-06,
+     "deriv_abs_median": 1.5782286321153192
+    },
+    "heightfield": {
+     "n": 15679,
+     "rel_median": 1.7105382398131203e-07,
+     "rel_p99": 5.83123598998971e-06,
+     "rel_max": 0.00020730244607378403,
+     "abs_median": 1.730991030512996e-07,
+     "abs_p99": 6.696936813366206e-06,
+     "deriv_abs_median": 1.2458647499435926
+    },
+    "floor": {
+     "n": 39643,
+     "rel_median": 1.2283955050409246e-07,
+     "rel_p99": 3.789600668445671e-06,
+     "rel_max": 0.00016716113080628996,
+     "abs_median": 1.1353858653251336e-07,
+     "abs_p99": 5.158441952730195e-05,
+     "deriv_abs_median": 1.0598037475273436
+    },
+    "object": {
+     "n": 12038,
+     "rel_median": 1.574791439291177e-07,
+     "rel_p99": 9.383396888127033e-06,
+     "rel_max": 0.00051056856546356,
+     "abs_median": 2.2543283306752926e-07,
+     "abs_p99": 6.106809994479416e-06,
+     "deriv_abs_median": 1.591161167463495
+    },
+    "robot_mesh": {
+     "n": 2006,
+     "rel_median": 1.9103633467403148e-07,
+     "rel_p99": 1.1493602096214239e-05,
+     "rel_max": 0.0016489480829162313,
+     "abs_median": 3.002987428724069e-07,
+     "abs_p99": 1.5979951560041324e-05,
+     "deriv_abs_median": 1.7317801160099398
+    }
+   },
+   "counts": {
+    "rays": 98304,
+    "hits": 78877,
+    "id_or_validity_changes": 15,
+    "face_changes": 159,
+    "grazing": 0,
+    "mismatch_vs_reference": 0,
+    "invalid": 686
+   },
+   "kept": 78017,
+   "excluded_share_of_hits": {
+    "id_or_validity_changes": 0.00019,
+    "face_changes": 0.00202,
+    "grazing": 0.0,
+    "mismatch_vs_reference": 0.0,
+    "invalid": 0.0087
+   },
+   "ray_hit_share": 0.8024,
+   "misses_nonzero_grad": 0
+  },
+  "height_scan": {
+   "per_category": {
+    "terrain_box": {
+     "n": 0
+    },
+    "heightfield": {
+     "n": 735,
+     "rel_median": 5.890575379752527e-08,
+     "rel_p99": 6.25194974947113e-07,
+     "rel_max": 3.936156646211121e-06,
+     "abs_median": 3.828984784792766e-08,
+     "abs_p99": 2.8253255564436563e-07,
+     "deriv_abs_median": 0.7605200528670862
+    },
+    "floor": {
+     "n": 5004,
+     "rel_median": 2.5688917539417778e-08,
+     "rel_p99": 4.411505860476158e-08,
+     "rel_max": 4.411505860476158e-08,
+     "abs_median": 1.4168115625157185e-08,
+     "abs_p99": 1.0429018715285565e-07,
+     "deriv_abs_median": 0.7556639368022643
+    },
+    "object": {
+     "n": 245,
+     "rel_median": 1.393080083587348e-07,
+     "rel_p99": 6.501024093872543e-06,
+     "rel_max": 7.063240561875424e-06,
+     "abs_median": 1.470959694049867e-07,
+     "abs_p99": 4.297516281894787e-06,
+     "deriv_abs_median": 1.30478187729266
+    },
+    "robot_mesh": {
+     "n": 0
+    }
+   },
+   "counts": {
+    "rays": 5984,
+    "hits": 5984,
+    "id_or_validity_changes": 0,
+    "face_changes": 0,
+    "grazing": 0,
+    "mismatch_vs_reference": 0,
+    "invalid": 0
+   },
+   "kept": 5984,
+   "excluded_share_of_hits": {
+    "id_or_validity_changes": 0.0,
+    "face_changes": 0.0,
+    "grazing": 0.0,
+    "mismatch_vs_reference": 0.0,
+    "invalid": 0.0
+   },
+   "ray_hit_share": 1.0,
+   "misses_nonzero_grad": 0
+  },
+  "lidar": {
+   "per_category": {
+    "terrain_box": {
+     "n": 3306,
+     "rel_median": 1.369910680579402e-07,
+     "rel_p99": 5.8031453005112165e-06,
+     "rel_max": 0.00010118342467683304,
+     "abs_median": 2.2004403452124954e-07,
+     "abs_p99": 6.557216939206941e-06,
+     "deriv_abs_median": 1.6937143235029593
+    },
+    "heightfield": {
+     "n": 4738,
+     "rel_median": 1.3669201147531305e-07,
+     "rel_p99": 4.034926114991678e-06,
+     "rel_max": 0.0002472387048607391,
+     "abs_median": 2.3638054047481205e-07,
+     "abs_p99": 8.822296651800345e-06,
+     "deriv_abs_median": 2.0473066280279895
+    },
+    "floor": {
+     "n": 11928,
+     "rel_median": 1.3152224566124622e-07,
+     "rel_p99": 4.165715089490654e-06,
+     "rel_max": 0.00014706109599325822,
+     "abs_median": 3.629620158873692e-07,
+     "abs_p99": 0.0006978426409648298,
+     "deriv_abs_median": 3.312734436899944
+    },
+    "object": {
+     "n": 1573,
+     "rel_median": 1.5241639485372997e-07,
+     "rel_p99": 8.253580953445507e-06,
+     "rel_max": 5.1765289227392134e-05,
+     "abs_median": 2.648645179847975e-07,
+     "abs_p99": 5.485102090254654e-06,
+     "deriv_abs_median": 2.0336313457602895
+    },
+    "robot_mesh": {
+     "n": 743,
+     "rel_median": 2.2542974886427892e-07,
+     "rel_p99": 2.148124012584736e-05,
+     "rel_max": 0.00020041459684143494,
+     "abs_median": 3.592421597975459e-07,
+     "abs_p99": 1.8198085338347975e-05,
+     "deriv_abs_median": 1.8269282352212366
+    }
+   },
+   "counts": {
+    "rays": 32768,
+    "hits": 22393,
+    "id_or_validity_changes": 2,
+    "face_changes": 50,
+    "grazing": 0,
+    "mismatch_vs_reference": 53,
+    "invalid": 0
+   },
+   "kept": 22288,
+   "excluded_share_of_hits": {
+    "id_or_validity_changes": 9e-05,
+    "face_changes": 0.00223,
+    "grazing": 0.0,
+    "mismatch_vs_reference": 0.00237,
+    "invalid": 0.0
+   },
+   "ray_hit_share": 0.6834,
+   "misses_nonzero_grad": 0
+  }
+ },
+ "parity": {
+  "dist_bitwise_jax_vs_torch": true,
+  "id_equal": true,
+  "normal_bitwise": true,
+  "jax_none_vs_first_order_bitwise": true,
+  "torch_none_vs_first_order_bitwise": true,
+  "grad_rel_maxdiff": {
+   "pos": 2.6263318128623024e-07,
+   "rot": 1.757819572477186e-07,
+   "xpos": 4.190985358134068e-07,
+   "xquat": 4.4365759305551644e-07,
+   "objects": 1.844233271082947e-07
+  }
+ },
+ "timing_jax": {
+  "nworld": 4096,
+  "depth": {
+   "forward_none_ms": 24.11,
+   "forward_first_order_ms": 22.329,
+   "forward_backward_ms": 49.309,
+   "backward_only_ms": 14.782
+  },
+  "height_scan": {
+   "forward_none_ms": 0.37,
+   "forward_first_order_ms": 0.368,
+   "forward_backward_ms": 2.737,
+   "backward_only_ms": 1.632
+  }
+ },
+ "timing_torch_cast_depth": {
+  "nworld": 4096,
+  "forward_none_ms": 30.103,
+  "forward_backward_ms": 103.45
+ },
+ "ok": true,
+ "revision_note": "rev A: revisions of the development repository before this repository's history, labelled in order of first mention"
+}

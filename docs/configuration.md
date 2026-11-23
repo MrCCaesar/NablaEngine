@@ -1,94 +1,134 @@
-# Configuration: environment variables and compile-time switches
+# Configuration
 
-Two different kinds of knobs exist, and they are easy to confuse because both are spelled `DK_*`:
+Physics comes from the model, the `init()` options and the per-world parameters (`docs/api.md`), not from these
+knobs. There are two kinds of `DK_*` knobs:
 
-- **Environment variables** are read by Python (or by a check binary) at run time.
-- **Compile-time switches** are C preprocessor macros of the CUDA source (`-DNAME=VALUE`). They take effect only in a
-  build that passes them: `scripts/engine_step_check.py --define NAME=VALUE`, or a check script that sets them for its
-  own builds. Exporting one as an environment variable does nothing: `export DK_ADJ_CLAMP_KV=0` changes no build. The
-  JAX interface's library (`nablaengine.jax_ffi`) is built with every other macro at its default and one translation
-  unit per adjoint variant (with `DK_SM120_FRONTEND=split` also a forward / kinematics unit of its own); its
-  `clamp_kv` and `normal` arguments choose the variant at call time. The build target's own architecture flags
-  (`nablaengine.cuda.arch_flags`: on sm_120 every unit from compute_90 PTX by default) and `-D` options
-  (`nablaengine.cuda.unit_defines`: the register caps of `DK_SM90_REG_CAPS` and `DK_SM120_PRE_CAP`) go to every build
-  in the same way: the FFI library and the check binaries.
+- **Environment variables**, read by Python at build or run time.
+- **Compile-time switches**, C preprocessor macros (`-DNAME=VALUE`) of the CUDA source. They act only in a build that
+  passes them; exporting one as an environment variable does nothing. The FFI libraries use the defaults.
 
-"Bitwise" below says whether a non-default value changes the engine's results bit for bit (forward outputs, tape or
-gradients) compared with the default build.
-
-The benchmark harness (`benchmarks/README.md`: `DK_BENCH_*`) and the timing kits (`scripts/paper_bench/README.md`:
-`PAPER_BENCH_*`; `scripts/physx_bench/README.md`: `PHYSX_BENCH_*`) document their own variables; none of them changes
-the engine's results.
+"Changes results?" compares with the default build: **no** means bitwise identical outputs, tape and gradients;
+**rounding** means float32 rounding differences only; **yes** means different results.
 
 ## Environment variables
 
-| Variable | Default | Read by | What it does | Bitwise |
-|---|---|---|---|---|
-| `NVCC` | search order below | `nablaengine.cuda.nvcc()` | The nvcc of every engine build. Search order: `$NVCC`, `nvcc` on `PATH`, `$CUDA_HOME/bin/nvcc`, a pip `nvidia.cuda_nvcc` that contains nvcc (the `nvidia-cuda-nvcc-cu12` wheel does not: only ptxas), `/usr/local/cuda/bin/nvcc`. Use CUDA 12.x: CUDA 13 dropped sm_70, sm_120 needs 12.8 or newer. | yes: another nvcc release gives other binaries (the FFI library's cache key includes `nvcc --version`; the forward digests are keyed by the release) |
-| `CUDA_HOME` | unset | `cuda.nvcc()` | `$CUDA_HOME/bin/nvcc` is a candidate. | as `NVCC` |
-| `DK_ARCH` | the first visible GPU's | `cuda.arch()`, `jax_ffi` | The build target (`-arch=sm_XY`), e.g. `sm_70` (V100), `sm_86` (RTX 3090), `sm_90` (H100), `sm_120` (RTX PRO 6000). Set it to build without a GPU (`DK_ARCH=sm_120 JAX_PLATFORMS=cpu`). | yes when it is not the GPU's own architecture (a warning says so): code for an older target runs that target's code paths, e.g. `CHOL_COMPACT` |
-| `DK_SM120_FRONTEND` | `n7` | `cuda.arch_flags()`: every build (check binaries, FFI library) | On sm_120, `n7`: every unit (forward / kinematics `k_pre`, `k_post`, `k_substep`, `k_kin`, `k_kin_vjp`; the 12 adjoint variants; the FFI unit) is built from compute_90 PTX, the NVVM 7 front end (`-arch=compute_90 -code=sm_120`). On the RTX PRO 6000 the native forward is 4.75% slower and the native adjoint 12% slower (the NVVM 7 adjoint 0.893: about 127 registers against 238, 9 worlds per SM instead of 8). `split`: only the forward / kinematics unit NVVM 7, the adjoint units `-arch=sm_120` (NVVM 20 with CUDA 12.8 / 12.9). `native`: every unit `-arch=sm_120`. `n7` / `split` apply only where the PTX headers confirm compute_90 is NVVM 7 and compute_120 is not (otherwise every unit native, with a note on stderr). In the FFI library's cache key; `jax_ffi.init()` reports `arch_flags` and `front_end`. Other architectures ignore it. | yes on sm_120: the forward's bits between `native` and `n7` / `split`, the gradients' between `n7` and `split` / `native`; no elsewhere |
-| `DK_SM120_FORWARD_FRONTEND` | unset | `cuda.frontend()` | Deprecated alias of `DK_SM120_FRONTEND`, read only where that is unset, with a DeprecationWarning: `n7` -> `n7` (every unit), `native` -> `native`. | as `DK_SM120_FRONTEND` |
-| `DK_SM90_REG_CAPS` | `1` | `cuda.unit_defines()` (`REG_CAPS`): every build of the forward kernels | On sm_90 / sm_90a the unit with the forward kernels gets `-DSPLIT_PRE_MINB=16 -DSPLIT_POST_MAXNREG=128`: `k_pre` at 128 registers (no spills), `k_post` `__maxnreg__(128)` (some spills), 16 worlds per SM each instead of 12; forward 10.8% faster on the H100 SXM5 (4096 worlds). `0`: the launch bounds of the other targets. Decided by the build target, not by `__CUDA_ARCH__` (sm_120's forward unit is compiled from compute_90 PTX); other targets ignore it. A caller's `-DSPLIT_PRE_MINB` / `-DSPLIT_POST_MAXNREG` / `-DSPLIT_POST_MINB` replaces the cap of that kernel. Needs nvcc 12.4+ (`__maxnreg__`): with an older nvcc the build keeps the launch bounds and says so on stderr. In the FFI library's cache key; `jax_ffi.init()` reports the applied options as `forward_defines`. | no (checked on the H100 and on the V100: outputs, contacts and tape; register allocation only) |
-| `DK_SM120_PRE_CAP` | `1` | `cuda.unit_defines()` (`REG_CAPS`): every build of the forward kernels | On sm_120 with the NVVM 7 forward (`DK_SM120_FRONTEND` `n7` or `split`, not `native`) the unit with the forward kernels gets `-DSPLIT_PRE_MINB=16`: `k_pre` 162 -> 128 registers without spills (ptxas 12.9), 1.3% faster forward on the RTX PRO 6000 (shared memory keeps `k_pre` at 12 worlds per SM, so it is code generation only); `k_post`'s `__maxnreg__(128)` is not taken there. `0`: without it. A caller's `-DSPLIT_PRE_MINB` replaces it. In the FFI library's cache key and `init()`'s `forward_defines`. | no (register allocation only) |
-| `DK_TEST_FORWARD_VIRTUAL_ARCH` | unset | `cuda.virtual_arch()` | Testing only: the forward / kinematics unit from this virtual architecture's PTX on any GPU (e.g. `compute_70` on a V100: `-arch=compute_70 -code=sm_70`), so the split structure (`DK_SM120_FRONTEND=split`: a forward unit of its own, check binaries in pairs) can be exercised elsewhere; it warns when set. | no where that PTX is the native one (compute_70 on sm_70); otherwise as a front-end change |
-| `DK_TEST_VIRTUAL_ARCH` | unset | `cuda.virtual_arch()` | Testing only: every unit from this virtual architecture's PTX on any GPU (e.g. `compute_70` on a V100), so sm_120's default structure (one set of flags for every unit) can be exercised elsewhere; it warns when set. `DK_TEST_FORWARD_VIRTUAL_ARCH` takes precedence for the forward unit. | no where that PTX is the native one (compute_70 on sm_70); otherwise as a front-end change |
-| `CUDA_VISIBLE_DEVICES` | all GPUs | CUDA, `cuda.arch()`, the scripts | The GPU(s) a process uses; `cuda.arch()` and the result JSONs' GPU record follow its first entry. | no (on one GPU type) |
-| `DK_FIXTURES` | unset (or empty): `<checkout>/fixtures/mjlab` | `nablaengine.fixtures.fixtures_dir()`, which `jax_ffi.init()` and every script use | The fixtures directory: the model (`g1_train.mjb`, `g1_meta.json`), the MuJoCo Warp references (`mjw317_<corpus>.npz`) and the forward digests; a relative path is taken from the current directory. Outside a source checkout set it, or call `jax_ffi.init(model=, foot_pairs=)`. | selects data |
-| `DK_BENCH_DATA` | unset (or empty): `<checkout>/benchmarks/data` | `nablaengine.fixtures.bench_dir()` | Where the corpora (`<name>.npz`) and their truth files (`truth/<name>.npz`) are read from by the library and the checks (`fixtures.load_corpus`, `load_truth`). | selects data |
-| `DK_DIGESTS` | unset | `nablaengine.checks` (the forward digest check of `engine_step_check.py` and `jax_ffi_check.py`) | A further manifest of forward digests, read after `fixtures/mjlab/engine_digests.json` (for example entries made on another GPU architecture). | no (which digests a run is compared with) |
-| `DK_CACHE_DIR` | `$XDG_CACHE_HOME/nablaengine`, else `~/.cache/nablaengine` | `jax_ffi.cache_dir()`, `torch_ffi.cache_dir()` | Where the FFI library (`libdk_g1_<arch>_<key>.so`, about 5.5 MB per architecture and key, never pruned) is kept. | no |
-| `DK_TORCH_ARTIFACT` | unset: the cache's `torch_<arch>_current.json` | `torch_ffi.init()` | The PyTorch interface's artifact to load (the `.json` that `python -m nablaengine.torch_ffi build` wrote, next to its library and constants), e.g. one built on another machine. | no (a stale or foreign artifact is refused) |
-| `DK_OVERFLOW_WARN` | `0` (off) | `jax_ffi`, `torch_ffi` (`set_overflow_warnings`) | `1`: `read_diagnostics()` (and `jax_ffi.decode_diagnostics`) warn when worlds exceeded the contact (64) or constraint-row (192) capacity, and the unread counts are reported at exit. The counters are kept either way. | no |
-| `XDG_CACHE_HOME` | `~/.cache` | `jax_ffi.cache_dir()` | See `DK_CACHE_DIR`. | no |
-| `DK_MAXCON` | 64 for the mjlab model (32 for a model with at most 64 contact pairs) | `g1_engine.step.maxcon()` | Contact capacity per world in every build, the FFI library included. An experiment switch: it warns when set. | yes (capacity and memory layout) |
-| `DK_KEEP_WORK` | unset: removed | `nablaengine.workdir` | `1` keeps the scripts' temporary work directories (generated sources, binaries, inputs, outputs; also `--keep-work`). | no |
-| `TMPDIR` | `/tmp` | the scripts' work directories | Where work directories are made (a check binary's run needs a few hundred MB while it runs). | no |
-| `DK_SPLIT_ONLY` | unset | `engine_step_check.py`'s binary | `1` / `2`: the timed launches run only `k_pre` / `k_post` (per-kernel time; results invalid). | timing only |
-| `DK_TAPE_IN` | unset | the adjoint check binary (`nablaengine.checks`) | Internal (set by the scripts for split builds, where the forward unit has other flags than the adjoint, as on sm_120): the adjoint runs on another binary's tape. | n/a |
-| `CUOBJDUMP` | next to nvcc, then `PATH`, then a conda package cache (`$CONDA_PKGS_DIRS`, `$CONDA_EXE`'s installation, `~/miniconda3`, `~/miniforge3`, `~/anaconda3`) | `scripts/identity_gate.py` (`nablaengine.identity.find_tool`) | The CUDA binary tool for the SASS digests of the identity gate. Its cuobjdump must know every target it disassembles (sm_120: CUDA 12.8 or newer) and is part of the manifest's toolchain key. | no (reporting) |
-| `PTXAS` | unset: the pip package `nvidia.cuda_nvcc`'s ptxas (the JAX stack's), then the one next to nvcc | `scripts/identity_gate.py` (`nablaengine.identity.find_ptxas`) | A ptxas for a build target the local nvcc cannot compile for (sm_120 with nvcc 12.4): the gate builds such a unit from its virtual architecture's PTX (`-arch=compute_90`) and assembles it with this ptxas (`-arch=sm_120 -m64`, as nvcc runs it); the first candidate that assembles for the target is used. Never read by the engine's own builds. | no (the identity gate only) |
-| `DK_ALLOW_UNSUPPORTED` | unset: every capability error raises | `nablaengine.model.capability.require()`: `jax_ffi.init`, `jax_ffi.check_model`, `EnginePhysics`, `fixtures.load_model`, `g1_engine.kinematics.check_model` | Escape hatch for experiments: a comma-separated list of capability codes (e.g. `H22,H23`; `all` for every code) whose errors become a `RuntimeWarning` instead of `UnsupportedModel`. The engine then simulates other physics than MuJoCo for that model (the codes say what it leaves out); results of such a build are not comparable with the checks'. Never set it for the G1, which has no capability errors. | yes for a model it lets through (that is its point); no effect on a supported model |
-| `ROBOT_DROP_BOX` | unset | `scripts/robots/robot_check.py` | `1`: the robot model without its box-geom pairs (an experiment for comparing with and without box contacts). | yes (other contacts) |
-| `JAX_PLATFORMS` | JAX's | JAX | Several scripts set `cpu`, and `reference/jax64.py` sets it (and x64) at import. | no |
-| `XLA_PYTHON_CLIENT_PREALLOCATE` | JAX's (`true`) | JAX | Set `false` when JAX shares a GPU with another engine (16 GB cards); `verify.sh` sets it. | no |
+### Build and toolchain
 
-## Compile-time switches of the engine
+| variable | default | effect | changes results? |
+|---|---|---|---|
+| `NVCC` | `$NVCC`, `nvcc` on `PATH`, `$CUDA_HOME/bin/nvcc`, pip `nvidia.cuda_nvcc`, `/usr/local/cuda/bin/nvcc` | nvcc for every build; use CUDA 12.x (sm_120 needs 12.8+) | yes (another nvcc gives other binaries) |
+| `CUDA_HOME` | unset | `$CUDA_HOME/bin/nvcc` is an nvcc candidate | as `NVCC` |
+| `DK_ARCH` | first visible GPU's | build target (`sm_70`, `sm_86`, `sm_90`, `sm_120`, ...); set it to build without a GPU | yes if not the GPU's own architecture |
+| `DK_BUILD_JOBS` | CPU count | parallel nvcc / ptxas units; lower it on machines with little RAM per core | no |
+| `DK_CACHE_DIR` | `$XDG_CACHE_HOME/nablaengine`, else `~/.cache/nablaengine` | where built libraries are kept (never pruned) | no |
+| `XDG_CACHE_HOME` | `~/.cache` | see `DK_CACHE_DIR` | no |
+| `DK_TORCH_ARTIFACT` | the cache's `torch_<arch>_current.json` | PyTorch artifact to load | no |
+| `CUDA_VISIBLE_DEVICES` | all GPUs | GPUs a process uses; `DK_ARCH` follows the first | no (one GPU type) |
+| `DK_FIXTURES` | `<checkout>/fixtures/mjlab` | fixtures directory (default model and references) | selects data |
+| `DK_BENCH_DATA` | `<checkout>/benchmarks/data` | where benchmark state sets are read from | selects data |
+| `DK_KEEP_WORK` | unset | `1` keeps the scripts' temporary work directories | no |
+| `TMPDIR` | `/tmp` | where work directories are made | no |
+| `JAX_PLATFORMS` | JAX's | some scripts set `cpu` | no |
+| `XLA_PYTHON_CLIENT_PREALLOCATE` | `true` | set `false` when JAX shares a GPU | no |
 
-Defaults are those of the source (`g1_engine/*.py`); a model-derived default is computed by the Python code that
-generates the header.
+### Engine and physics
 
-| Macro | Default | Where | What it does | Bitwise |
-|---|---|---|---|---|
-| `DK_ADJ_CLAMP_KV` | `1` | `adjoint.py` | Clamped actuators in the adjoint: 0 keeps -kv lambda (as MuJoCo Warp's adjoint), 1 drops it (exact), 2 soft clamp (delta at run time). The FFI's `clamp_kv` (default 0). | yes (gradients) |
-| `DK_ADJ_NORMAL` | `3` | `adjoint_contact.py` | Normal derivative of the sphere core of self contacts: 0 exact, 1 frozen frame, 2 regularized, 3 frozen below eps. The FFI's `normal` (default 3). | yes (gradients) |
-| `DK_ADJ_NORMAL_EPS` | `1e-3f` | `adjoint_contact.py` | The eps (m) of `DK_ADJ_NORMAL` 2 and 3. | yes (gradients) |
-| `DK_ADJ_PARALLEL` | `DK_ADJ_NORMAL != 0` | `adjoint_contact.py` | 1 holds near-parallel free capsule-capsule segment parameters constant (finite gradients); 0 exact. | yes (gradients of near-parallel states; the corpora are bitwise unchanged) |
-| `DK_ADJ_PARALLEL_EPS` | `1.2e-3f` | `adjoint_contact.py` | The sin^2(theta) threshold of `DK_ADJ_PARALLEL`. | yes (gradients) |
-| `DK_ADJ_STAGE` | `3` | `adjoint.py` | Stages of the adjoint, for bisection: 1 smooth dynamics, integrator, actuators; 2 + limit rows and plane contacts; 3 + self contacts. | yes |
-| `DK_ADJ_WORLDS_PER_SM` | `-1` | `adjoint.py` | Worlds per SM of `k_adjoint`: -1 the GPU's choice (4 on V100, no cap elsewhere), 0 as many as fit, N at most N. | no (scheduling) |
-| `DK_ADJ_DEBUG` | undefined | `adjoint.py` | Writes the per-substep intermediates of the adjoint with MuJoCo Warp's adjoint names (bisection against it). | no (extra outputs; checked equal to the production build) |
-| `DK_SPLIT` | `1` | `host.py` | Forward: 1 the split kernels `k_pre` / `k_post`, 0 the fused `k_substep` (`engine_step_check.py --fused`; the adjoint check binary uses it). | no (checked: outputs, contacts, tape) |
-| `DK_SPLIT_ORDER` | `1` | `host.py` | `k_post` dispatched by row count, most rows first (`SPLIT_NBUCKET` buckets; at most 32 substeps per call). | no (scheduling) |
-| `SPLIT_NBUCKET`, `SPLIT_ROW_SHIFT` | `64`, `1` | `host.py` | `DK_SPLIT_ORDER`'s buckets: their number and width (2^shift rows; bucket 0 also takes the worlds above the range). | no (scheduling) |
-| `SPLIT_PRE_MINB`, `SPLIT_POST_MINB` | `12` (sm_90 and sm_120's NVVM 7 forward: `SPLIT_PRE_MINB=16`, see `DK_SM90_REG_CAPS`, `DK_SM120_PRE_CAP`) | `host.py` | `__launch_bounds__` minimum blocks per SM of `k_pre` / `k_post` (a register cap); 0 none. | checked unchanged at the default and at 16 (sm_90, sm_120, V100); other values: check (register pressure can change ptxas's contraction) |
-| `SPLIT_POST_MAXNREG` | undefined (sm_90: `128`, see `DK_SM90_REG_CAPS`) | `host.py` | Defined and > 0: `k_post`'s register cap as `__maxnreg__(N)` (nvcc 12.4+) in place of `__launch_bounds__(32, SPLIT_POST_MINB)`; 0 or undefined: the launch bound. | no at 128 (checked on the H100 and the V100: outputs, contacts and tape); other values: check |
-| `SPLIT_NCON`, `SPLIT_NEFC` | `min(MAXCON, 32)`, `min(NEFC, 128)` | `step.py` | `k_post`'s shared-memory capacity; larger worlds run the same code on the global-memory state. | no (same code) |
-| `DK_SPLIT_ALL_BIG` | undefined | `host.py` | Debug: every world on the global-memory state. | no (checked) |
-| `DK_UNIFORM`, `DK_JTF_GATHER`, `DK_JV_VEC`, `DK_HESS_DOFPAR`, `DK_GRAD_COST` | `1` | `step.py` | Optimization toggles (warp-uniform votes, J'f gather, 128-bit loads, dof-parallel Hessian rows, cost in the gradient reduction). | no (bitwise equal to all off) |
-| `NEWTON_REUSE` | `NV > 32 && NV <= 35` (on for the G1) | `step.py` | Reuse the last Cholesky factor when no row changed zone. | yes: 0 differs by roundings in 90-96% of worlds |
-| `CHOL_BCAST` | `NV > 32 && NV <= 35` (on for the G1) | `source.py` | The broadcast Cholesky; with 0, `CHOL_COMPACT` picks one of the others. | yes (another factorization) |
-| `CHOL_COMPACT` | 1 below sm_80, else 0 | `source.py` | With `CHOL_BCAST=0`: the compact (1) or unrolled (0) register Cholesky. Follows `__CUDA_ARCH__`. | yes |
-| `CHOL_INLINE` | `__noinline__` | `source.py` | Inlining of the unrolled register Cholesky. | can (contraction follows the context) |
-| `DK_INL_GRAD`, `DK_INL_MATVEC`, `DK_INL_COLLIDE`, `DK_INL_ROWSJV`, `DK_INL_COST` | `__noinline__`, `__forceinline__`, empty, empty, empty | `step.py` | Inlining of helpers (code size against call overhead). | can (contraction follows the context); check with `--tape --save-outputs` |
-| `DKC` | `__device__` | `source.py` | Memory space of the model arrays (global, L1-cached); `__constant__` for comparison. | performance experiment; not checked |
-| `BOX_BOX_CCD` | `1` | `step.py` | Box-box contacts (a model with boxes only; the mjlab G1 has none): 1 as MuJoCo Warp's native CCD single contact, 0 the full separating-axis primitive. | yes (box-box contacts) |
-| `DK_PROFILE` | undefined | `step.py`, `host.py`, `adjoint.py` | Per-phase cycle counters (`engine_step_check.py --profile`). | timing build (the phase marks synchronize in every build) |
-| `DK_TAPE_VERIFY` | undefined | `step.py` | Debug: re-assembles the Newton Hessian at the final zones and flags differences in the tape (bit 11). | debug |
-| `KIN_WPB` | `4` | `kinematics.py` | Worlds per block of the kinematics kernels. | no (layout) |
+| variable | default | effect | changes results? |
+|---|---|---|---|
+| `DK_ENGINE` | `auto` (forest) | engine for G1-class models: `forest`, `tree` (or `g1`), `auto`; `engines.prefer_forest/prefer_tree(m)` override per model | `tree` vs `forest`: rounding |
+| `DK_CLAMP_IMPLICIT` | `0` | implicitfast damping on a dof clamped at its actuator force range: 0 keeps kv, 1 drops it, 2 fades it (differentiated); one value per process | 1, 2: yes |
+| `DK_CLAMP_IMPLICIT_DELTA` | `0.2` | width of mode 2 (only with `DK_CLAMP_IMPLICIT=2`) | yes (mode 2) |
+| `DK_MAXCON` | 64 (32 for models with at most 64 pairs) | contact capacity per world; experiment switch, warns when set (prefer `init(max_contacts=)`) | yes |
+| `DK_OVERFLOW_WARN` | `0` | `1`: diagnostics readers warn on contact / row capacity overflow | no |
+| `DK_ALLOW_UNSUPPORTED` | unset | comma-separated capability codes (or `all`) turned into warnings; the result is no longer MuJoCo's physics | yes, for the models it lets through |
+| `DK_DEFER_BOX` | `0` | forest: `1` computes box-box and capsule-box pairs in the deferred collision kernel | yes (contact order) |
+| `DK_ENVS_FK` | `auto` | PyTorch envs kinematics form: `batched`, `bodies`, `auto` | rounding |
+| `DK_GJK_MJ4` | `0` | `1`: MuJoCo Warp's newer GJK termination rule | only in degenerate GJK cases |
+| `DK_CCD_NT` | `4` | tangents per pass in the native-CCD contact VJP: 1, 2, 3, 4, 6 or 12; larger is faster and uses more local memory | n > 1: rounding |
+| `DK_MIDPHASE` (experimental) | `auto` | forest collision mid-phase: `auto` (models naming groups), `0`, `1` (node level), `2` (node and group level) | rounding (contact order) |
+| `DK_FOREST_LATENCY` (experimental) | `0` | `1`: two warps per world for small batches (faster below a few hundred worlds, slower above) | no |
+| `DK_FOREST_CHOL_BLK` (experimental) | `0` | `1`: register-blocked Cholesky for forest models with 44-64 dofs (faster from 44 dofs on V100) | 49-64 dofs on V100: no; otherwise rounding |
 
-Generated from the model, not meant to be overridden: `MAXCON` (`step.maxcon`, see `DK_MAXCON`), `NEFC` (192),
-`HAS_BOX`, `FLOOR_G`, `DOF_BODY_ROOT6`, `SOLIMP_POW2`, `KDOF` (`step.max_support`: the most dofs a contact Jacobian
-touches, 16 for the G1; the `DK_JV_VEC` loads need 16), `ADJ_SOLIMP_POWER` (defined only when every row has the same
-solimp power, which the adjoint then uses as a constant), `NQ`, `NV`, `NU`, `NB`, the other model sizes (`NPAIR`,
-`NGEOMC`, ...) and the tape layout (`REC_WORDS`, `OFF_*`).
+### Per-architecture code generation
+
+| variable | default | effect | changes results? |
+|---|---|---|---|
+| `DK_SM120_FRONTEND` | `n7` | sm_120 front end: `n7` (all units from compute_90 PTX), `split`, `native` | yes on sm_120 |
+| `DK_SM120_FORWARD_FRONTEND` | unset | deprecated alias of `DK_SM120_FRONTEND` | as `DK_SM120_FRONTEND` |
+| `DK_SM120_PRE_CAP` | `1` | sm_120 NVVM 7 forward: register cap on `k_pre` | no |
+| `DK_SM103_FRONTEND` | `adjoint` | sm_103: `adjoint` (adjoint units from compute_90 PTX), `n7`, `native` | yes on sm_103 (gradients) |
+| `DK_SM103_REG_CAPS` | `1` | sm_103: register caps on the forward and the light adjoints | no |
+| `DK_SM103_FOREST_ADJ_CAP` | `1` | sm_103 forest adjoint cap: `1` automatic, `0` none, `N` (64-255) | no |
+| `DK_SM90_REG_CAPS` | `1` | sm_90: register caps on the forward kernels (needs nvcc 12.4+) | no |
+| `DK_SM90_CAPBOX_COOP` | `0` | sm_90: cooperative capsule-box contact VJP pass | no |
+| `DK_SM90_ADJ_CAP` | `1` | sm_90: G1-engine adjoint cap for terrain builds: `1`, `0`, `N` (64-255) | no |
+| `DK_SM90_FOREST_ADJ_CAP` | `0` | sm_90: apply the terrain adjoint cap to forest terrain builds | no |
+| `DK_FOREST_POST_CAP` | target default | forest forward `k_post` register cap: unset, `0`, `1` | no |
+| `DK_FOREST_HESS_UNROLL` | unset (unrolled except sm_90) | forest Hessian mask loop: `1` unrolled everywhere, `0` loops everywhere | no |
+| `DK_FOREST_CHOL_REG` | `0` | sm_90: `chol_solve_reg` for forest models with nv <= 32 | rounding |
+| `DK_FOREST_CHOL_WIDE` | `0` | sm_90: `chol_solve_bcast_wide` for forest models with 36-48 dofs | rounding |
+| `DK_FOREST_CCD_COOP` | `0` | sm_90: cooperative box-box CCD VJP pass | rounding (gradients) |
+| `DK_FOREST_FREE_GYRO` | `0` | sm_90: gyroscopic implicit block for standalone free bodies | yes (those bodies) |
+| `DK_NV128_MCHOL` | `loop` | M factor beyond 64 dofs: `loop`, `straight`, `dense` | rounding |
+| `DK_NV128_HCHOL` | `auto` | Newton Hessian factor beyond 64 dofs: `auto`, `sparse`, `dense` | rounding |
+| `DK_NV128_REUSE` | `0` | `1`: reuse the Hessian factor when no row changed zone (beyond 64 dofs) | rounding |
+| `DK_NV128_DCHOL` | `blk` | dense factor form beyond 64 dofs: `blk`, `crout` | no |
+| `DK_NV128_DCHOL_W` | `8` (<= 72 dofs), else `12` | block width (1-32) of the `blk` factor | no |
+| `DK_NV128_PRE_WPSM`, `DK_NV128_POST_WPSM` | `0` | cap on resident worlds per SM of `k_pre` / `k_post` beyond 64 dofs | no |
+
+### Testing and tooling
+
+| variable | default | effect | changes results? |
+|---|---|---|---|
+| `DK_TEST_VIRTUAL_ARCH` | unset | testing: every unit from this virtual architecture's PTX | as a front-end change |
+| `DK_TEST_FORWARD_VIRTUAL_ARCH` | unset | testing: the forward unit from this virtual architecture's PTX | as a front-end change |
+| `DK_DIGESTS` | unset | extra manifest of forward digests to compare with | no |
+| `DK_SPLIT_ONLY` | unset | timing binary: run only `k_pre` (`1`) or `k_post` (`2`) | timing only |
+| `DK_TAPE_IN` | unset | internal: the adjoint binary runs on another binary's tape | n/a |
+| `CUOBJDUMP` | next to nvcc, then `PATH`, then conda | tool for SASS digests | no |
+| `PTXAS` | pip `nvidia.cuda_nvcc`, then next to nvcc | ptxas for targets the local nvcc cannot compile for (SASS digests only) | no |
+| `ROBOT_DROP_BOX` | unset | robot comparison script: drop box-geom pairs | yes |
+
+Benchmark and timing kits document their own `*_BENCH_*` variables; none changes results.
+
+## Build options
+
+`init()` options are arguments, documented in `docs/api.md`. Only `actuator=` (alias `motor_limits=`) selects
+physics: `None` leaves the generated source unchanged; torque-speed limits change results where a force reaches a
+curve; `"bam"` changes the step signature (state `act`) and every result. For velocity servos with a force range,
+`clamp_kv=1` is the exact derivative and the default 0 is MuJoCo Warp's surrogate.
+
+## Compile-time switches
+
+| macro | default | effect | changes results? |
+|---|---|---|---|
+| `DK_ADJ_STAGE` | `3` | adjoint coverage: 1 smooth dynamics; 2 + limits and world-geom contacts; 3 + body-body contacts (`jax_ffi` passes `$DK_ADJ_STAGE`) | yes (gradients) |
+| `DK_ADJ_CLAMP_KV` | `1` | clamped actuators in the adjoint (the FFI's `clamp_kv`) | yes (gradients) |
+| `DK_ADJ_NORMAL`, `DK_ADJ_NORMAL_EPS` | `3`, `1e-3f` | self-contact normal derivative (the FFI's `normal`) and its eps | yes (gradients) |
+| `DK_ADJ_PARALLEL`, `DK_ADJ_PARALLEL_EPS` | `DK_ADJ_NORMAL != 0`, `1.2e-3f` | hold near-parallel capsule-capsule parameters constant | yes (near-parallel states) |
+| `DK_ADJ_WORLDS_PER_SM` | `-1` | adjoint worlds per SM: -1 GPU's choice, 0 max, N cap | no |
+| `DK_ADJ_DEBUG` | undefined | write the adjoint's per-substep intermediates | no |
+| `DK_CAPBOX_COOP` | `1` (G1 engine on sm_90: `0`) | cooperative capsule-box / sphere-box contact VJP pass | no |
+| `DK_CCD_COOP` | `1` (sm_90: `0`) | forest: cooperative box-box CCD VJP pass | rounding (gradients) |
+| `DK_FREE_GYRO` | `1` (sm_90: `0`) | forest: gyroscopic implicit block for standalone free bodies | yes (those bodies) |
+| `CY_REC` | `1` | CCD contact VJP replays only the recorded final features | no |
+| `DK_SPLIT` | `1` | forward: split `k_pre` / `k_post` (1) or fused `k_substep` (0) | no |
+| `DK_SPLIT_ORDER`, `SPLIT_NBUCKET`, `SPLIT_ROW_SHIFT` | `1`, `64`, `1` | `k_post` dispatch by row count | no |
+| `SPLIT_PRE_MINB`, `SPLIT_POST_MINB`, `SPLIT_POST_MAXNREG` | `12`, `12`, undefined | forward register caps | no at the defaults and 16 / 128 |
+| `SPLIT_NCON`, `SPLIT_NEFC`, `DK_SPLIT_ALL_BIG` | `min(MAXCON, 32)`, `min(NEFC, 128)`, undefined | `k_post` shared-memory capacity; debug: all worlds in global memory | no |
+| `DK_UNIFORM`, `DK_JTF_GATHER`, `DK_JV_VEC`, `DK_HESS_DOFPAR`, `DK_GRAD_COST` | `1` | optimization toggles | no |
+| `NEWTON_REUSE` | on for 33-35 dofs | reuse the Cholesky factor when no row changed zone | rounding |
+| `CHOL_BCAST`, `CHOL_COMPACT`, `CHOL_INLINE` | model / architecture dependent | Cholesky variant and inlining | rounding |
+| `CHOL_SMALL`, `CHOL_TREES`, `CHOL_COMPS`, `CB` | model dependent | forest Cholesky variants (small, per tree, per component) | rounding |
+| `DK_INL_GRAD`, `DK_INL_MATVEC`, `DK_INL_COLLIDE`, `DK_INL_ROWSJV`, `DK_INL_COST` | see source | helper inlining | can (FMA contraction) |
+| `DKC` | `__device__` | memory space of the model arrays | performance experiment |
+| `BOX_BOX_CCD` | `1` | box-box contacts: native CCD (1) or separating-axis primitive (0) | yes |
+| `CV_DEFER`, `CVQ_PER_WORLD`, `DEFER_BOX` | model dependent, `64`, `$DK_DEFER_BOX` | forest deferred-pair collision kernel and its queue | no (`DEFER_BOX`: yes) |
+| `CV_EXHAUSTIVE`, `CV_NO_CCD` | `1`, undefined | mesh support by exhaustive search; timing: skip CCD | can; `CV_NO_CCD`: yes |
+| `TERRAIN_SORT` | `1` (terrain builds) | sort terrain contacts by (pair, element, slot) | yes (contact order) |
+| `DK_PROFILE`, `DK_TAPE_VERIFY`, `KIN_WPB` | undefined, undefined, `4` | phase timers; debug Hessian check; kinematics worlds per block | timing / debug / no |
+
+Generated from the model, not meant to be overridden: `MAXCON` (`init(max_contacts=)`), `NEFC` (192,
+`init(max_rows=)`), `KDOF` (largest contact support: up to 64 on the forest engine, beyond 32 experimental), model
+sizes (`NQ`, `NV`, `NU`, `NB`, `NPAIR`, ...), the tape layout, and feature macros written only into builds that use
+the feature (equality rows, foot offsets, sand).

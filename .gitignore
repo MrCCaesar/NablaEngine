@@ -7,3 +7,4 @@ dist/
 .venv/
 .dk_env/
 *.so
+MUJOCO_LOG.TXT

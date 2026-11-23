@@ -1,27 +1,5 @@
 """Parts `genesis`, `rep<r>_genesis`: the native Genesis 1.4.5 forward (genesis-world from PyPI, quadrants 1.3.3,
-unmodified) per control step on the mjlab G1, from corpus states.
-
-The problem and the scene are those of the benchmark harness's Genesis adapter (benchmarks/bench/adapters/genesis.py,
-which documents them and every deviation it records): the problem's model written as an MJCF with the 502 explicit
-contact pairs declared through contype / conaffinity (Genesis's importer reads no <pair>; its default collision filter
-gives the same 502 pairs, checked), Newton, 10 iterations, ls 8, tolerance 1e-8, implicitfast, constraint_timeconst =
-the model's solref 0.02, SimOptions(dt = 0.02, substeps = 4), PD targets held (control_dofs_position), per-world foot
-friction (per-world friction ratios) and torso COM (set_links_COM). On sm_70 the adapter selects quadrants' monolith
-constraint-solver kernel (QD_PERFDISPATCH_FORCE), because the other one does not compile there; recorded.
-  - timed call: the adapter's fwd op = [set_qpos(corpus qpos), set_dofs_velocity(corpus qvel),
-    control_dofs_position(corpus ctrl), scene.step()] with the corpus inputs resident on the device, i.e. the state
-    load and one control step of 4 substeps (as the other engines' timed calls, which copy the corpus inputs into
-    their state first); sync = quadrants' sync + torch.cuda.synchronize(); common.timeit rounds of N calls and one
-    sync, plus the latency of single synchronized calls
-  - build (MJCF conversion, scene build with its first step and kernel compile or cache load) and the first call are
-    timed separately
-Two configurations, each in one fresh process per corpus (this script re-runs itself): gs.init's defaults (the
-configuration of the accuracy tables; the headline row) and gs.init(performance_mode=True) (Genesis's documented
-static-array mode, labelled); it runs in the Genesis environment
-($PAPER_BENCH_GENESIS_PYTHON) with the repository root on PYTHONPATH.
-
-  python scripts/paper_bench/genesis_native.py --out <dir>/genesis.json --corpora mf_s0,mf_s1
-"""
+unmodified) per control step on the mjlab G1, from corpus states."""
 import argparse
 import json
 import os
@@ -31,7 +9,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common as C  # noqa: E402
+import common as C
 
 PKGS = ("genesis-world", "quadrants", "torch", "mujoco", "numpy")
 
@@ -66,7 +44,7 @@ def child(a):
     try:
         import torch
         cell["torch_max_memory_allocated_mib"] = round(torch.cuda.max_memory_allocated() / 2 ** 20, 1)
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     prov = ad.provenance()
     ad.close()
@@ -111,7 +89,7 @@ def main():
             d["cell"]["process_s"] = round(time.perf_counter() - t0, 1)
             res.data.setdefault("provenance", d["provenance"])
             res.cell(key, d["cell"])
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             if C.is_oom(e):
                 C.record_oom(res, key, e, a.nworld)
             else:

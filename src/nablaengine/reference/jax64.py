@@ -1,26 +1,7 @@
 """JAX float64 ports of the G1 engine's forward pieces that the analytic adjoint differentiates.
 
-Each function mirrors a device function of nablaengine.g1_engine.source / step (same formulas, same branch structure, the
-same constants: model(m) packs them like source.constants and step.pair_constants), so that jax.vjp of a port is the
-reference for the engine's VJP device function on the same (float32) inputs. Branches are jnp.where selections with safe
-denominators, so the unselected side never poisons a gradient; discrete decisions the adjoint takes from the forward
-(contact slot, active rows, clamped dofs) are explicit arguments.
-
-Pieces: the fwd_body chain (kinematics, velocities, accelerations), inverse dynamics ID(q, v, a) (RNE, no armature),
-the CRB mass matrix (with armature), the clamped PD actuator force, kbimp / efc_D, the geom poses, the five primitives of
-the mjlab model (plane-sphere, plane-capsule, sphere-sphere, sphere-capsule, capsule-capsule) with make_frame, the
-normal option (DK_ADJ_NORMAL) and the near-parallel capsule option (DK_ADJ_PARALLEL), the contact Jacobian and
-constraint rows (contacts, joint limits), the row terms Psi_e / Psi_c of the residual, quaternion integration in MuJoCo
-Warp's smooth (sinc) form, and the qpos <-> dof-tangent maps. Self-checked against MuJoCo C in float64.
-
 Third-party code: the five primitives and make_frame mirror g1_engine/step.py's CUDA translations of MuJoCo Warp
-(mujoco_warp/_src/collision_primitive_core.py, math.py; Copyright 2025 The Newton Developers, Apache License 2.0).
-
-Conventions as in the engine: q = (p, quat, hinge angles), v = (world linear, local angular, hinge rates); spatial
-quantities in the world frame; body 0 is the world, body 1 the free root, hinges at the body origins.
-
-Importing this module enables float64 in JAX (jax_enable_x64) and defaults JAX to the CPU (JAX_PLATFORMS).
-"""
+(mujoco_warp/_src/collision_primitive_core.py, math.py; Copyright 2025 The Newton Developers, Apache License 2.0)."""
 
 import dataclasses
 import functools
@@ -28,14 +9,14 @@ import os
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
-import jax  # noqa: E402
-import jax.numpy as jnp  # noqa: E402
-import mujoco  # noqa: E402
-import numpy as np  # noqa: E402
+import jax
+import jax.numpy as jnp
+import mujoco
+import numpy as np
 
 jax.config.update("jax_enable_x64", True)
 
-PLANE, SPHERE, CAPSULE = 0, 1, 2  # engine geom type codes (step.GEOM_TYPE); no boxes in the mjlab model
+PLANE, SPHERE, CAPSULE = 0, 1, 2
 EX, EY, EZ = np.eye(3)
 
 
@@ -91,14 +72,14 @@ class Model:
     impratio: float
     dofbody: np.ndarray
     ancmask: np.ndarray
+    ginvw: np.ndarray = None
 
 
 def model(m, foot_pairs=(), f32=False):
     """Model constants of MjModel m as the engine packs them (source.constants, step.pair_constants), in float64; f32=True
     rounds every float constant to float32 first (the engine's values; for VJP references on the engine's inputs)."""
-    from nablaengine.g1_engine import step  # the engine's geom table and pair order
+    from nablaengine.g1_engine import step
 
-    # copies (the model's arrays are often edited per world, e.g. body_ipos for the COM offset)
     r = (lambda x: np.array(np.asarray(x, np.float64).astype(np.float32), np.float64)) if f32 else \
         (lambda x: np.array(x, np.float64))
     nb = m.nbody
@@ -142,6 +123,8 @@ def model(m, foot_pairs=(), f32=False):
     torso = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, "torso_link")
     foot = np.zeros(m.npair, bool)
     foot[list(foot_pairs)] = True
+    from nablaengine.model import invweight
+    gi = invweight.table(m, geoms)
     return Model(
         nb=nb, nq=m.nq, nv=m.nv, parent=np.asarray(m.body_parentid, int), depth=depth, qadr=qadr, dadr=dadr,
         children=tuple(tuple(c) for c in children), pos=r(m.body_pos), quat=r(m.body_quat), axis=r(axis),
@@ -153,24 +136,23 @@ def model(m, foot_pairs=(), f32=False):
         pdim=np.asarray(m.pair_dim, int), pmu=r(m.pair_friction[:, 0]), psolref=r(m.pair_solref),
         psolimp=r(m.pair_solimp), pfoot=foot, binvw=r(m.body_invweight0[:, 0]), dinvw=r(m.dof_invweight0), jrange=r(jr),
         jlim=jlim, jsolref=r(m.jnt_solref[1]), jsolimp=r(m.jnt_solimp[1]), impratio=float(r(m.opt.impratio)),
-        dofbody=np.asarray(dofbody, int), ancmask=np.asarray(mask, np.int64))
+        dofbody=np.asarray(dofbody, int), ancmask=np.asarray(mask, np.int64), ginvw=None if gi is None else r(gi))
 
 
-# ---------------------------------------------------------------- small helpers (source.DEVICE)
 
 _I1, _I2 = np.array([1, 2, 0]), np.array([2, 0, 1])
 
 
-def cross(a, b):  # vectorized (few XLA ops: the tree recursions are unrolled over the bodies)
+def cross(a, b):
     return a[_I1] * b[_I2] - a[_I2] * b[_I1]
 
 
-def qmul(a, b):  # the engine's qmul: (a0 b0 - av . bv, a0 bv + b0 av + av x bv)
+def qmul(a, b):
     av, bv = a[1:], b[1:]
     return jnp.concatenate([(a[0] * b[0] - jnp.dot(av, bv))[None], a[0] * bv + b[0] * av + cross(av, bv)])
 
 
-def qrot(q, v):  # q v q^-1, the engine's formula: t = 2 qv x v, v + q0 t + qv x t
+def qrot(q, v):
     t = 2.0 * cross(q[1:], v)
     return v + q[0] * t + cross(q[1:], t)
 
@@ -185,18 +167,16 @@ def qrot_inv(q, v):
 
 
 def _safe_norm(v):
-    """|v| with a zero (not NaN) gradient at v = 0."""
     s = jnp.dot(v, v)
     pos = s > 0.0
     return jnp.where(pos, jnp.sqrt(jnp.where(pos, s, 1.0)), 0.0)
 
 
-def normalize3(v):  # the engine's normalize3: unchanged when |v| = 0
+def normalize3(v):
     n = _safe_norm(v)
     return jnp.where(n > 0.0, v / jnp.where(n > 0.0, n, 1.0), v)
 
 
-# ---------------------------------------------------------------- tree recursions (source.DEVICE)
 
 def body_ipos(mdl, b, com):
     """COM offset of body b in its frame, with the per-world torso offset (domain randomization)."""
@@ -230,7 +210,7 @@ def kinematics(mdl, qpos, qvel=None, qacc=None):
     qacc = jnp.zeros(mdl.nv) if qacc is None else qacc
     z3 = jnp.zeros(3)
     out = [(jnp.array([1.0, 0.0, 0.0, 0.0]), z3, z3, z3, z3, z3)]
-    for b in range(1, mdl.nb):  # model order: parents first
+    for b in range(1, mdl.nb):
         out.append(fwd_body(mdl, b, *out[mdl.parent[b]], qpos, qvel, qacc))
     return {k: jnp.stack([o[i] for o in out]) for i, k in enumerate(("Q", "X", "W", "V", "AL", "A"))}
 
@@ -266,7 +246,7 @@ def inverse_dynamics(mdl, qpos, qvel, qacc, com=None):
     F, N = [jnp.zeros(3)] * mdl.nb, [jnp.zeros(3)] * mdl.nb
     for b in range(1, mdl.nb):
         F[b], N[b] = body_force(mdl, b, K["Q"][b], K["W"][b], K["AL"][b], K["A"][b], body_ipos(mdl, b, com))
-    for b in range(mdl.nb - 1, 1, -1):  # children before parents (model order is a topological order)
+    for b in range(mdl.nb - 1, 1, -1):
         p = mdl.parent[b]
         F[p], N[p] = accumulate(K["X"][p], K["X"][b], F[b], N[b], F[p], N[p])
     out = {}
@@ -283,7 +263,7 @@ def bias_force(mdl, qpos, qvel, com=None):
 def body_inertia(mdl, b, Q, X, O, ipos):
     """Spatial inertia of body b about the point O, packed as J (xx yy zz xy xz yz), h = m c (3), m; c = com - O."""
     qi = qmul(Q, mdl.iquat[b])
-    R = jnp.stack([qrot(qi, e) for e in (EX, EY, EZ)])  # R[k] = column k of the inertia frame
+    R = jnp.stack([qrot(qi, e) for e in (EX, EY, EZ)])
     I = mdl.inert[b]
     J = jnp.stack([I @ (R[:, 0] * R[:, 0]), I @ (R[:, 1] * R[:, 1]), I @ (R[:, 2] * R[:, 2]),
                    I @ (R[:, 0] * R[:, 1]), I @ (R[:, 0] * R[:, 2]), I @ (R[:, 1] * R[:, 2])])
@@ -347,7 +327,6 @@ def mass_matrix(mdl, qpos, com=None):
     return M.at[cols, rows].set(vals)
 
 
-# ---------------------------------------------------------------- actuators, impedance
 
 def actuator_raw(mdl, qpos, qvel, ctrl):
     """Unclamped PD force kp (ctrl - q) - kv qdot on the hinge dofs (zeros on the root dofs)."""
@@ -385,8 +364,6 @@ def kbimp(solref, solimp, pos_imp, h):
         mid_val = dmin + x * (dmax - dmin)
         lo_val = hi_val = mid_val
     else:
-        # each piece on its own range (safe powers); where, not clip: at x == mid a tied clip would pass half the
-        # gradient to the selected piece
         xl, xh = jnp.where(x <= mid, x, mid), jnp.where(x >= mid, jnp.minimum(x, 1.0), mid)
         lo_val = jnp.clip(dmin + pow_imp(xl, power) / pow_imp(mid, power - 1.0) * (dmax - dmin), dmin, dmax)
         hi_val = jnp.clip(dmin + (1.0 - pow_imp(1.0 - xh, power) / pow_imp(1.0 - mid, power - 1.0)) * (dmax - dmin),
@@ -400,7 +377,6 @@ def efc_D(invw, imp):
     return 1.0 / jnp.maximum(invw * (1.0 - imp) / imp, 1e-15)
 
 
-# ---------------------------------------------------------------- collision (step.STEP_DEVICE)
 
 def geom_poses(mdl, Q, X):
     """World positions (NG, 3) and quaternions (NG, 4) of the collision geoms from the body poses."""
@@ -416,7 +392,7 @@ def make_frame(n):
     return jnp.stack([n, b, cross(n, b)])
 
 
-NORMAL_EXACT, NORMAL_FROZEN, NORMAL_REG, NORMAL_CUT = 0, 1, 2, 3  # DK_ADJ_NORMAL (adjoint_contact.header)
+NORMAL_EXACT, NORMAL_FROZEN, NORMAL_REG, NORMAL_CUT = 0, 1, 2, 3
 
 
 def _kappa(nu, mode, eps):
@@ -517,7 +493,7 @@ def capsule_params(p1, q1, hl1, p2, q2, hl2, slot=0, parallel_eps=None):
     x1, x2 = (mc * u - mb * v) / dets, (ma * v - mb * u) / dets
     w = cross(a1, a2)
     frozen = (~par & (jnp.abs(x1) <= 1.0) & (jnp.abs(x2) <= 1.0) & (jnp.dot(w, w) < parallel_eps * ma * mc)
-              if parallel_eps is not None else None)  # both free (no clamp below) and near parallel
+              if parallel_eps is not None else None)
     x1, x2 = (jnp.where(x1 > 1.0, 1.0, jnp.where(x1 < -1.0, -1.0, x1)),
               jnp.where(x1 > 1.0, (v - mb) / mc, jnp.where(x1 < -1.0, (v + mb) / mc, x2)))
     x1, x2 = (jnp.where(x2 > 1.0, jnp.clip((u - mb) / ma, -1.0, 1.0),
@@ -573,7 +549,6 @@ def contact_axis_distance(mdl, pair, dist):
     return dist + mdl.gsize[mdl.pg1[pair], 0] + mdl.gsize[mdl.pg2[pair], 0]
 
 
-# ---------------------------------------------------------------- constraint rows
 
 def support(mdl, pair):
     """(dofs, signs) of a contact's Jacobian support: the dofs on exactly one of the two bodies' chains, +1 on body 2's."""
@@ -615,7 +590,10 @@ def contact_params(mdl, pair, fric):
     """Static and traced row parameters of a pair: dict dim, solref, solimp (tuples), mu, invweight (body_invweight0
     translation of both bodies; condim 3 times (1 + mu^2) 2 mu^2 / impratio, the engine's formula), sgn."""
     mu = fric if mdl.pfoot[pair] else float(mdl.pmu[pair])
-    iw = mdl.binvw[mdl.gbody[mdl.pg1[pair]]] + mdl.binvw[mdl.gbody[mdl.pg2[pair]]]
+    if mdl.ginvw is None:
+        iw = mdl.binvw[mdl.gbody[mdl.pg1[pair]]] + mdl.binvw[mdl.gbody[mdl.pg2[pair]]]
+    else:
+        iw = mdl.ginvw[mdl.pg1[pair]] + mdl.ginvw[mdl.pg2[pair]]
     dim = int(mdl.pdim[pair])
     if dim == 3:
         iw = (iw + mu * mu * iw) * 2.0 * mu * mu / mdl.impratio
@@ -675,7 +653,6 @@ def limit_psi(mdl, qpos, qvel, qacc, lam, active):
     return jnp.sum(jnp.where(active, r["D"] * x * J * lam[r["dof"]], 0.0))
 
 
-# ---------------------------------------------------------------- integration, coordinates
 
 def _sinc(x):
     small = x * x < 1e-4

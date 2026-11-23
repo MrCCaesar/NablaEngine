@@ -82,7 +82,6 @@ LABELS = {
 }
 
 
-# ------------------------------------------------------------------------------------------------- inputs
 
 def load_docs(paths):
     files = []
@@ -174,7 +173,6 @@ def read_dump(cell):
         return {k: z[k] for k in z.files}
 
 
-# ------------------------------------------------------------------------------------------------- forward
 
 def _round(x, n=4):
     if isinstance(x, float):
@@ -218,7 +216,6 @@ def pool_forward(pieces):
     return out
 
 
-# ------------------------------------------------------------------------------------------------- gradient
 
 def merge_truths(gts, n_states):
     """One gradient truth of several corpora (pooled rows): indices offset by k * n_states, no Jacobian."""
@@ -261,7 +258,7 @@ def compact_grad(entries, brief=False):
                                               excluded_model_mismatch=e.get("excluded_model_mismatch"),
                                               **{k: e[k] for k in e if k.startswith("excluded_")
                                                  and k != "excluded_model_mismatch"}))
-        if e.get("status"):  # a block the source does not support
+        if e.get("status"):
             s[e["block"]] = dict(status=e["status"], note=e.get("note"))
             continue
         s[e["block"]] = dict({k: e.get(k) for k in ("n", "median", "p90", "p99", "max", stats.share_key(),
@@ -273,7 +270,6 @@ def compact_grad(entries, brief=False):
     return _round(out)
 
 
-# ------------------------------------------------------------------------------------------------- main build
 
 def build(docs, sweep, sweep_path, choose_on, log=print):
     from benchmarks.bench.truth import store
@@ -285,7 +281,7 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
     S = truths[CORPORA[0]].n
     pooled_gt = merge_truths([gts[c] for c in CORPORA], S)
 
-    cells = {}  # (key, corpus, iterations, process) -> (doc path, doc, cell)
+    cells = {}
     for path, doc in docs:
         for c in doc["cells"]:
             if c.get("kind") != "dump" or schema.parse_status(c.get("status", "error"))[0] != "ok":
@@ -306,16 +302,15 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
     out = dict(forward=dict(per_corpus={}, pooled={}, model_ok_above_1e_3={}),
                gradient=dict(per_corpus={}, pooled={}),
                gradient_vs_exact=dict(per_corpus={}, pooled={}), nonfinite={}, checks={}, missing=[])
-    dumps, qv = {}, {}  # qv: per-state qvel errors (source, corpus, iterations) for the outlier annotation
+    dumps, qv = {}, {}
 
     def dump(slot):
         if slot not in dumps:
             dumps[slot] = read_dump(cells[slot][2])
         return dumps[slot]
 
-    # forward: engines (process 0), floors, run-to-run
     fwd_sources = [k for k in keys if (k != "ours_interface" and not k.startswith("mjc_fd_"))
-                   or k == "mjc_fd_forward_1e-6"]  # one forward per engine (the other mjc rows share it)
+                   or k == "mjc_fd_forward_1e-6"]
     for it in its:
         for key in fwd_sources:
             name = "ours" if key == "ours_exact" else ("mjc" if key == "mjc_fd_forward_1e-6" else key)
@@ -331,12 +326,12 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
                 pieces.append(pc)
                 big = np.flatnonzero(pc["masks"]["model_ok"] & (np.nan_to_num(pc["err"]["qvel"], nan=np.inf)
                                                                  > stats.THRESHOLD))
-                if name in FAR_SOURCES:  # a different model: the count only
+                if name in FAR_SOURCES:
                     out["forward"].setdefault("model_ok_above_1e_3_count", {}).setdefault(f"it{it}", {}).setdefault(
                         name, {})[c] = int(len(big))
                     continue
                 qv[(name, c, it)] = pc["err"]["qvel"]
-                if len(big):  # model-ok states above the threshold: which ones, and how far
+                if len(big):
                     out["forward"]["model_ok_above_1e_3"].setdefault(f"it{it}", {}).setdefault(name, []).extend(
                         dict(corpus=c, state=int(i), qvel=_round(float(pc["err"]["qvel"][i])),
                              qpos_rad=_round(float(pc["err"]["qpos_rad"][i]))) for i in big)
@@ -345,7 +340,6 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
                 if len(pieces) == len(CORPORA):
                     out["forward"]["pooled"].setdefault(f"it{it}", {})[name] = _round(pool_forward(pieces))
                 log(f"[paper_accuracy] forward {name} it{it}: {len(pieces)} corpora")
-        # floors: MuJoCo C float64 at the floor options, against the truth
         flo = f"it{it}"
         pieces, per = [], {}
         for c in CORPORA:
@@ -358,7 +352,6 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
         if pieces:
             out["forward"]["per_corpus"].setdefault(f"it{it}", {})[f"mjc_floor_{flo}"] = _round(per)
             out["forward"]["pooled"].setdefault(f"it{it}", {})[f"mjc_floor_{flo}"] = _round(pool_forward(pieces))
-        # run-to-run: later processes against process 0 of the same unit
         for key in fwd_sources:
             pieces, per = [], {}
             for c in CORPORA:
@@ -381,7 +374,6 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
                 out["forward"]["pooled"].setdefault(f"it{it}", {})[f"run_to_run_{name}"] = _round(
                     pool_forward(pieces))
 
-    # the other sources' errors at each model-ok state where a source is above the threshold
     for itk, rows in out["forward"]["model_ok_above_1e_3"].items():
         it = int(itk[2:])
         for name, lst in rows.items():
@@ -389,7 +381,6 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
                 e["others"] = {o: _round(float(qv[(o, e["corpus"], it)][e["state"]]))
                                for (o, c, i) in qv if c == e["corpus"] and i == it and o != name}
 
-    # gradient: sampled truth states, per corpus and pooled; semantics as the harness's job scorer assigns them
     grad_sources = [k for k in keys if k != "mjw"]
     for it in its:
         for key in grad_sources:
@@ -424,7 +415,7 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
                            vjp=None, jacobian=None, fd=meta["fd"])
                 if all(s.get("vjp") is not None for _, s in vjps):
                     src["vjp"] = np.concatenate([s["vjp"] for _, s in vjps])
-                else:  # partial sources: the blocks every corpus's dump has
+                else:
                     blk = [b for b in AG.BLOCKS if all(b in (s.get("vjp_parts") or {}) for _, s in vjps)]
                     src.update(vjp_parts={b: np.concatenate([s["vjp_parts"][b] for _, s in vjps]) for b in blk},
                                blocks_supported=blk, not_supported=vjps[0][1].get("not_supported"))
@@ -437,7 +428,6 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
                     out["gradient_vs_exact"]["per_corpus"].setdefault(f"it{it}", {})[key] = per_exact
             log(f"[paper_accuracy] gradient {key} it{it}: {len(vjps)} corpora, semantics {sem} ({how})")
 
-    # non-finite counts of every dump on every corpus state (stored cotangents)
     for (key, c, it, p), (path, doc, cell) in sorted(cells.items(), key=lambda x: str(x[0])):
         d = dump((key, c, it, p))
         e = dict(states=int(len(d["index"])))
@@ -465,7 +455,6 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
             e["gradient"] = "none (the source has no gradient)"
         out["nonfinite"].setdefault(key, {}).setdefault(f"it{it}", {})[f"{c}/p{p}"] = e
 
-    # checks
     ck = out["checks"]
     for it in its:
         for c in CORPORA:
@@ -484,7 +473,6 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
                                  and np.array_equal(d["out_qvel"], fs["qvel"][idx])),
                     max_abs_qpos=float(np.max(np.abs(d["out_qpos"] - fs["qpos"][idx]))),
                     max_abs_qvel=float(np.max(np.abs(d["out_qvel"] - fs["qvel"][idx]))))
-    # gradient run to run: later processes against process 0 of the same unit, per block over every state and cotangent
     for (key, c, it, p), (path, doc, cell) in sorted(cells.items(), key=lambda x: str(x[0])):
         if p == 0 or (key, c, it, 0) not in cells:
             continue
@@ -504,8 +492,6 @@ def build(docs, sweep, sweep_path, choose_on, log=print):
                         states_differing=int((rel > 0).any(1).sum()),
                         **_round(stats.summary(rel)))
         ck.setdefault("gradient_run_to_run", {}).setdefault(key, {})[f"{c}/it{it}/p{p}_vs_p0"] = e
-    # the sweep's chained FD against the harness's mjc dumps (same code, different batch): G0 medians on the sweep's
-    # corpus at the headline options (10 iterations)
     sw = sweep["corpora"][choose_on]["results"]
     for key, kind, eps in (("mjc_fd_forward_1e-6", "forward", EPS_DEFAULT),
                            ("mjc_fd_centered_1e-6", "centered", EPS_DEFAULT),
@@ -556,7 +542,7 @@ def provenance(docs, cells, sweep_path):
         for name, env in (doc.get("environments") or {}).items():
             pk = {k: (v or {}).get("version") for k, v in (env.get("packages") or {}).items()}
             if name == "dk":
-                pk.pop("mujoco-warp", None)  # installed there but not imported by dk, mjx or mjc
+                pk.pop("mujoco-warp", None)
             envs[name] = dict(python=env.get("python"), packages=pk)
         for eid, e in (doc.get("engines") or {}).items():
             pv = e.get("provenance") or {}
@@ -603,7 +589,6 @@ def provenance(docs, cells, sweep_path):
                 fd_sweep=dict(file=prov.rel(sweep_path), sha256=prov.sha256(sweep_path)))
 
 
-# ------------------------------------------------------------------------------------------------- markdown
 
 def f(x, pct=False):
     if x is None:
@@ -639,7 +624,6 @@ def render(res):
                 if "genesis" in res.get("sources", {}) else "")
              + "Pooled rows concatenate the four corpora.")
     L.append("")
-    # forward
     L.append("## 1. Forward: one control step against the float64 truth")
     L.append("")
     L.append("qvel: relative error per state; qpos: tangent-space error without the base translation "
@@ -658,7 +642,7 @@ def render(res):
                  run_to_run_ours="ours run to run", run_to_run_pr_357a75d="PR @357a75d run to run",
                  run_to_run_pr_4af093f="PR @4af093f run to run", run_to_run_mjx="MJX run to run")
     sk = stats.share_key()
-    for it, rows in res["forward"]["per_corpus"].items():  # what each run-to-run row pools
+    for it, rows in res["forward"]["per_corpus"].items():
         for k, per in rows.items():
             if k.startswith("run_to_run_") and per:
                 pairs = sorted(per)
@@ -701,7 +685,6 @@ def render(res):
                               f"{f(e['qpos_rad'].get('p99'))}")
             L.append(f"| {names.get(k, k)} | {it[2:]} | " + " | ".join(cells_) + " |")
     L.append("")
-    # gradient
     L.append("## 2. Gradients against the float64 finite-difference truth")
     L.append("")
     L.append("VJPs of each corpus's 3 stored output cotangents at the truth's sampled states (up to 64 per group and "
@@ -745,7 +728,6 @@ def render(res):
             L.append("| " + " | ".join(row) + " |")
         L.append(f"| {LABELS['mjw']} | - | no backward (MuJoCo Warp has no gradient) | | | | | | | | | | |")
         L.append("")
-    # 50 iterations, compact
     gp50 = res["gradient"]["pooled"].get("it50", {})
     if gp50:
         L.append("50 iterations (pooled, all sampled states; qpos / qvel / ctrl median floored error per group):")
@@ -764,7 +746,6 @@ def render(res):
                     "n/s" if a.get(b, {}).get("status") else f(a.get(b, {}).get("median")) for b in AG.BLOCKS))
             L.append(f"| {lab} | " + " | ".join(cs) + " |")
         L.append("")
-    # non-finite
     L.append("## 3. Non-finite outputs and gradients on every corpus state")
     L.append("")
     L.append("All 4 x 4096 states with each corpus's 3 stored cotangents (process 0); a state counts when any of its "
@@ -792,7 +773,6 @@ def render(res):
                 n = sum(v["states"] for v in p0.values())
                 L.append(f"| {lab} | {it[2:]} | {fw} of {n} | no gradient | - |")
     L.append("")
-    # FD sweep
     sw = res["fd_sweep"]
     L.append(f"## 4. MuJoCo C finite differences across step sizes ({sw['corpus']}, G0, {sw['states']} states)")
     L.append("")
@@ -828,7 +808,6 @@ def render(res):
                  + " / ".join(f(g[b]["raw"]["median"]) for b in AG.BLOCKS)
                  + "; every tight-option row is in the JSON (`fd_sweep.results`, keys `tight/...`).")
         L.append("")
-    # reproduce
     L.append("## Reproduce")
     L.append("")
     L.append("The harness jobs (one engine group per GPU; MuJoCo C on the CPU), the sweep and this rendering:")
@@ -844,7 +823,6 @@ def render(res):
              f"--fd-sweep {fs['file']} --out-json {res['file']} --out-md {res['file'][:-5]}.md")
     L.append("```")
     L.append("")
-    # notes
     L.append("## Notes")
     L.append("")
     for n in res["notes"]:
@@ -967,7 +945,7 @@ def genesis_notes(res):
     for c in CORPORA:
         try:
             fric.append(P.load_corpus(c).arrays["friction"].astype(np.float64))
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     dr = pv.get("dr") or {}
     if fric and dr:

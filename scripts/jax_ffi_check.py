@@ -1,82 +1,4 @@
-"""The JAX interface of the G1 engine (nablaengine.jax_ffi): acceptance tests and the cost of the FFI calls.
-
-Corpora: --corpora (default mf_s0, mf_s1: benchmarks/data, nablaengine.fixtures), 4096 states each; the sections
-that use one corpus take the first.
-
-Sections (--sections, default all; each runs in its own process, so its device memory and timing are its own):
-  bitwise    the FFI against the adjoint check binary (nablaengine.checks: build / run, the same engine source) on the
-             same inputs, every corpus, 4 substeps, --bitwise-iterations (default 50 and 10), the adjoint variants
-             --variants (default (clamp_kv, normal) (1, 0), (0, 3), (1, 3), (0, 0), and the soft clamp (2, 0), (2, 3)
-             at clamp_soft CHECK_SOFT (0.2; the FFI's dk_step_bwd_soft with the step's ctrl, the binary's delta
-             argument)): the forward (qpos', qvel', warm', info, tape) and the three cotangents' gradients and adjoint
-             flags bitwise; dk_step (no tape) equal to dk_step_fwd; the backward repeated: bitwise the same
-             (determinism). At 50 iterations the forward also against the forward reference (--forward-ref): by
-             default "self", this tree's own scripts/engine_step_check.py (the standalone forward unit, --tape
-             --save-outputs) on the same inputs, bitwise, with that run's digest check against the committed manifest
-             of forward digests (nablaengine.checks: match / unanchored; a mismatch fails); or an npz of a reference
-             made with engine_step_check.py --save-outputs ({corpus} in the path is the corpus name); or "off"
-  jit        jax.jit of step and of the gradient of a one-step loss for B = 4096, 160, 40 (each twice, then again):
-             Python traces, XLA compiles (jax.monitoring's backend-compile events) and library builds / loads counted
-  window     a differentiated rollout: lax.scan over H = 64 control steps of jax_ffi.step (interface defaults) from
-             corpus states, ctrl_t = ctrl_corpus + theta_t, two losses: quadratic sum_t (z_t - 0.75)^2 + 1e-3 |qvel_t|^2
-             (mean over worlds) and linear sum_t <c_t, (qpos_t, qvel_t)> (fixed random c_t: dL/dx_t is exact);
-             jax.grad with respect to (theta, qpos_0, qvel_0) against a manual chain of the per-step VJPs
-             (jax_ffi.forward(tape=True) / backward, the per-step loss's jax.vjp, cotangents summed as dL/dx_t + the
-             next step's VJP): bitwise for the linear loss, the quadratic one reported (XLA rounds its fused dL/dx_t
-             differently, BPTT amplifies the ulps); time per window and peak device memory against the tape
-             residuals (5888 B x 4 x H x B); the tape's copy into the stacked residual buffer: forward-only windows
-             that stack the tapes, drop them, or run without the tape, and the tape-sized ops in the compiled
-             gradient's HLO. Remat (each mode in its own process, before the rest): the scan body as is,
-             jax.checkpoint(body), the policy save_only_these_names("dk_tape") and jax_ffi.remat_policy() (the tape
-             and the step's outputs): forward / backward calls per window (the counters), time and peak memory; gate:
-             with remat_policy() H forward and H backward calls and both losses' gradients bitwise the plain scan's
-             (the other two rerun the forward: 2 H, reported)
-  zeros      the cotangents of warm, friction and com are exactly zero, the warm' cotangent changes nothing
-  nonfinite  the non-finite counter: 0 rows on every corpus (interface defaults and the exact gradient mode, 10 and 50
-             iterations); NaN / inf injected into k rows of the output cotangents gives exactly k non-finite gradient
-             rows and k non-finite cotangent rows, inside jit and inside lax.scan (read through diagnostics(*deps) in
-             the same jit and through read_diagnostics() after it); the forward counters against the tape flags
-  options    the gradient options (H = 16, B = 1024 states, a feedback ctrl_t = ctrl_corpus + theta_t - 0.5 (q_t - q_0)
-             on the hinge angles so that the state reaches the loss also through the controls; the quadratic loss of
-             the window section): gradient decay, grad_decay gamma of jax_ffi.step, against scale_grad((qpos, qvel),
-             gamma) on the physics call's state arguments: jax.grad with respect to (theta, qpos_0, qvel_0) bitwise
-             equal, also under jax.checkpoint(body, policy=remat_policy()) (and there H forward calls), for
-             (clamp_kv, gamma) (0, 0.95), (1, 0.98), (2, 0.95); gamma = 1 is the default function itself (make_step,
-             scale_grad's identity); the decay law (open loop, the linear loss of one step j only): d/dtheta_0 with
-             gamma equals gamma^j times without it (relative 1e-4: each step rounds gamma's product). The closed-loop
-             law (closed_loop_law, gated): the same feedback window (interface defaults; the set point a constant)
-             whose carried state is a pytree with int32, bool and typed PRNG-key leaves, the linear loss of step j
-             (4, 15) alone: in the full-state form, scale_grad(state, gamma) at the top of the scan body (gamma 0.9),
-             d/dtheta_t equals gamma^(j - t) times without it for every t <= j and d/d(qpos_0, qvel_0) gamma^(j + 1)
-             times (relative 1e-4), zero for t > j, and with gamma 0.5 bitwise (a power of 2 scales without
-             rounding); the physics-only form (grad_decay 0.9) deviates from the law through the feedback path (its
-             size reported; gated: at least 100 x the full-state form's deviation, so the check resolves the two). The
-             soft clamp, clamp_kv=2: jax.vjp through step equal to backward(ctrl=, clamp_soft=) bitwise,
-             clamp_soft=0 equal to clamp_kv=1 bitwise, under remat_policy() H forward calls (ctrl, a residual of the
-             soft clamp, is recomputed with the body, not the physics); argument errors raise ValueError (clamp_soft
-             with clamp_kv 0 / 1, clamp_kv 2 without ctrl, a negative or non-finite clamp_soft)
-  api        EnginePhysics (the interface of nablaengine.reference.warp_physics.WarpPhysics): nconmax / njmax, stats()
-             with WarpPhysics.stats()'s keys equal to the last forward call's info of its batch size (4096 through
-             jax.vjp, 160 through step) and unchanged by reading it twice, diagnostics(); the model check raises on
-             another timestep, foot-pair order, torso id, body mass or pair friction; negative shape tests through
-             jax.ffi.ffi_call (wrong info, tape, contact or gradient output shapes, rank-0 qpos, rank-1 tape) raise
-             the library's InvalidArgument, count no call, and the valid calls before and after are bitwise the same;
-             k_adjoint's launch (launch_info: adj_launch_smem, at least each variant's sizeof(Adj); 4 worlds per SM on
-             V100)
-  timing     per call at B = 4096 (4 substeps, 10 and 50 iterations) of jax_ffi.step (dk_step), forward(tape=True)
-             (dk_step_fwd), backward (dk_step_bwd) and jax.vjp (both), under jax.jit, against the bare kernels: the
-             split forward (k_pre / k_post, the FFI's forward) of engine_step_check.py --tape, its T7 runs alternating
-             the tape off and on with one binary (forward_ms, forward_tape_ms), and the adjoint check binary for the
-             adjoint (adjoint_ms; --reps launches). That binary's own forward is the fused k_substep at its occupancy,
-             not the FFI's path: it is reported as fused_forward_tape_ms and enters no overhead
-
-  CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src XLA_PYTHON_CLIENT_PREALLOCATE=false \\
-      python scripts/jax_ffi_check.py --out runs/jax_ffi_check.json
-  python scripts/jax_ffi_check.py --sections bitwise --corpora mf_s0 --variants 0,3 --bitwise-iterations 50 \\
-      --out runs/jax_ffi_bitwise.json   # the quick form
-
-Exit status: 0 when every section passes, 1 otherwise (the JSON is written either way).
-"""
+"""The JAX interface of the G1 engine (nablaengine.jax_ffi): acceptance tests and the cost of the FFI calls."""
 
 import argparse
 import json
@@ -91,11 +13,10 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from nablaengine import checks, fixtures, provenance, workdir  # noqa: E402
+from nablaengine import checks, fixtures, provenance, workdir
 
 SECTIONS = ("bitwise", "jit", "window", "zeros", "nonfinite", "options", "api", "timing")
-CORPORA = list(fixtures.MAIN_CORPORA)  # --corpora (set in main)
-# (clamp_kv, normal): the exact mode, the interface default, the other two, the soft clamp at CHECK_SOFT
+CORPORA = list(fixtures.MAIN_CORPORA)
 CHECK_VARIANTS = ((1, 0), (0, 3), (1, 3), (0, 0), (2, 0), (2, 3))
 CHECK_SOFT = 0.2
 INPUTS = ("qpos", "qvel", "qacc_warmstart", "ctrl", "friction", "com")
@@ -132,7 +53,6 @@ def fns(iterations, substeps=4, ctrl=None):
     return fwd, step, bwd
 
 
-# ---------------------------------------------------------------- bitwise
 
 def forward_reference(args, corpus, nw, work):
     """(reference arrays or None, record) of the forward reference (--forward-ref, module docstring) at 50 iterations."""
@@ -185,11 +105,11 @@ def sec_bitwise(args):
                        step_vs_step_fwd=dict(qpos=same_bits(qs, q), qvel=same_bits(vs, v), warm=same_bits(ws, w),
                                              info=same_bits(infs, inf)), variants={})
             ok &= all(row["step_vs_step_fwd"].values())
-            if iters == 50 and args.forward_ref != "off":  # the library's target, nvcc, forward-unit flags
+            if iters == 50 and args.forward_ref != "off":
                 fr, rec = forward_reference(args, corpus, nw, work)
                 if fr is None:
                     row["forward_vs_reference"] = rec
-                    ok &= not isinstance(rec, dict)  # a self reference that failed to run fails
+                    ok &= not isinstance(rec, dict)
                 else:
                     same = dict(qpos=same_bits(q, fr["qpos"]), qvel=same_bits(v, fr["qvel"]),
                                 warm=same_bits(w, fr["warm"]), info=same_bits(inf, fr["info"]),
@@ -211,7 +131,7 @@ def sec_bitwise(args):
                         ctrl=same_bits(gu, out[f"grad{c}_ctrl"]),
                         adj_info=bool(np.array_equal(ai & ((1 << F.NONFINITE_SHIFT) - 1), out[f"adj_info{c}"])),
                         nonfinite_bits_zero=bool(((ai >> F.NONFINITE_SHIFT) == 0).all()))
-                    if c == 0:  # determinism: the same call again
+                    if c == 0:
                         gq2, gv2, gu2, _ = bwd[var](tp, a[4], a[5], *cots[c])
                         r["gradients"]["cot0"]["repeat_bitwise"] = bool(same_bits(gq2, gq) and same_bits(gv2, gv)
                                                                         and same_bits(gu2, gu))
@@ -226,7 +146,6 @@ def sec_bitwise(args):
     return res
 
 
-# ---------------------------------------------------------------- jit
 
 def sec_jit(args):
     import jax
@@ -281,10 +200,8 @@ def sec_jit(args):
     return res
 
 
-# ---------------------------------------------------------------- window
 
 def _hlo_tape_ops(text, B, cols):
-    """Counts of HLO instructions whose result is a tape-sized f32 array (one step's tape, or a stack of them)."""
     import re
     one, out = f"f32[{B},{cols}]", {}
     for line in text.splitlines():
@@ -298,13 +215,10 @@ def _hlo_tape_ops(text, B, cols):
     return out
 
 
-REMAT_MODES = ("none", "default", "tape", "named")  # the window's scan body: as is, jax.checkpoint(body), with the
-# policy save_only_these_names("dk_tape"), with jax_ffi.remat_policy() (the tape and the step's outputs)
+REMAT_MODES = ("none", "default", "tape", "named")
 
 
 def _window_setup(args):
-    """The rollout window of the window section: its inputs and (step loss name -> function), window_loss(theta, q0, v0,
-    step_loss, remat) with the scan body wrapped per REMAT_MODES."""
     import jax
     import jax.numpy as jnp
     from nablaengine import jax_ffi as F
@@ -312,11 +226,11 @@ def _window_setup(args):
     z = fixtures.load_corpus(CORPORA[0], adjoint=True)
     q0, v0, w0, u0, fr, com = jnp_inputs(z, B)
     theta = jnp.zeros((H, B, u0.shape[1]), jnp.float32)
-    rng = np.random.default_rng(0)  # the linear loss's fixed weights (exact cotangents: no rounding in dL/dx_t)
+    rng = np.random.default_rng(0)
     cq_lin = jnp.asarray(rng.standard_normal((H, B, q0.shape[1])).astype(np.float32) / B)
     cv_lin = jnp.asarray(rng.standard_normal((H, B, v0.shape[1])).astype(np.float32) / B)
 
-    def quad_loss(q, v, k):  # a quadratic loss: root height and velocity
+    def quad_loss(q, v, k):
         return (jnp.sum((q[:, 2] - 0.75) ** 2) + 1e-3 * jnp.sum(v * v)) / B
 
     def lin_loss(q, v, k):
@@ -353,7 +267,7 @@ def sec_window_remat(args):
     dev = jax.local_devices()[0]
     base = dev.memory_stats()["bytes_in_use"]
     res, grads = dict(mode=args.remat_mode, H=H, B=B), {}
-    for name, f in S["losses"].items():  # quadratic first: the peak memory is its own
+    for name, f in S["losses"].items():
         fn = jax.jit(jax.value_and_grad(lambda th, q, v, f=f: S["window_loss"](th, q, v, f, args.remat_mode),
                                         argnums=(0, 1, 2)))
         t = time.perf_counter()
@@ -386,15 +300,11 @@ def sec_window_remat(args):
         del fn, compiled, g
     np.savez(args.remat_grads, **grads)
     print("window_remat", json.dumps(res), flush=True)
-    res["pass"] = True  # judged by sec_window
+    res["pass"] = True
     return res
 
 
 def _remat_runs(args):
-    """The window section's remat cases, each mode in its own process (one after the other, before that section itself
-    touches the GPU), the gradients compared bitwise with the plain scan's ("none"). Gate: with jax_ffi.remat_policy()
-    ("named") one dk_step_fwd and one dk_step_bwd per control step and the gradients bitwise those without remat;
-    reported: jax.checkpoint(body) and the tape-only policy (both rerun the forward: 2 H forward calls)."""
     work = workdir.work_dir("jax_ffi_remat_")
     runs = {}
     for mode in REMAT_MODES:
@@ -433,7 +343,7 @@ def _remat_runs(args):
 
 
 def sec_window(args):
-    remat = _remat_runs(args)  # first: its processes need the GPU's memory
+    remat = _remat_runs(args)
     import jax
     import jax.numpy as jnp
     from nablaengine import jax_ffi as F
@@ -466,7 +376,6 @@ def sec_window(args):
     results["linear"] = grad_fns["linear"](theta, q0, v0)
     jax.block_until_ready(results["linear"])
 
-    # forward-only windows: tapes stacked as scan outputs / computed and dropped / not written
     def fwd_window(mode):
         def body(carry, th):
             q, v, w = carry
@@ -489,8 +398,6 @@ def sec_window(args):
         fwd_times[mode] = float(np.median(ts))
         del f
 
-    # the manual chain of per-step VJPs (the same FFI calls, one control step at a time, cotangents accumulated
-    # as dL/dx_t + the next step's VJP)
     fwd1 = jax.jit(lambda q, v, w, th: F.forward(q, v, w, u0 + th, fr, com, tape=True))
     bwd1 = jax.jit(lambda tp, gq, gv: F.backward(tp, fr, com, gq, gv))
     t = time.perf_counter()
@@ -546,9 +453,6 @@ def sec_window(args):
                               stacked_share_of_window=(fwd_times["stacked"] - fwd_times["dropped"]) / t_win,
                               hlo_tape_sized_ops=tape_ops),
                diagnostics=diag, remat=remat)
-    # gated: the linear loss (exact cotangents) bitwise; the quadratic loss's dL/dx_t is rounded differently by XLA's
-    # fused scan body than by the separate per-step jax.vjp, and BPTT through 64 steps amplifies those ulps (reported);
-    # with remat_policy() one forward per control step and the plain scan's gradients bitwise
     res["pass"] = bool(all(cons["linear"][k]["bitwise"] for k in ("theta", "qpos0", "qvel0"))
                        and cons["linear"]["gradient_finite"] and cons["quadratic"]["gradient_finite"]
                        and all(cons["quadratic"][k]["rel"] <= 1e-3 for k in ("theta", "qpos0", "qvel0"))
@@ -557,7 +461,6 @@ def sec_window(args):
     return res
 
 
-# ---------------------------------------------------------------- zeros
 
 def sec_zeros(args):
     import jax
@@ -572,7 +475,7 @@ def sec_zeros(args):
             outs, f = jax.vjp(lambda *x: F.step(*x, **opts), *a)
             cq, cv = jnp.asarray(z["cot0_qpos"]), jnp.asarray(z["cot0_qvel"])
             g0 = f((cq, cv, jnp.zeros_like(outs[2])))
-            g1 = f((cq, cv, jnp.asarray(z["cot1_qvel"])))  # a random warm' cotangent: must change nothing
+            g1 = f((cq, cv, jnp.asarray(z["cot1_qvel"])))
             return g0, g1
         g0, g1 = run(*a)
         r = dict(warm_zero=bool((np.asarray(g0[2]) == 0).all()), friction_zero=bool((np.asarray(g0[4]) == 0).all()),
@@ -587,7 +490,6 @@ def sec_zeros(args):
     return res
 
 
-# ---------------------------------------------------------------- nonfinite
 
 def sec_nonfinite(args):
     import jax
@@ -623,7 +525,6 @@ def sec_nonfinite(args):
             ok &= r["pass"]
             res["corpus"][f"{corpus}/it{iters}/kv{var[0]}_n{var[1]}"] = r
             print("nonfinite corpus", corpus, iters, var, d["nonfinite_rows"], all(match.values()), flush=True)
-    # injected NaN / inf in k rows of the output cotangents, inside jit (diagnostics(*deps) in the same jit)
     z = fixtures.load_corpus(CORPORA[0], adjoint=True)
     B = 160
     a = jnp_inputs(z, B)
@@ -648,8 +549,6 @@ def sec_nonfinite(args):
     r = dict(injected_rows=rows.tolist(), counters_in_jit=dj, gradient_rows_nonfinite=gbad.tolist())
     r["pass"] = bool(dj["nonfinite_rows"] == len(rows) and dj["nonfinite_cotangent_rows"] == len(rows)
                      and set(gbad.tolist()) == set(rows.tolist()) and dj["bwd_rows"] == B)
-    # inside lax.scan over 8 steps (the cotangents of the last step's output carry the NaNs back through all of them),
-    # read after the jit by read_diagnostics()
     H = 8
 
     def loss(th):
@@ -665,7 +564,6 @@ def sec_nonfinite(args):
     ds = F.read_diagnostics(reset=True)
     rs = dict(H=H, counters_after_scan=ds,
               theta_rows_nonfinite=int((~np.isfinite(np.asarray(gth))).any((0, 2)).sum()))
-    # every step's backward sees the 5 worlds' non-finite cotangents (the NaN propagates backwards in each world)
     rs["pass"] = bool(ds["bwd_calls"] == H and ds["nonfinite_rows"] == H * len(rows)
                       and ds["nonfinite_cotangent_rows"] == H * len(rows) and rs["theta_rows_nonfinite"] == len(rows))
     res["injected_jit"], res["injected_scan"] = r, rs
@@ -675,7 +573,6 @@ def sec_nonfinite(args):
     return res
 
 
-# ---------------------------------------------------------------- options
 
 def sec_options(args):
     import jax
@@ -697,7 +594,7 @@ def sec_options(args):
         def body(carry, x):
             q, v, w = carry
             th, k = x
-            u = u0 + th - (0.5 * (q[:, 7:] - q0[:, 7:]) if feedback else 0.0)  # the state also reaches the controls
+            u = u0 + th - (0.5 * (q[:, 7:] - q0[:, 7:]) if feedback else 0.0)
             if form == "decay":
                 q2, v2, w2 = F.step(q, v, w, u, fr, com, grad_decay=gamma, **opts)
             else:
@@ -721,7 +618,6 @@ def sec_options(args):
         d = F.read_diagnostics(reset=True)
         return [np.asarray(x) for x in g], d
 
-    # gradient decay: grad_decay against scale_grad, bitwise (plain scan and remat_policy())
     res["decay_vs_scale_grad"] = {}
     for kv, gamma in ((0, 0.95), (1, 0.98), (2, 0.95)):
         opts = dict(clamp_kv=kv)
@@ -735,8 +631,8 @@ def sec_options(args):
                 finite=bool(all(np.isfinite(x).all() for x in gd + gs)),
                 theta_norm=float(np.linalg.norm(gd[0])))
             if remat:
-                r["remat_vs_plain_bitwise"] = all(same_bits(x, y) for x, y in zip(gd, g_plain))  # noqa: F821
-            g_plain = gd  # noqa: F841 (read in the next iteration)
+                r["remat_vs_plain_bitwise"] = all(same_bits(x, y) for x, y in zip(gd, g_plain))
+            g_plain = gd
         g1, _ = grads("decay", opts, 1.0)
         r["theta_norm_gamma1"] = float(np.linalg.norm(g1[0]))
         r["pass"] = bool(all(all(x["bitwise"].values()) and x["finite"] for x in (r["plain"], r["remat"]))
@@ -744,12 +640,10 @@ def sec_options(args):
                          and r["remat_vs_plain_bitwise"])
         ok &= r["pass"]
         res["decay_vs_scale_grad"][f"kv{kv}_gamma{gamma:g}"] = r
-    # gamma = 1: the default function and the identity
     x = (q0, v0)
     res["gamma1_is_default"] = bool(F.make_step(grad_decay=1.0) is F.make_step() and F.scale_grad(x, 1.0) is x
                                     and F.make_step(10, 4, 0, 3, None, 1.0) is F.make_step())
     ok &= res["gamma1_is_default"]
-    # the decay law: open loop, the loss of step j only
     law = {}
     for j in (1, 4, 15):
         g1, _ = grads("decay", dict(clamp_kv=1), 1.0, feedback=False, only=j)
@@ -760,18 +654,15 @@ def sec_options(args):
     res["decay_law_theta0"] = law
     res["decay_law_pass"] = bool(all(v["rel"] <= 1e-4 and v["norm_gamma1"] > 0 for v in law.values()))
     ok &= res["decay_law_pass"]
-    # the closed-loop law (jax_ffi's module docstring, the two forms of gradient decay): a window with feedback whose
-    # carried state is a pytree with int, bool and PRNG-key leaves; the cost of step j alone (weights wk, one jit per
-    # form); full: scale_grad(state, gamma) at the top of the scan body, physics: step(grad_decay=gamma)
-    qref = jnp.asarray(z["qpos"][:B])  # the feedback's set point: a constant, not the differentiated q0
+    qref = jnp.asarray(z["qpos"][:B])
 
     def window_cl(th_all, q0_, v0_, wk, form, gamma):
         def body(st, x):
             if form == "full":
-                st = F.scale_grad(st, gamma)  # every inexact leaf; n, alive and key pass through
+                st = F.scale_grad(st, gamma)
             th, wj = x
             key, _ = jax.random.split(st["key"])
-            u = u0 + th - 0.5 * (st["q"][:, 7:] - qref[:, 7:])  # the state reaches the next step through ctrl
+            u = u0 + th - 0.5 * (st["q"][:, 7:] - qref[:, 7:])
             q2, v2, w2 = F.step(st["q"], st["v"], st["w"], u, fr, com,
                                 grad_decay=gamma if form == "physics" else 1.0)
             lk = wj * (jnp.sum(q2[:, 2]) + jnp.sum(v2[:, 6])) / B
@@ -802,7 +693,6 @@ def sec_options(args):
                            rel_qpos0=rel(gd[1], gamma ** (j + 1) * g1[1].astype(np.float64)),
                            rel_qvel0=rel(gd[2], gamma ** (j + 1) * g1[2].astype(np.float64)),
                            zero_after_j=bool(not np.any(gd[0][j + 1:]) and not np.any(g1[0][j + 1:])))
-        # gamma a power of 2: the scaled cotangents round like the unscaled ones, so the law holds bitwise
         g5 = g[("full", 0.5)]
         r["full_gamma0.5_bitwise_t"] = int(sum(same_bits(g5[0][t], (g1[0][t] * np.float32(0.5 ** (j - t))))
                                                for t in range(j + 1)))
@@ -814,7 +704,7 @@ def sec_options(args):
         "alone (sum of root z and qvel[6] of its output)", carried_leaves="q, v, w (float32), n (int32), alive (bool), "
         "key (typed PRNG key)", law="full: d cost_j / d theta_t = gamma^(j - t) x (gamma 1), d / d(qpos_0, qvel_0) = "
         "gamma^(j + 1) x (gamma 1); physics: not this law under feedback (reported)", gate_rel=1e-4, per_j=closed)
-    for k, v in closed.items():  # the check resolves the two forms: the physics-only one 100x off the law at least
+    for k, v in closed.items():
         v["physics_resolved"] = bool(v["physics"]["rel_theta_max"] >= 100 * max(v["full"]["rel_theta_max"], 1e-7))
     res["closed_loop_pass"] = bool(all(
         v["full"]["rel_theta_max"] <= 1e-4 and v["full"]["rel_qpos0"] <= 1e-4 and v["full"]["rel_qvel0"] <= 1e-4
@@ -826,7 +716,6 @@ def sec_options(args):
                                                  v["physics"]["rel_theta_max"], v["physics"]["rel_theta_median"],
                                                  v["full_gamma0.5_bitwise_t"]) for k, v in closed.items()}),
           flush=True)
-    # the soft clamp through the interface
     a = jnp_inputs(z, B)
     cq, cv = jnp.asarray(z["cot0_qpos"][:B]), jnp.asarray(z["cot0_qvel"][:B])
 
@@ -869,14 +758,12 @@ def sec_options(args):
     return res
 
 
-# ---------------------------------------------------------------- api
 
 def _raises(f):
-    """(raised, exception type and message) of calling f and waiting for its result."""
     import jax
     try:
         jax.block_until_ready(f())
-    except Exception as e:  # noqa: BLE001  (XLA's runtime error type differs between versions)
+    except Exception as e:
         return True, f"{type(e).__name__}: {str(e)[:300]}"
     return False, "no exception"
 
@@ -893,9 +780,8 @@ def sec_api(args):
     info = F.init()
     res, ok = {}, True
 
-    # EnginePhysics as WarpPhysics: attributes, stats() (non-destructive, the last call of its batch size), diagnostics
     m10 = copy.deepcopy(m)
-    m10.opt.iterations, m10.opt.ls_iterations = 10, 20  # the interface's solver options are not model constants
+    m10.opt.iterations, m10.opt.ls_iterations = 10, 20
     m10.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_SENSOR)
     phys = {B: F.EnginePhysics(m10, B, fp, torso, graph_mode="warp_staged", nconmax=64, njmax=192)
             for B in (4096, 160)}
@@ -904,18 +790,18 @@ def sec_api(args):
     expect = {}
     for B, p in phys.items():
         a = jnp_inputs(z, B)
-        if B == 4096:  # the differentiated path: jax.vjp (dk_step_fwd), then the backward
+        if B == 4096:
             outs, f = jax.jit(lambda *x: jax.vjp(p.step, *x))(*a)
             jax.block_until_ready(f((jnp.asarray(z["cot0_qpos"][:B]), jnp.asarray(z["cot0_qvel"][:B]),
                                      jnp.zeros_like(outs[2]))))
-        else:  # the forward only: dk_step
+        else:
             jax.block_until_ready(jax.jit(p.step)(*a))
-        _, _, _, inf = jax.jit(lambda *x: F.forward(*x, iterations=10))(*a)  # the same forward's info
+        _, _, _, inf = jax.jit(lambda *x: F.forward(*x, iterations=10))(*a)
         inf = np.asarray(inf)
         expect[B] = {"nacon": int(inf[:, 1].sum()), "naconmax": 64 * B, "nefc_max": int(inf[:, 2].max()),
                      "njmax": 192}
     st = {B: p.stats() for B, p in phys.items()}
-    st2 = {B: p.stats() for B, p in phys.items()}  # a read: the same again
+    st2 = {B: p.stats() for B, p in phys.items()}
     r.update(stats=st, expected_from_forward_info=expect, stats_repeat_equal=st == st2,
              keys_as_warp_physics=all(set(s) == {"nacon", "naconmax", "nefc_max", "njmax"} for s in st.values()),
              json=json.dumps(st[4096]), last_forward_any=F.last_forward(), diagnostics=p4.diagnostics(reset=True))
@@ -925,7 +811,6 @@ def sec_api(args):
     res["engine_physics"] = r
     ok &= r["pass"]
 
-    # the model check: another timestep, foot-pair order, torso id or physics constant raises ValueError
     def variant(change):
         mm = copy.deepcopy(m)
         args_ = [mm, 4096, fp.copy(), torso]
@@ -948,17 +833,15 @@ def sec_api(args):
     res["model_check"] = mc
     ok &= mc["pass"]
 
-    # negative shape tests through jax.ffi.ffi_call: wrong output or input shapes raise (before any kernel runs) and
-    # leave the library working: the valid calls before and after are bitwise the same, the counters count them only
     B = 160
     a = jnp_inputs(z, B)
     cq, cv = jnp.asarray(z["cot0_qpos"][:B]), jnp.asarray(z["cot0_qvel"][:B])
     f32, i32 = jnp.float32, jnp.int32
     nq, nv, nu, rw, mc8 = info["nq"], info["nv"], info["nu"], info["rec_words"], info["maxcon"] * 8
     S = jax.ShapeDtypeStruct
-    fwd_outs = lambda info_shape=(B, 4), tape_cols=4 * rw, con=(B, mc8): [  # noqa: E731
+    fwd_outs = lambda info_shape=(B, 4), tape_cols=4 * rw, con=(B, mc8): [
         S((B, nq), f32), S((B, nv), f32), S((B, nv), f32), S(info_shape, i32), S(con, f32), S((B, tape_cols), f32)]
-    bwd_outs = lambda info_shape=(B,), gq=(B, nq): [S(gq, f32), S((B, nv), f32), S((B, nu), f32),  # noqa: E731
+    bwd_outs = lambda info_shape=(B,), gq=(B, nq): [S(gq, f32), S((B, nv), f32), S((B, nu), f32),
                                                     S(info_shape, i32)]
     attrs = dict(iterations=np.int32(10), substeps=np.int32(4))
     battrs = dict(substeps=np.int32(4), clamp_kv=np.int32(0), normal=np.int32(3))
@@ -1000,7 +883,6 @@ def sec_api(args):
                                           and res["negative_shapes"]["valid_calls_bitwise_before_after"])
     ok &= res["negative_shapes"]["pass"]
 
-    # k_adjoint's launch (adjoint.adj_launch_smem): on V100 at most 4 worlds per SM
     li = F.launch_info()
     cc = jax.devices()[0].compute_capability
     res["adjoint_launch"] = dict(compute_capability=str(cc), variants=li, sizeof_adj=info["sizeof_adj"])
@@ -1014,7 +896,6 @@ def sec_api(args):
     return res
 
 
-# ---------------------------------------------------------------- timing
 
 def _time(f, reps):
     import jax
@@ -1064,10 +945,10 @@ def sec_timing(args):
         bare_all = dict(forward_ms=[], forward_tape_ms=[], adjoint_ms=[], fused_forward_tape_ms=[])
         ffi_all = {name: dict(ms_per_call=[], ms_latency_median=[]) for name, _ in calls}
         for rep in range(args.timing_repeats):
-            r, _ = checks.run(binary, work, m, nw, iters, 4, 1, args.reps, False, args.timeout)  # forward + tape, adjoint
-            bare_all["fused_forward_tape_ms"].append(r["ms_forward_tape"])  # (k_substep: not the FFI's forward)
+            r, _ = checks.run(binary, work, m, nw, iters, 4, 1, args.reps, False, args.timeout)
+            bare_all["fused_forward_tape_ms"].append(r["ms_forward_tape"])
             bare_all["adjoint_ms"].append(r["ms_adjoint"])
-            out = work / f"esc_it{iters}_{rep}.json"  # the split forward without / with the tape (T7, one binary)
+            out = work / f"esc_it{iters}_{rep}.json"
             subprocess.run([sys.executable, str(ROOT / "scripts" / "engine_step_check.py"), "--corpus", CORPORA[0],
                             "--substeps", "4", "--iterations", str(iters), "--check", "8", "--reps", str(args.reps),
                             "--tape", "--digests", "off", "--out", str(out)], check=True, timeout=args.timeout,
@@ -1079,7 +960,7 @@ def sec_timing(args):
                 thr, lat = _time(f, args.reps)
                 ffi_all[name]["ms_per_call"].append(thr)
                 ffi_all[name]["ms_latency_median"].append(lat)
-        med = lambda x: float(np.median(x))  # noqa: E731
+        med = lambda x: float(np.median(x))
         bare = {k: med(v) for k, v in bare_all.items()}
         ffi = {name: {k: med(v) for k, v in d.items()} for name, d in ffi_all.items()}
         over = dict(step_minus_bare_forward_ms=ffi["step"]["ms_per_call"] - bare["forward_ms"],
@@ -1089,8 +970,8 @@ def sec_timing(args):
         res["iterations"][str(iters)] = dict(bare_kernels=bare, ffi=ffi, overhead=over, bare_kernels_all=bare_all,
                                              ffi_all=ffi_all)
         print("timing", iters, json.dumps(dict(bare_kernels=bare, ffi=ffi, overhead=over)), flush=True)
-    res["adjoint_launch"] = F.launch_info()  # the FFI's k_adjoint launch (adj_launch_smem), as the binary's
-    res["pass"] = True  # reported, not gated
+    res["adjoint_launch"] = F.launch_info()
+    res["pass"] = True
     return res
 
 
@@ -1129,7 +1010,7 @@ def main():
         r = RUN[args.section](args)
         Path(args.out).write_text(json.dumps(r, indent=1))
         return
-    import jax  # noqa: F401  (the environment is recorded by the parent)
+    import jax
     res = dict(gpu=gpu_name(), jax=jax.__version__, corpora=CORPORA, sections={})
     if args.update and Path(args.out).exists():
         res = json.loads(Path(args.out).read_text())
@@ -1137,7 +1018,7 @@ def main():
         provenance.keep_sections(res, [(res, [s for s in res["sections"] if s not in args.sections.split(",")])])
     from nablaengine import jax_ffi as F
     t = time.perf_counter()
-    lib = F.init()  # its path absolute; recorded relative (provenance.rel)
+    lib = F.init()
     lib = dict(lib, path=provenance.rel(lib["path"]), init_seconds=time.perf_counter() - t, stats=dict(F.STATS))
     res["library_last_update" if args.update and "library" in res else "library"] = lib
     work = workdir.work_dir("jax_ffi_check_")
@@ -1158,11 +1039,11 @@ def main():
         res["sections"][sec] = r
         print(f"== {sec}: pass {r.get('pass')} ({r['seconds']:.0f} s)", flush=True)
     res["pass"] = bool(all(v.get("pass") for v in res["sections"].values()))
-    res["provenance"] = provenance.provenance()  # commit, GPU, driver, nvcc, packages, MuJoCo Warp
+    res["provenance"] = provenance.provenance()
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(res, indent=1))
     print(json.dumps(dict(pass_=res["pass"], sections={k: v.get("pass") for k, v in res["sections"].items()})))
-    return 0 if res["pass"] else 1  # the exit status (a --section child exits 0: its parent reads the JSON)
+    return 0 if res["pass"] else 1
 
 
 if __name__ == "__main__":

@@ -1,0 +1,40 @@
+<!-- C5: a connect violated at qpos0: a double pendulum whose tip site is 6 cm from its world site (site connect;
+starts outside the impedance band, |pos| > width). Also a joint equality and a second connect between two siblings
+(body objects; MuJoCo places anchor 2 so that it holds at qpos0) on the same parent, with solimp powers 2 and 3:
+joint rows and connect rows in one build. -->
+<mujoco model="c5_violated">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default>
+    <joint damping="0.02"/>
+    <geom type="capsule" size="0.012" density="1000" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <site name="target" pos="0.3 0.05 0.75"/>
+    <body name="p1" pos="0 0 1">
+      <joint name="p1" type="hinge" axis="0 1 0"/>
+      <geom fromto="0 0 0 0.2 0 0"/>
+      <body name="p2" pos="0.2 0 0">
+        <joint name="p2" type="hinge" axis="0 1 0"/>
+        <geom fromto="0 0 0 0.1 0 -0.2"/>
+        <site name="tip" pos="0.1 0 -0.2"/>
+      </body>
+      <body name="s1" pos="0 0 -0.1">
+        <joint name="s1" type="hinge" axis="1 0 0"/>
+        <geom fromto="0 0 0 0 0.1 -0.1"/>
+      </body>
+      <body name="s2" pos="0 0.05 -0.1">
+        <joint name="s2" type="hinge" axis="1 0 0"/>
+        <geom fromto="0 0 0 0 0.05 -0.1"/>
+      </body>
+    </body>
+  </worldbody>
+  <equality>
+    <connect name="reach" site1="tip" site2="target" solref="0.02 1" solimp="0.9 0.95 0.001 0.5 2"/>
+    <connect name="sibs" body1="s1" body2="s2" anchor="0 0.1 -0.1" solref="0.01 0.8" solimp="0.9 0.99 0.01 0.5 3"/>
+    <joint name="mimic" joint1="s1" joint2="s2" polycoef="0 0.5 0 0 0" solref="0.02 1"/>
+  </equality>
+  <actuator>
+    <motor joint="p1" ctrlrange="-1 1"/>
+    <motor joint="s1" ctrlrange="-0.3 0.3"/>
+  </actuator>
+</mujoco>

@@ -1,0 +1,37 @@
+<!-- C4: a connect whose chain has a body with two hinges (a wrist: the converter splits it into a chain of bodies),
+an off-origin hinge, a hinge with a nonzero ref, and body 1 a jointless tip body (fused into its parent by the
+converter, which then carries the connect as a site connect with the source's invweight). The tip is held at a point
+in the world (body2 omitted: the world). -->
+<mujoco model="c4_multihinge">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default>
+    <joint damping="0.02"/>
+    <geom type="capsule" size="0.012" density="1000" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body name="link1" pos="0 0 1">
+      <joint name="j1" type="hinge" axis="0 0 1" ref="0.3"/>
+      <geom fromto="0 0 0 0.2 0 0"/>
+      <body name="wrist" pos="0.2 0 0">
+        <joint name="wx" type="hinge" axis="1 0 0" pos="0 0 0.01"/>
+        <joint name="wy" type="hinge" axis="0 1 0"/>
+        <geom fromto="0 0 0 0.15 0 -0.05"/>
+        <body name="link3" pos="0.15 0 -0.05">
+          <joint name="j3" type="hinge" axis="0 1 0" pos="0.02 0 0"/>
+          <geom fromto="0 0 0 0.1 0 -0.1"/>
+          <body name="tip" pos="0.1 0 -0.1">
+            <geom type="sphere" size="0.02"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <equality>
+    <connect name="hold" body1="tip" anchor="0.01 0 0" solref="0.01 1"/>
+  </equality>
+  <actuator>
+    <motor joint="j1" ctrlrange="-1 1"/>
+    <motor joint="wx" ctrlrange="-1 1"/>
+    <motor joint="j3" ctrlrange="-1 1"/>
+  </actuator>
+</mujoco>

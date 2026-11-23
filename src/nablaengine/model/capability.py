@@ -1,37 +1,4 @@
-"""Which MuJoCo models the engine supports: input validation of a model before anything is built.
-
-The engine's code is generated from the model (nablaengine.g1_engine), but its kernels are written for one class of
-robot models (the mjlab G1's): a floating base with one hinge per body, position servos, explicit contact pairs
-between planes, spheres, capsules and boxes, the implicitfast integrator and the Newton solver, no passive forces,
-tendons or equality constraints. Without these checks many departures from that class would be silent: code generation
-would accept the model and the engine would simulate other physics (contype / conaffinity contacts left out, condim 4
-treated as frictionless, joint damping ignored, an Euler model integrated as implicitfast, ...). check() turns every
-assumption into a finding with a code:
-
-  error  the engine would compute other physics than MuJoCo, or fail: the model is unsupported (UnsupportedModel)
-  warn   supported, but on a code path the G1 never exercised on a corpus (untested, may be slower)
-  info   a documented semantic difference (H11c: the engine does not clamp ctrl to ctrlrange)
-
-Codes: H1-H31 the requirements on the model's structure and physics (H7b, H11b-e, H14b-d, H26a / b subdivide a code),
-U1-U10 the untested code paths, I1 a recorded value, F0 a field this classification does not know (a newer MuJoCo);
-every finding states its requirement (what) and the model's value. Besides the explicit checks, every MjModel field of
-kind "default" (nablaengine.model.fields: physics the engine does not model, e.g. actuator_damping, actuator_armature,
-actuator_delay, dof_dampingpoly, geom_fluid) must equal MuJoCo's compile default, else an error under the field's
-code.
-
-Scopes (what a build needs): "forward" (the forward and the check binaries' forward), "engine" (forward and adjoint:
-the JAX FFI library), "kinematics" (the kinematics outputs). A finding outside the requested scope is reported with
-applies=False and does not count.
-
-  from nablaengine.model import capability
-  rep = capability.check(m, foot_pairs=fp)               # CapabilityReport: .errors(), .warnings(), .table()
-  capability.require(m, foot_pairs=fp, context="init")   # raises UnsupportedModel (ValueError, AssertionError)
-  python -m nablaengine.model.capability --model fixtures/mjlab/g1_train.mjb   # the report (scripts/capability_check.py)
-
-Override: $DK_ALLOW_UNSUPPORTED (default unset) is a comma-separated list of codes (or "all") whose errors require()
-reports as a RuntimeWarning instead of raising, for experiments only: the physics is then not MuJoCo's, so results from
-such a build are not comparable with the checks'.
-"""
+"""Which MuJoCo models the engine supports: input validation of a model before anything is built."""
 
 import os
 import warnings
@@ -43,29 +10,28 @@ import numpy as np
 from nablaengine.model import fields as F
 
 ALLOW_VAR = "DK_ALLOW_UNSUPPORTED"
-COM_BODY = "torso_link"  # the body that takes the per-world COM offset (source.constants, jax_ffi.init)
-SCOPES = {"forward": ("forward",), "engine": ("forward", "adjoint"), "kinematics": ("kinematics",)}
+COM_BODY = "torso_link"
+SCOPES = {"forward": ("forward",), "engine": ("forward", "adjoint"), "kinematics": ("kinematics",),
+          "forest": ("forest",)}
 J, G, T = mujoco.mjtJoint, mujoco.mjtGeom, mujoco.mjtTrn
-GEOM_CODE = {int(G.mjGEOM_PLANE): 0, int(G.mjGEOM_SPHERE): 1, int(G.mjGEOM_CAPSULE): 2, int(G.mjGEOM_BOX): 3}
-FORWARD_TYPES = {0, 1, 2, 3}  # step.GEOM_TYPE: plane, sphere, capsule, box
-ADJOINT_TYPES = {0, 1, 2}  # adjoint_contact.check_model: no boxes
-DISPATCHED = {(0, 1), (0, 2), (0, 3), (1, 1), (1, 2), (2, 2), (2, 3), (3, 3)}  # step.py collide_pair's combinations
-CONTACTS_PER_PAIR = {(0, 1): 1, (0, 2): 2, (0, 3): 4, (1, 1): 1, (1, 2): 1, (2, 2): 2, (2, 3): 2, (3, 3): 8}
+GEOM_CODE = {int(G.mjGEOM_PLANE): 0, int(G.mjGEOM_SPHERE): 1, int(G.mjGEOM_CAPSULE): 2, int(G.mjGEOM_BOX): 3,
+             int(G.mjGEOM_CYLINDER): 5, int(G.mjGEOM_MESH): 6, int(G.mjGEOM_ELLIPSOID): 7}
+FORWARD_TYPES = {0, 1, 2, 3, 5, 6}
+ADJOINT_TYPES = {0, 1, 2}
+DISPATCHED = {(0, 1), (0, 2), (0, 3), (1, 1), (1, 2), (2, 2), (2, 3), (3, 3),
+              (0, 5), (1, 5), (1, 3), (2, 5), (5, 5), (3, 5),
+              (0, 6), (1, 6), (2, 6), (3, 6), (5, 6), (6, 6)}
+CONTACTS_PER_PAIR = {(0, 1): 1, (0, 2): 2, (0, 3): 4, (1, 1): 1, (1, 2): 1, (2, 2): 2, (2, 3): 2, (3, 3): 8,
+                     (0, 5): 4, (1, 5): 1, (1, 3): 1, (2, 5): 4, (5, 5): 4, (3, 5): 4, (0, 6): 4, (1, 6): 1, (2, 6): 4,
+                     (3, 6): 4, (5, 6): 4, (6, 6): 4}
 D, E = mujoco.mjtDisableBit, mujoco.mjtEnableBit
-# disable flags that cannot change the engine's results: sensors (the engine computes none), Euler damping (Euler is
-# rejected), auto reset, midphase / island bookkeeping of MuJoCo's own collision and solver paths, the parent filter
-# (contype contacts are rejected; explicit pairs are not filtered), ctrl clamping (the engine never clamps); the CCD
-# flags only without box pairs (box-box follows MuJoCo Warp's native CCD, step.py BOX_BOX_CCD; no other pair uses CCD)
 DISABLE_OK = (D.mjDSBL_SENSOR, D.mjDSBL_EULERDAMP, D.mjDSBL_AUTORESET, D.mjDSBL_MIDPHASE, D.mjDSBL_ISLAND,
               D.mjDSBL_FILTERPARENT, D.mjDSBL_CLAMPCTRL)
 DISABLE_OK_NO_BOX = (D.mjDSBL_NATIVECCD, D.mjDSBL_MULTICCD)
-# disable flags of physics a supported model does not have, so they change nothing: springs and dampers (every
-# stiffness and damping field must be at its default 0: H22 and the default-kind fields; no tendons or flexes: H25),
-# equality constraints (neq 0: H25); frictionloss and joint limits only where no dof has frictionloss and no joint a limit
 DISABLE_NOOP = (D.mjDSBL_SPRING, D.mjDSBL_DAMPER, D.mjDSBL_EQUALITY)
-ENABLE_OK = (E.mjENBL_ENERGY, E.mjENBL_FWDINV, E.mjENBL_INVDISCRETE)  # diagnostics / inverse dynamics only
+ENABLE_OK = (E.mjENBL_ENERGY, E.mjENBL_FWDINV, E.mjENBL_INVDISCRETE)
 STATUSES = ("error", "warn", "info", "ok")
-CTRLSPEC_OK = (0, int(mujoco.mjtCtrlInput.mjINPUT_POS))  # a fixed gain's input: the type default, or a position
+CTRLSPEC_OK = (0, int(mujoco.mjtCtrlInput.mjINPUT_POS))
 
 
 def _bits(flags, enum):
@@ -82,11 +48,11 @@ def _mask(members):
 @dataclass(frozen=True)
 class Finding:
     code: str
-    status: str  # error / warn / info when the check fails; ok when it passes
+    status: str
     what: str
     value: object = None
     scopes: tuple = ("forward",)
-    applies: bool = True  # in the report's scope
+    applies: bool = True
 
     def line(self):
         v = "" if self.value is None else f" [{_short(self.value)}]"
@@ -153,7 +119,8 @@ class UnsupportedModel(ValueError, AssertionError):
     def __init__(self, report, context=""):
         self.report = report
         lines = "\n  ".join(f.line() for f in report.errors())
-        super().__init__(f"nablaengine: the model is not supported by the engine{' (' + context + ')' if context else ''}"
+        eng = "the forest engine" if report.scope == "forest" else "the engine"
+        super().__init__(f"nablaengine: the model is not supported by {eng}{' (' + context + ')' if context else ''}"
                          f": {report.summary()}\n  {lines}\n(nablaengine.model.capability documents the codes; "
                          f"${ALLOW_VAR}=<codes> overrides them, for experiments only)")
 
@@ -200,12 +167,15 @@ def _name(m, objtype, i):
 
 
 def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
-    """The CapabilityReport of model m for a build scope ("forward", "engine", "kinematics"; module docstring).
-    foot_pairs: the contact pairs that take the per-world friction (jax_ffi's foot_pairs; None: not checked, and U4
-    counts the plane pairs); com_body: the body that takes the per-world COM offset (None: not checked)."""
-    from nablaengine.g1_engine import step  # the generators' own model-derived switches (no import cycle)
+    """The CapabilityReport of model m for a build scope ("forward", "engine", "kinematics": the G1 engine's;
+    "forest": the forest engine's, check_forest; module docstring). foot_pairs: the contact pairs that take the
+    per-world friction (jax_ffi's foot_pairs; None: not checked, and U4 counts the plane pairs); com_body: the body that
+    takes the per-world COM offset (None: not checked; the forest scope reads the G1 default torso_link as None)."""
+    from nablaengine.g1_engine import step
     if scope not in SCOPES:
         raise ValueError(f"scope {scope!r}: one of {', '.join(SCOPES)}")
+    if scope == "forest":
+        return check_forest(m, foot_pairs, None if com_body == COM_BODY else com_body)
     want = set(SCOPES[scope])
     out = []
 
@@ -220,10 +190,11 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
         children[parent[b]].append(b)
     hinge = [j for j in range(m.njnt) if m.jnt_type[j] == J.mjJNT_HINGE]
 
-    # ---- tree, joints, dofs
-    add("H1", nb <= 32, "error", "at most 32 bodies (lane = body, 32-bit ancestor masks)", nb,
+    add("H1", nb <= 63, "error", "at most 63 bodies (bodies l and l + 32 on lane l beyond 32: model_hooks.py; 64-bit "
+        "ancestor masks)", nb,
         ("forward", "kinematics"))
-    add("H2", nb <= 31, "error", "at most 31 bodies in the adjoint (lanes 0 and 31 carry root rotation dofs)", nb,
+    add("H2", nb <= 63, "error", "at most 63 bodies in the adjoint (lane 31's second body slot carries a root rotation "
+        "dof)", nb,
         ("adjoint",))
     add("H3", nv >= 7, "error", "nv >= 7 (a free root and at least one hinge)", nv)
     add("H4", nv <= 64, "error", "nv <= 64 (two rows per lane)", nv)
@@ -259,7 +230,6 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
     na_max = max((nanc(b) for b in range(2, nb)), default=0)
     add("H10", na_max <= 12, "error", "at most 12 hinge ancestors per body (c_anc)", na_max)
 
-    # ---- actuators
     bad11 = []
     for a in range(int(m.nactuator)):
         j = int(m.actuator_trnid[a, 0])
@@ -275,6 +245,13 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
         "one position servo per hinge in joint order (actuator a on dof 6 + a, one control and force each), joint "
         "transmission, affine bias, gear 1, gainprm[0] = -biasprm[1], not force-limited",
         dict(nu=nu, nactuator=int(m.nactuator), hinges=nv - 6, bad=bad11[:8]))
+    vel = [_name(m, mujoco.mjtObj.mjOBJ_ACTUATOR, a) for a in range(int(m.nactuator))
+           if m.actuator_gaintype[a] == mujoco.mjtGain.mjGAIN_FIXED
+           and m.actuator_biastype[a] == mujoco.mjtBias.mjBIAS_AFFINE and m.actuator_gainprm[a, 0] != 0
+           and m.actuator_biasprm[a, 1] == 0 and m.actuator_biasprm[a, 2] == -m.actuator_gainprm[a, 0]]
+    add("H11v", not vel, "error", "no velocity servos (MuJoCo <velocity>: gainprm[0] = kv, biasprm = (0, 0, -kv)): "
+        "the tree engine simulates position servos only; the forest engine simulates velocity servos, route the model "
+        "there with nablaengine.engines.prefer_forest(m) before init (docs/engines.md)", dict(velocity=vel[:8]))
     gt = [_name(m, mujoco.mjtObj.mjOBJ_ACTUATOR, a) for a in range(int(m.nactuator))
           if m.actuator_gaintype[a] != mujoco.mjtGain.mjGAIN_FIXED or m.actuator_dyntype[a] != mujoco.mjtDyn.mjDYN_NONE
           or m.actuator_biasprm[a, 0] != 0 or np.any(m.actuator_biasprm[a, 3:]) or np.any(m.actuator_gainprm[a, 1:])
@@ -291,23 +268,26 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
         tid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, com_body)
         add("H13", tid >= 1, "error", f"the COM-offset body {com_body!r} exists", tid)
 
-    # ---- contacts
     cg = collision_geoms(m)
     types = {GEOM_CODE.get(int(m.geom_type[g]), -1) for g in cg}
     tnames = sorted({mujoco.mjtGeom(int(m.geom_type[g])).name for g in cg})
-    add("H14a", types <= FORWARD_TYPES, "error", "contact pair geoms are planes, spheres, capsules or boxes", tnames)
+    add("H14a", types <= FORWARD_TYPES, "error", "contact pair geoms are planes, spheres, capsules, boxes, cylinders or "
+        "meshes", tnames)
     planes_off_world = [g for g in cg if m.geom_type[g] == G.mjGEOM_PLANE and m.geom_bodyid[g] != 0]
-    box_ok = all(0 in _pair_codes(m, p) or _pair_codes(m, p) == (3, 3) for p in range(m.npair)
-                 if 3 in _pair_codes(m, p))  # plane-box and box-box (model_hooks.py)
-    add("H14b", (types <= ADJOINT_TYPES or (types <= ADJOINT_TYPES | {3} and box_ok)) and not planes_off_world, "error",
-        "contact pair geoms are planes (on the world body), spheres or capsules in the adjoint, and boxes in pairs "
-        "with planes (model_hooks.py)", dict(types=tnames, planes_off_world=planes_off_world[:4]), ("adjoint",))
+    box_ok = all(_pair_codes(m, p)[0] in (0, 1, 2) or _pair_codes(m, p) in ((3, 3), (3, 5), (3, 6))
+                 for p in range(m.npair) if 3 in _pair_codes(m, p))
+    cyl_ok = all(_pair_codes(m, p) in ((0, 5), (1, 5), (2, 5), (5, 5), (3, 5), (5, 6)) for p in range(m.npair)
+                 if 5 in _pair_codes(m, p))
+    mesh_ok = True
+    add("H14b", types - {3, 5, 6} <= ADJOINT_TYPES and (3 not in types or box_ok) and (5 not in types or cyl_ok)
+        and (6 not in types or mesh_ok)
+        and not planes_off_world, "error",
+        "contact pair geoms are planes (on the world body), spheres or capsules in the adjoint, boxes in pairs "
+        "with planes, spheres, capsules or boxes (model_hooks.py), cylinders (g1_engine.cylinder, cylccd) and meshes "
+        "(g1_engine.mesh, cylccd)", dict(types=tnames, planes_off_world=planes_off_world[:4]), ("adjoint",))
     combos = sorted({_pair_codes(m, p) for p in range(m.npair)} - DISPATCHED)
-    add("H14c", not combos, "error", "every pair's type combination is one the forward collides (not plane-plane, "
-        "sphere-box)", combos)
-    # box-box follows MuJoCo Warp's native CCD (GJK / EPA with opt.ccd_iterations and ccd_tolerance) by its converged
-    # result (step.py box_box, BOX_BOX_CCD): fewer iterations or a looser tolerance change MuJoCo Warp's contacts, not
-    # the engine's (no other pair type of the engine uses CCD)
+    add("H14c", not combos, "error", "every pair's type combination is one the forward collides (not plane-plane)",
+        combos)
     d_it, d_tol = F.option_default("ccd_iterations"), F.option_default("ccd_tolerance")
     boxbox = sum(1 for p in range(m.npair) if _pair_codes(m, p) == (3, 3))
     add("H14d", not boxbox or (m.opt.ccd_iterations >= d_it and m.opt.ccd_tolerance <= d_tol), "error",
@@ -322,13 +302,14 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
           or m.pair_friction[p, 0] != m.pair_friction[p, 1]]
     add("H16", not mg, "error", "pair margin = gap = 0 and friction[0] = friction[1]",
         [_name(m, mujoco.mjtObj.mjOBJ_PAIR, p) for p in mg[:8]])
-    cd = sorted({int(x) for x in m.pair_dim} - {1, 3})
-    add("H17", not cd, "error", "pair condim 1 or 3 (others would be simulated as frictionless)", cd)
-    add("H18", m.opt.cone == mujoco.mjtCone.mjCONE_PYRAMIDAL, "error", "pyramidal friction cone",
-        mujoco.mjtCone(int(m.opt.cone)).name)
-    # MuJoCo Warp (constraint.py) reads each solref entry on its own: solref[0] <= 0 is a direct stiffness, solref[1]
-    # <= 0 a direct damping (e.g. (0.02, 0) is the time constant's stiffness without damping); the engine's kbimp has
-    # the standard form of both only
+    cd = sorted({int(x) for x in m.pair_dim} - {1, 3, 4})
+    add("H17", not cd, "error", "pair condim 1, 3 or 4 (others would be simulated as frictionless)", cd)
+    from nablaengine.g1_engine import elliptic as _ell
+    ell_ok = _ell.applies(m) and _ell.supported(m)[0]
+    add("H18", m.opt.cone == mujoco.mjtCone.mjCONE_PYRAMIDAL or ell_ok, "error",
+        "pyramidal friction cone, or elliptic with condim 1 / 3 pairs, isotropic sliding friction and no "
+        "solreffriction (g1_engine.elliptic: forward and adjoint)",
+        mujoco.mjtCone(int(m.opt.cone)).name + ("" if not _ell.applies(m) or ell_ok else f" ({_ell.supported(m)[1]})"))
     neg = dict(pairs=int((m.pair_solref <= 0).any(axis=1).sum()), joints=int((m.jnt_solref[1:] <= 0).any(axis=1).sum()),
                dofs=int((m.dof_solref <= 0).any(axis=1).sum()))
     add("H19", not any(neg.values()), "error", "solref in the standard form, both entries > 0 (time constant, damping "
@@ -339,10 +320,11 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
     add("H20", bool(uni and not m.jnt_margin.any() and dof_uni and not lim_free), "error",
         "one solref / solimp for every joint limit and every dof, jnt_margin 0, only hinge limits",
         dict(limited_non_hinge=lim_free[:4]))
-    add("U10", not (m.dof_frictionloss > 0).any(), "warn", "no frictionloss rows (the G1's; their adjoint, "
-        "model_hooks.py, is untested on a held-out corpus)", int((m.dof_frictionloss > 0).sum()), ("adjoint",))
+    add("U10", not (m.dof_frictionloss > 0).any(), "warn", "no frictionloss rows (the tree engine's adjoint of them, "
+        "g1_engine/model_hooks.py, is not checked against finite differences; the forest engine's is, with per-dof "
+        "solreffriction / solimpfriction: scripts/forest/floss_check.py, docs/engines.md)",
+        int((m.dof_frictionloss > 0).sum()), ("adjoint",))
 
-    # ---- passive forces, integrator, solver, options
     medium = dict(density=float(m.opt.density), viscosity=float(m.opt.viscosity), wind=[float(x) for x in m.opt.wind])
     add("H22", m.opt.density == 0 and m.opt.viscosity == 0 and not np.any(m.opt.wind), "error",
         "no fluid forces (opt density, viscosity, wind 0)", medium)
@@ -356,7 +338,8 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
     dis = int(m.opt.disableflags) & ~_mask(DISABLE_OK + noop + (() if has_box else DISABLE_OK_NO_BOX))
     en = int(m.opt.enableflags) & ~_mask(ENABLE_OK)
     add("H24b", dis == 0 and en == 0 and m.opt.noslip_iterations == 0 and m.opt.disableactuator == 0, "error",
-        "no disable / enable flags that change the physics, noslip off, no disabled actuator groups",
+        "no disable / enable flags that change the physics, noslip off (the forest engine has the noslip pass: "
+        "nablaengine.engines.prefer_forest), no disabled actuator groups",
         dict(disable=_bits(dis, D), enable=_bits(en, E), noslip_iterations=int(m.opt.noslip_iterations),
              disableactuator=int(m.opt.disableactuator)))
     add("H25", m.ntendon == 0 and m.neq == 0 and m.nmocap == 0 and m.nflex == 0 and m.nplugin == 0, "error",
@@ -364,7 +347,6 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
         dict(ntendon=int(m.ntendon), neq=int(m.neq), nmocap=int(m.nmocap), nflex=int(m.nflex),
              nplugin=int(m.nplugin)), ("forward", "kinematics"))
 
-    # ---- capacities (the generators' own values; they need supported geom types and one hinge per body)
     gen = types <= FORWARD_TYPES and not bad7 and nb > 1
     kdof = step.max_support(m) if m.npair and gen else 0
     maxcon = step.maxcon(m)
@@ -372,14 +354,13 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
     add("H26a", len(cg) <= 255 and npset <= 255 and kdof <= 32 and maxcon <= 64 and m.npair < 65536, "error",
         "<= 255 collision geoms and parameter sets (the pair word), KDOF <= 32, MAXCON <= 64",
         dict(ngeomc=len(cg), param_sets=npset, kdof=kdof, maxcon=maxcon))
-    add("H26b", m.npair <= 512, "error", "at most 512 contact pairs (the tape's 9-bit pair index)", int(m.npair),
-        ("adjoint",))
+    add("H26b", m.npair < 65536, "error", "fewer than 65536 contact pairs (the tape's pair index: 9 bits below 512 "
+        "pairs, 16 bits from there, g1_engine.step.capacity_hooks)", int(m.npair), ("adjoint",))
     if foot_pairs is not None:
         fps = [int(p) for p in np.asarray(foot_pairs).ravel()]
         add("H30", set(fps) <= set(range(m.npair)), "error", "the friction (foot) pairs are contact pair indices",
             dict(n=len(fps), outside=sorted(set(fps) - set(range(m.npair)))[:8]))
 
-    # ---- kinematics outputs
     sub = np.array(m.body_mass, np.float64)
     for b in range(nb - 1, 0, -1):
         sub[parent[b]] += sub[b]
@@ -388,7 +369,6 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
         "kinematics outputs: the world body at the origin and massless, every subtree mass >= mjMINVAL", None,
         ("kinematics",))
 
-    # ---- untested code paths
     add("U8", nv >= 32, "warn", "nv >= 32 (the G1's; below, the solves' spare lanes repeat the last row: model_hooks.py, "
         "untested on a held-out corpus)", nv)
     add("U9", nch <= 3, "warn", "at most 3 children per body (the G1's; beyond, model_hooks.py widens c_child: untested "
@@ -407,7 +387,7 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
             worst += CONTACTS_PER_PAIR.get(_pair_codes(m, p), 1)
     add("U4", worst <= maxcon, "warn", "the friction (foot) pairs' worst-case contacts fit MAXCON (else contacts are "
         "dropped and the world flagged while standing)", dict(worst_case=worst, maxcon=maxcon))
-    floor = step.floor_geom(m) if gen else None  # (unsupported types: H14a, the switch is not generated)
+    floor = step.floor_geom(m) if gen else None
     add("U5", floor is None or floor >= 0 or not m.npair, "warn", "one plane among the collision geoms (FLOOR_G; else "
         "the general plane path, untested on a corpus)", floor)
     add("U6", bool(step.dof_body_root6(m)), "warn", "bodies and dofs in the same order (DOF_BODY_ROOT6; else the general "
@@ -417,7 +397,6 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
         "else the general power paths, untested on a corpus)", pw, ("forward", "adjoint"))
     add("I1", True, "info", "the timestep (baked into the constants)", float(m.opt.timestep))
 
-    # ---- fields the engine does not model: compile defaults only
     defaults = F.default_rows()
     for name in F.default_fields():
         f = F.FIELDS[name]
@@ -433,6 +412,212 @@ def check(m, foot_pairs=None, com_body=COM_BODY, scope="engine"):
     add("F0", not unknown, "error", "every MjModel field is classified (nablaengine.model.fields; a MuJoCo version "
         "with new fields needs their classification)", unknown[:8], ("forward", "adjoint", "kinematics"))
     return CapabilityReport(scope, out)
+
+
+FOREST_TYPES = {0, 1, 2, 3, 5, 6, 7}
+FOREST_CONDIM = {1, 3, 4}
+
+
+def check_forest(m, foot_pairs=None, com_body=None):
+    """The forest engine's CapabilityReport of model m (scope "forest"; nablaengine.forest_engine, docs/engines.md):
+    the codes of check() where the requirement is the same (H4, H12, H13, H15, H17, H22, H24a, H25, H30; H25 without the
+    equality constraints, which H25e checks, and the fixed tendons, which H25t checks: forest_engine.equality /
+    tendon), T1-T14 for the
+    forest engine's own requirements on structure, actuators, geoms, integrator, options, contact margins, contact
+    supports, solref forms and the elliptic cone, and T0 for an assumption of
+    its constant packing (forest_engine.source / step) that the explicit checks do not name. com_body: the body that
+    takes the per-world COM offset (None: none, the forest engine's default). Unlike check()'s scopes, physics fields
+    the forest engine does not model are checked only where listed here."""
+    out = []
+
+    def add(code, ok, what, value=None, status="error"):
+        out.append(Finding(code, "ok" if ok else status, what, _jsonable(value), ("forest",), True))
+
+    nb, nv = int(m.nbody), int(m.nv)
+    parent = [int(x) for x in m.body_parentid]
+    children = [[] for _ in range(nb)]
+    for b in range(1, nb):
+        children[parent[b]].append(b)
+
+    def body(b):
+        return _name(m, mujoco.mjtObj.mjOBJ_BODY, b)
+
+    add("T1", nb <= 128, "at most 128 bodies, the world included (bodies l, l + 32, l + 64, l + 96 on lane l; beyond 32: "
+        "forest_engine.nb64, beyond 64: forest_engine.nb128)", nb)
+    nch = max((len(c) for c in children[1:]), default=0)
+    add("T2", nch <= 8, "at most 8 children per body (c_child)", nch)
+    add("H4", nv <= 128, "nv <= 128 (dofs l, l + 32, l + 64, l + 96 on lane l; beyond 64: forest_engine.nv128)", nv)
+    bad = {}
+    for b in range(1, nb):
+        if m.body_jntnum[b] != 1:
+            bad[body(b)] = f"{int(m.body_jntnum[b])} joints"
+            continue
+        j = int(m.body_jntadr[b])
+        jt = int(m.jnt_type[j])
+        if jt not in (int(J.mjJNT_FREE), int(J.mjJNT_HINGE), int(J.mjJNT_SLIDE)):
+            bad[body(b)] = mujoco.mjtJoint(jt).name
+        elif jt == int(J.mjJNT_FREE) and parent[b] != 0:
+            bad[body(b)] = "a free joint below the tree root"
+        elif jt == int(J.mjJNT_FREE) and m.jnt_stiffness[j] != 0:
+            bad[body(b)] = "a free-joint spring"
+        elif jt != int(J.mjJNT_FREE) and np.any(m.jnt_pos[j]):
+            bad[body(b)] = "joint anchor off the body origin"
+        elif jt != int(J.mjJNT_FREE) and m.qpos0[m.jnt_qposadr[j]] != 0:
+            bad[body(b)] = "joint ref != 0 (the engine's angle is qpos)"
+    add("T3", not bad, "every body has exactly one joint: a free joint (tree roots only, no spring) or a hinge / slide "
+        "at the body origin with ref 0 (no welded, multi-joint or ball bodies)", dict(list(bad.items())[:8]))
+
+    def nanc(b):
+        k, n = parent[b], 0
+        while k >= 1:
+            if m.body_jntnum[k] == 1 and m.jnt_type[m.body_jntadr[k]] != J.mjJNT_FREE:
+                n += 1
+            k = parent[k]
+        return n
+    na_max = max((nanc(b) for b in range(1, nb)), default=0)
+    from nablaengine._optional import FOREST, load
+    _src = load("nablaengine.forest_engine", FOREST, "source")
+    add("T4", na_max <= _src.MAX_ANC, f"at most {_src.MAX_ANC} hinge / slide ancestors per body (c_anc)", na_max)
+
+    bad, seen = [], set()
+    from nablaengine._optional import FOREST, load
+    _ten = load("nablaengine.forest_engine", FOREST, "tendon")
+    tbad_act = {n for n, why in _ten.check_actuators(m)}
+    _mus = load("nablaengine.forest_engine", FOREST, "muscle")
+    general = _mus.general(m)
+    gbad = _mus.check(m) if general else []
+    for a in range(int(m.nu)):
+        if a in general:
+            continue
+        j = int(m.actuator_trnid[a, 0])
+        affine = int(m.actuator_biastype[a]) == int(mujoco.mjtBias.mjBIAS_AFFINE)
+        if m.actuator_trntype[a] == T.mjTRN_TENDON:
+            if _name(m, mujoco.mjtObj.mjOBJ_ACTUATOR, a) in tbad_act or \
+                    (mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_ACTUATOR, a) or str(a)) in tbad_act:
+                bad.append(_name(m, mujoco.mjtObj.mjOBJ_ACTUATOR, a))
+            continue
+        joint = m.actuator_trntype[a] == T.mjTRN_JOINT and 0 <= j < m.njnt
+        dof = int(m.jnt_dofadr[j]) if joint else -1
+        ok = (joint and int(m.jnt_type[j]) in (int(J.mjJNT_HINGE), int(J.mjJNT_SLIDE)) and dof not in seen
+              and m.actuator_dyntype[a] == mujoco.mjtDyn.mjDYN_NONE
+              and m.actuator_gaintype[a] == mujoco.mjtGain.mjGAIN_FIXED
+              and (affine or int(m.actuator_biastype[a]) == int(mujoco.mjtBias.mjBIAS_NONE))
+              and (not affine or m.actuator_biasprm[a, 0] == 0.0)
+              and m.actuator_gear[a, 0] == 1.0 and not np.any(m.actuator_gear[a, 1:])
+              and (not m.actuator_forcelimited[a] or m.actuator_forcerange[a, 0] == -m.actuator_forcerange[a, 1]))
+        seen.add(dof)
+        if not ok:
+            bad.append(_name(m, mujoco.mjtObj.mjOBJ_ACTUATOR, a))
+    add("T5", not bad, "actuators without activation dynamics or muscle curves: a joint transmission on a hinge or "
+        "slide, at most one per dof, or a tendon transmission (fixed: with a support dof free of joint actuators, unless "
+        "the model has spatial tendons or general actuators; spatial: forest_engine.spatial); fixed gain, affine "
+        "(biasprm[0] = 0) or no bias, gear 1, symmetric forcerange (force = kp ctrl - kq q - kv qdot, q the joint "
+        "position or the tendon length); no tendon actfrcrange", dict(bad=bad[:8]))
+    add("T12", not gbad, "general actuators (activation dynamics or MuJoCo's muscle: forest_engine.muscle): dyntype "
+        "none / integrator / filter / filterexact / muscle (one activation each), gain fixed / affine / muscle, bias "
+        "none / affine / muscle, on a hinge / slide joint or a tendon, gear on its first component; with implicitfast "
+        "no velocity-dependent gain (the muscle's FV); their tendons' and joints' actfrcrange as T5",
+        dict(n=len(general), bad=[f"{n}: {why}" for n, why in gbad[:4]]))
+    asym = [_name(m, mujoco.mjtObj.mjOBJ_JOINT, j) for j in range(m.njnt)
+            if m.jnt_actfrclimited[j] and m.jnt_actfrcrange[j, 0] != -m.jnt_actfrcrange[j, 1]]
+    add("H12", not asym, "symmetric actuator force ranges (jnt_actfrcrange)", asym[:8])
+    add("T6", not np.asarray(m.jnt_actgravcomp).any(), "gravity compensation as a passive force only (no "
+        "actuatorgravcomp)", int(np.asarray(m.jnt_actgravcomp).sum()))
+    if com_body is not None:
+        tid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, com_body)
+        add("H13", tid >= 1, f"the COM-offset body {com_body!r} exists", tid)
+
+    cg = collision_geoms(m)
+    tnames = sorted({mujoco.mjtGeom(int(m.geom_type[g])).name for g in cg})
+    types = {GEOM_CODE.get(int(m.geom_type[g]), -1) for g in cg}
+    add("T7", types <= FOREST_TYPES, "contact pair geoms are planes, spheres, capsules, ellipsoids, cylinders, boxes "
+        "or meshes (convex hulls); a heightfield: nablaengine.terrain (Terrain.from_model, TerrainConfig: sphere, capsule "
+        "and box geoms against it), or envs.convert.to_engine(drop_types=(mjGEOM_HFIELD,)) where its pairs are "
+        "decoration (e.g. a flat heightfield under the floor plane)", tnames)
+    fp = filter_pairs(m)
+    add("H15", not fp, "no contype / conaffinity contacts (the engine generates only the explicit pairs; "
+        "nablaengine.envs.convert.to_engine turns them into pairs)",
+        dict(n=len(fp), first=[(_name(m, mujoco.mjtObj.mjOBJ_GEOM, a), _name(m, mujoco.mjtObj.mjOBJ_GEOM, b))
+                               for a, b in fp[:4]]))
+    cdbad = [f"{_name(m, mujoco.mjtObj.mjOBJ_PAIR, p)}: {int(m.pair_dim[p])}" for p in range(m.npair)
+             if int(m.pair_dim[p]) not in FOREST_CONDIM]
+    add("H17", not cdbad, "pair condim 1, 3 or 4 (the forest engine has no rolling friction: condim 6 would run as "
+        "condim 3; nablaengine.envs.convert.to_engine(condim6_to=3) converts it explicitly)",
+        dict(n=len(cdbad), pairs=cdbad[:8]))
+    _mg = load("nablaengine.forest_engine", FOREST, "margin")
+    mgbad = _mg.problems(m)
+    add("T10", not mgbad, "no pair adhesion; contact margins / gaps >= 0 on pair types the forest engine collides "
+        "(forest_engine.margin, forest_engine.margin_convex: not two pairs of the same geoms with different margins, "
+        "no box-box margin on a G1-class model)", dict(n=len(mgbad), pairs=mgbad[:8]))
+    if m.npair and not types - FOREST_TYPES and nb <= 128 and nv <= 128:
+        _st = load("nablaengine.forest_engine", FOREST, "step")
+        ksup = int(_st.max_support(m))
+        _kd = load("nablaengine.forest_engine", FOREST, "kdof64")
+        add("T11", ksup <= _kd.MAX_KDOF, "a contact pair's Jacobian support (the dofs on exactly one of its two bodies' "
+            f"chains) at most {_kd.MAX_KDOF} dofs (KDOF; beyond 32: forest_engine.kdof64)", ksup)
+    fps = [int(p) for p in np.asarray(foot_pairs).ravel()] if foot_pairs is not None else []
+    if foot_pairs is not None:
+        add("H30", set(fps) <= set(range(m.npair)), "the friction (foot) pairs are contact pair indices",
+            dict(n=len(fps), outside=sorted(set(fps) - set(range(m.npair)))[:8]))
+
+    medium = dict(density=float(m.opt.density), viscosity=float(m.opt.viscosity), wind=[float(x) for x in m.opt.wind])
+    add("H22", m.opt.density == 0 and m.opt.viscosity == 0 and not np.any(m.opt.wind),
+        "no fluid forces (opt density, viscosity, wind 0)", medium)
+    add("T8", int(m.opt.integrator) in (int(mujoco.mjtIntegrator.mjINT_IMPLICITFAST),
+                                        int(mujoco.mjtIntegrator.mjINT_EULER)),
+        "implicitfast or Euler integrator", mujoco.mjtIntegrator(int(m.opt.integrator)).name)
+    add("H24a", m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON, "Newton solver",
+        mujoco.mjtSolver(int(m.opt.solver)).name)
+    nsbad = load("nablaengine.forest_engine", FOREST, "noslip").problems(m)
+    add("T9", not nsbad and m.opt.disableactuator == 0, "no disabled actuator groups; noslip (opt.noslip_iterations "
+        "> 0) only where forest_engine.noslip takes it (pyramidal cone, no equality constraints or tendons, at most 31 "
+        "bodies and 64 dofs, islands on)", dict(noslip_iterations=int(m.opt.noslip_iterations),
+                                               disableactuator=int(m.opt.disableactuator), noslip=nsbad[:4]))
+    tendon = load("nablaengine.forest_engine", FOREST, "tendon")
+    tbad = tendon.check(m)
+    spatial = [t for t, why in tbad if why.startswith("spatial")]
+    add("H25", not spatial and m.nmocap == 0 and m.nflex == 0 and m.nplugin == 0,
+        "no mocap bodies, flexes or plugins; spatial tendons (site paths, pulleys, sphere / cylinder wrapping with side "
+        "sites: forest_engine.spatial) with a Jacobian support of at most 32 dofs, path bodies with one joint each, "
+        "no armature (fixed tendons: H25t; equality constraints: H25e)",
+        dict(spatial_tendons=spatial[:8], nmocap=int(m.nmocap), nflex=int(m.nflex), nplugin=int(m.nplugin)))
+    add("H25t", not [b for b in tbad if not b[1].startswith("spatial")],
+        "tendons: fixed ones over hinge / slide joints with length0 0 (joint refs folded by the converter); limits (at most "
+        f"{tendon.MAX_LIMITED} limited tendons, margin >= 0), stiffness with "
+        "its deadband, damping, armature, tendon equalities; no tendon frictionloss (forest_engine.tendon; tendon "
+        "actuators: T5)", dict(ntendon=int(m.ntendon), bad=[b for b in tbad if not b[1].startswith("spatial")][:8]))
+    equality = load("nablaengine.forest_engine", FOREST, "equality")
+    eqbad = equality.check(m)
+    add("H25e", not eqbad, "equality constraints: joint equalities (mjEQ_JOINT) between hinge / slide joints with ref 0, "
+        "connect equalities (mjEQ_CONNECT, body or site objects, active at build, at most 32 dofs on their chains) and "
+        "tendon equalities on fixed tendons (mjEQ_TENDON, active at build) "
+        "(forest_engine.equality, forest_engine.tendon; no weld or flex equalities yet)",
+        dict(neq=int(m.neq), bad=eqbad[:8]))
+
+    _sr = load("nablaengine.forest_engine", FOREST, "solref")
+    srbad = _sr.problems(m)
+    add("T13", not srbad, "solref in MuJoCo's standard (time constant, damping ratio: both > 0) or direct (-stiffness, "
+        "-damping: both <= 0) form on every row the engine builds (contact pairs, joint limits, frictionloss rows, "
+        "equalities, tendon limits; forest_engine.solref), not mixed (MuJoCo replaces a mixed solref by the default, "
+        "MuJoCo Warp reads each entry on its own); refsafe on (or every time constant >= 2 h); no contact override "
+        "(mjENBL_OVERRIDE)", dict(n=len(srbad), bad=srbad[:8]))
+    if int(m.opt.cone) == int(mujoco.mjtCone.mjCONE_ELLIPTIC):
+        from nablaengine.g1_engine import elliptic as _ell
+        ell_ok, ell_why = _ell.supported(m)
+        add("T14", ell_ok, "elliptic cone: condim 1, 3 or 4 pairs, isotropic sliding friction, no solreffriction "
+            "(forest_engine.elliptic: the friction rows take the pair's solref)", ell_why)
+
+    if not any(f.status == "error" for f in out):
+        import traceback
+        adjoint = load("nablaengine.forest_engine", FOREST, "adjoint")
+        try:
+            adjoint.engine_constants(m, fps, com_body)
+            add("T0", True, "the forest engine's constant packing accepts the model")
+        except AssertionError as e:
+            tb = traceback.extract_tb(e.__traceback__)[-1]
+            add("T0", False, "the forest engine's constant packing accepts the model",
+                str(e) or f"{tb.name}: {tb.line}")
+    return CapabilityReport("forest", out)
 
 
 def allowed_codes():

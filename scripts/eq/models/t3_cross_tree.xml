@@ -1,0 +1,51 @@
+<!-- T3: fixed tendons across two kinematic trees, in a model with nv > 32 (the Newton Hessian's per-component
+Cholesky, chol_solve_comps, is on). Arm A (hinges z, y) and arm B (slide x, hinge y) hang from the world as separate
+trees. Tendon "x" spans both (limit, armature, damping, stiffness): its armature and implicit damping couple the trees
+in M (the build turns the per-tree factorization of M off); the tendon equality a1 = -0.8 b2 couples them in the
+Hessian. Five free boxes fall on a floor beside them (contacts, 30 more dofs). -->
+<mujoco model="t3_cross_tree">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default>
+    <joint damping="0.05"/>
+    <geom density="800"/>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="3 3 0.1"/>
+    <body name="a1" pos="0 0 1">
+      <joint name="a1" type="hinge" axis="0 0 1"/>
+      <geom type="capsule" fromto="0 0 0 0.2 0 0" size="0.015" contype="0" conaffinity="0"/>
+      <body name="a2" pos="0.2 0 0">
+        <joint name="a2" type="hinge" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0.15 0 -0.2" size="0.012" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+    <body name="b1" pos="0.6 0 1">
+      <joint name="b1" type="slide" axis="1 0 0" range="-0.2 0.2"/>
+      <geom type="box" size="0.03 0.03 0.03" contype="0" conaffinity="0"/>
+      <body name="b2" pos="0 0 0">
+        <joint name="b2" type="hinge" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 -0.25 0 -0.2" size="0.012" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+    <body name="box0" pos="1.2 0 0.2"><freejoint/><geom type="box" size="0.05 0.05 0.05"/></body>
+    <body name="box1" pos="1.4 0 0.3"><freejoint/><geom type="box" size="0.05 0.04 0.05"/></body>
+    <body name="box2" pos="1.2 0.2 0.4"><freejoint/><geom type="box" size="0.04 0.05 0.05"/></body>
+    <body name="box3" pos="1.4 0.2 0.25"><freejoint/><geom type="sphere" size="0.05"/></body>
+    <body name="box4" pos="1.3 0.1 0.6"><freejoint/><geom type="box" size="0.05 0.05 0.04"/></body>
+  </worldbody>
+  <tendon>
+    <fixed name="x" limited="true" range="-0.3 0.3" armature="0.02" damping="0.2" stiffness="1" springlength="0">
+      <joint joint="a2" coef="1"/><joint joint="b2" coef="0.5"/><joint joint="b1" coef="-1"/>
+    </fixed>
+    <fixed name="ta"><joint joint="a1" coef="1"/></fixed>
+    <fixed name="tb"><joint joint="b2" coef="1"/></fixed>
+  </tendon>
+  <equality>
+    <tendon name="sync" tendon1="ta" tendon2="tb" polycoef="0 -0.8 0 0 0" solref="0.01 1"
+            solimp="0.9 0.95 0.001 0.5 2"/>
+  </equality>
+  <actuator>
+    <motor joint="a2" ctrlrange="-1 1"/>
+    <motor joint="b1" ctrlrange="-5 5"/>
+  </actuator>
+</mujoco>

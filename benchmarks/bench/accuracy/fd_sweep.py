@@ -33,7 +33,7 @@ EPS = (1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9)
 OPTIONS = dict(headline=dict(iterations=10, tolerance=1e-8, ls_iterations=8),
                tight=dict(iterations=2000, tolerance=1e-13, ls_iterations=100))
 MODES = ("chain_forward", "chain_centered", "direct_forward", "direct_centered")
-DIRECT_CHUNK = 96  # worlds per Batch of the direct construction
+DIRECT_CHUNK = 96
 
 
 def subset_truth(GT, mask):

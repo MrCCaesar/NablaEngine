@@ -59,11 +59,10 @@ from benchmarks.bench.accuracy import stats
 BLOCKS = ("qpos", "qvel", "ctrl")
 DEFAULT_SUBSETS = ("all", "model_ok")
 EXACT = dict(clamp_kv=1, normal=0)
-F32_FLOOR = 2.0 ** -24  # the float32 storage of the truth Jacobian
-LABEL_G4, LABEL_G1_1MM = 16, 2  # truth/mjc.py LABEL_BITS: G4_clamped, G1_axis_lt_1mm
+F32_FLOOR = 2.0 ** -24
+LABEL_G4, LABEL_G1_1MM = 16, 2
 
 
-# ------------------------------------------------------------------------------------------------- truth
 
 def truth_from_store(tr):
     """The gradient truth of a store.Truth with its corpus's stored cotangents at the sampled states."""
@@ -78,7 +77,6 @@ def truth_from_store(tr):
 
 
 
-# ------------------------------------------------------------------------------------------------- sources
 
 def source_from_dump(path_or_dict, **meta):
     """A source from a raw dump (npz path or dict): index (B,), vjp (B, C, ncol) from grad<c>_<qpos|qvel|ctrl> and / or
@@ -98,7 +96,7 @@ def source_from_dump(path_or_dict, **meta):
     if C and len(present) == len(BLOCKS):
         out["vjp"] = np.stack([np.concatenate([np.asarray(d[f"grad{c}_{b}"], np.float64) for b in BLOCKS], 1)
                                for c in range(C)], 1)
-    elif C:  # a partial gradient: the blocks the engine supports, laid out against the truth's columns later
+    elif C:
         if "grad_blocks" in d and sorted(map(str, d["grad_blocks"])) != sorted(present):
             raise ValueError(f"the dump's grad_blocks {list(d['grad_blocks'])} differ from its arrays {present}")
         out["vjp_parts"] = {b: np.stack([np.asarray(d[f"grad{c}_{b}"], np.float64) for c in range(C)], 1)
@@ -112,7 +110,6 @@ def source_from_dump(path_or_dict, **meta):
 
 
 def _full_vjp(src, GT):
-    """A partial source's VJPs (B, C, ncol) in the truth's column layout, nan on the blocks it does not support."""
     parts = src["vjp_parts"]
     B, C = next(iter(parts.values())).shape[:2]
     ncol = GT["fd"].shape[2]
@@ -126,7 +123,6 @@ def _full_vjp(src, GT):
 
 
 def _rows(src_index, truth_index):
-    """Rows of the source for each truth state (-1: missing); the first occurrence of a repeated state."""
     order = np.argsort(src_index, kind="stable")
     s = src_index[order]
     pos = np.searchsorted(s, truth_index)
@@ -139,8 +135,8 @@ def contract(J, cot_qpos, cot_qvel):
     """VJPs (N, C, ncol) of Jacobians J (N, nq + nv, ncol) for cotangents (N, C, nq), (N, C, nv) (truth/mjc.vjp's
     arithmetic)."""
     nq = cot_qpos.shape[2]
-    cq = lambda c: np.ascontiguousarray(cot_qpos[:, c]).astype(np.float64)  # noqa: E731
-    cv = lambda c: np.ascontiguousarray(cot_qvel[:, c]).astype(np.float64)  # noqa: E731
+    cq = lambda c: np.ascontiguousarray(cot_qpos[:, c]).astype(np.float64)
+    cv = lambda c: np.ascontiguousarray(cot_qvel[:, c]).astype(np.float64)
     return np.stack([np.einsum("wr,wrc->wc", cq(c), J[:, :nq]) + np.einsum("wr,wrc->wc", cv(c), J[:, nq:])
                      for c in range(cot_qpos.shape[1])], 1)
 
@@ -170,7 +166,6 @@ def vjp_at_truth(src, GT, prefer="vjp"):
     return g, missing, how
 
 
-# ------------------------------------------------------------------------------------------------- errors
 
 def block_errors(g, fd, valid, blocks):
     """{block: (e, cos) (N, C)} on the valid columns of each block, nan where a state has none."""
@@ -256,7 +251,7 @@ def score(src, GT, semantics=None, subsets=DEFAULT_SUBSETS, prefer="vjp"):
     supported = src.get("blocks_supported")
     if supported is None:
         nonfin = ~missing & ~np.isfinite(g).all((1, 2))
-    else:  # a partial source: finite on the blocks it supports
+    else:
         cols = np.zeros(g.shape[2], bool)
         for b, sl in blocks.items():
             cols[sl] = b in supported
@@ -320,7 +315,6 @@ def score(src, GT, semantics=None, subsets=DEFAULT_SUBSETS, prefer="vjp"):
                 eb["share_at_floor"] = (float(np.mean((e[usable] <= per_state[f"floor_{b}"][usable])[
                     np.isfinite(e[usable])])) if flo is not None and np.isfinite(e[usable]).any() else None)
                 entries.append(eb)
-    # the full Jacobian on the states that keep it
     if src.get("jacobian") is not None and GT.get("jacobian") is not None and len(GT["jac_index"]):
         ji = GT["jac_index"]
         rows = _rows(np.asarray(src["index"], np.int64), GT["index"][ji])
@@ -395,7 +389,7 @@ def main(argv=None):
     GT = truth_from_store(store.load(a.truth))
     out, ps = [], []
     for i, r in enumerate(a.raw):
-        pick = lambda lst, d=None: lst[i] if i < len(lst) else d  # noqa: E731
+        pick = lambda lst, d=None: lst[i] if i < len(lst) else d
         src = source_from_dump(r, engine=pick(a.engine, f"source{i}"), variant=pick(a.variant, "default"),
                                semantics=dict(clamp_kv=pick(a.clamp_kv, 1), normal=pick(a.normal, 0)))
         ent, st = score(src, GT, prefer=a.prefer)

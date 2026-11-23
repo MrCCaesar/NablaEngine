@@ -1,37 +1,14 @@
 """Parts `mjw_native`, `mjw_native_nw*`: native MuJoCo Warp forward (PyPI mujoco-warp 3.17.0) per control
-step on the mjlab G1, from corpus states.
-
-No nablaengine imports, only MuJoCo Warp's public API: mujoco.MjModel, mjw.put_model(batch_sizes=...), mjw.put_data, mjw.step, wp.ScopedCapture.
-  - model: fixtures/mjlab/g1_train.mjb, opt.iterations = --iterations (10), sensors disabled (mjDSBL_SENSOR), every other
-    option as stored (Newton, ls 8, tolerance as stored; MuJoCo Warp applies its own floor natively); the
-    ITERATIONS / LS_ITERATIONS overflow warnings masked as in upstream's own G1 benchmark
-    (m.opt.warn_overflow &= ~(ITERATIONS | LS_ITERATIONS)); graph_conditional as put_model sets it (True)
-  - per-world DR written once on the host into the batched model arrays (put_model batch_sizes pair_friction /
-    body_ipos: foot-floor pair friction [:2], torso body_ipos += com)
-  - capacity: "procedure" (the documented sizing rule of benchmarks/, benchmarks/data/mjw_capacity.json:
-    naconmax = ceil(nworld mu (1 + margin)) + c_max, nconmax = ceil(mu (1 + margin)), njmax = the smallest MuJoCo
-    Warp valid size >= r_max, with mu the largest per-substep mean of max(broadphase candidates, contacts) per world,
-    c_max the most contacts of one world and r_max the most constraint rows of one world over all corpora; read from
-    that file when it exists, else the embedded values measured with MuJoCo Warp 3.17.0), "matched"
-    nconmax 64 / njmax 192 per world (our engine's capacity), and "default" (put_data's own defaults); a capacity
-    overflow (NEFC, NARROWPHASE, BROADPHASE, ...) is recorded and that capacity is not timed
-  - timing: one CUDA graph holding [copy the corpus inputs into Data; 4 x mjw.step] (every replay starts from the same
-    states), graph capture timed; warm-up, then rounds of N replays + one synchronize (common.timeit)
-One process per nworld; all corpora in the same process (the inputs are copied into the graph's source arrays).
-
-  python scripts/paper_bench/mjw_native.py --out <dir>/mjw_native_nw4096.json --nworld 4096
-"""
+step on the mjlab G1, from corpus states."""
 import argparse
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common as C  # noqa: E402
+import common as C
 
 CAPACITY_BITS = ("NEFC", "NJMAX_NNZ", "BROADPHASE", "NARROWPHASE", "CCD", "HFIELD", "NVMAX", "EPA_HORIZON")
-# the documented capacity procedure's inputs for the mjlab G1 (benchmarks/data/mjw_capacity.json, problems.mjlab,
-# measured with MuJoCo Warp 3.17.0 over mf_s0..mf_s3 at 10 iterations, 2026-10-29)
 PROCEDURE_DEFAULT = dict(pool_mean_max=18.487548828125, contacts_world_max=30, rows_max=114, margin=0.25)
 CAPACITY_FILE = "benchmarks/data/mjw_capacity.json"
 
@@ -49,7 +26,7 @@ def procedure_capacity(nworld):
             src = CAPACITY_FILE
         except (KeyError, ValueError) as e:
             src += f"; {CAPACITY_FILE} unreadable ({e!r:.100})"
-    valid = [(2 + i % 2) * 2 ** (i // 2 + 3) for i in range(19)]  # MuJoCo Warp's valid sizes 16, 24, 32, 48, ...
+    valid = [(2 + i % 2) * 2 ** (i // 2 + 3) for i in range(19)]
     mu = float(v["pool_mean_max"]) * (1 + float(v["margin"]))
     njmax = next((x for x in valid if x >= int(v["rows_max"])), int(v["rows_max"]))
     return dict(nconmax=int(math.ceil(mu)), naconmax=int(math.ceil(nworld * mu)) + int(v["contacts_world_max"]),
@@ -82,7 +59,7 @@ def main():
     try:
         res.data["warp_cuda_toolkit"] = ".".join(map(str, wp.get_cuda_toolkit_version()))
         res.data["warp_cuda_driver"] = ".".join(map(str, wp.get_cuda_driver_version()))
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
     meta = C.meta()
     mjm = mujoco.MjModel.from_binary_path(str(C.FIXTURES / "g1_train.mjb"))
@@ -102,7 +79,7 @@ def main():
     res.data["opt"] = {k: str(getattr(m.opt, k)) for k in ("iterations", "ls_iterations", "tolerance", "ls_tolerance",
                                                            "solver", "cone", "integrator", "is_sparse",
                                                            "graph_conditional", "warn_overflow") if hasattr(m.opt, k)}
-    from mujoco_warp._src import io as mjw_io  # the defaults put_data uses (recorded only)
+    from mujoco_warp._src import io as mjw_io
     default_cap = dict(nconmax=int(mjw_io._default_nconmax(mjm, mjd)), njmax=int(mjw_io._default_njmax(mjm, mjd)))
     res.data["default_capacity"] = default_cap
     proc, proc_src = procedure_capacity(n)
@@ -146,7 +123,7 @@ def main():
                     set_dr(st)
                     for arr, k in ((iq, "qpos"), (iv, "qvel"), (iw, "qacc_warmstart"), (iu, "ctrl")):
                         arr.assign(st[k])
-                    if first_s is None:  # kernel compile (or Warp kernel cache load) + first run
+                    if first_s is None:
                         t = time.perf_counter()
                         ctrl_step()
                         wp.synchronize()
@@ -184,13 +161,13 @@ def main():
                     cell.update(graph_ctrlstep=r, first_call_s=round(first_s, 3), capture_s=round(capture_s, 3),
                                 put_model_s=round(put_model_s, 3))
                     res.cell(key, cell)
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     if C.is_oom(e):
                         C.record_oom(res, key, e, n, corpus=st["_source"], capacity=cap)
                         break
                     res.error(key, e)
             del d, graph
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             if C.is_oom(e):
                 C.record_oom(res, key0, e, n)
             else:

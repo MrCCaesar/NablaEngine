@@ -1,39 +1,4 @@
-"""MuJoCo C adapter (engine id mjc): the official mujoco wheel on the CPU, float64, Tracks A and B.
-
-  python -m benchmarks.bench run --engines mjc --quick --out runs/bench/test_mjc/
-  python -m benchmarks.bench run --part cpu --variant mjc=default,centered --out runs/bench/<machine>/
-
-Ops (every call starts from the loaded input states):
-  fwd   mujoco.batch.Batch(model, nsim=nworld, nthread).step(nstep=substeps): the state rows (qpos, qvel, ctrl,
-        qacc_warmstart, time 0, qfrc_applied 0; per-world DR through Batch.expand("pair_friction") / ("body_ipos"),
-        no mj_setConst) are restored from a copy made at setup (one memcpy, timed as setup reset_s) and stepped. Bitwise
-        equal to an mj_step loop over one MjData per world (Batch's documented guarantee, checked by the tests).
-  jac   MuJoCo C's native derivative, finite differences: mjd_transitionFD chained over the substeps
-        (adapters/mjc_fd.py: fd 'chain_forward' (default) or 'chain_centered', step eps), on a Python thread pool of
-        nthread threads;
-        (nworld, nq + nv, 2 nv + nu) float64, rows qpos' (qpos form) then qvel', columns qpos tangent, qvel, ctrl.
-fwd_train, bwd and vjp are not_supported: MuJoCo C has no reverse mode; its VJP is c^T J of the FD Jacobian (op jac),
-whose cost does not depend on the cotangent. gradient() (accuracy dumps) is that c^T J.
-
-nthread: len(os.sched_getaffinity(0)) unless given (never Batch's default nthread=0, all CPUs of the machine, which
-oversubscribes a node shared under a scheduler); the FD thread pool has the same size.
-
-Options (run --opt mjc.<key>=<value>):
-  nthread    threads of the Batch and of the FD pool (default: the process's CPU affinity count)
-  fd         'chain_forward' (default) | 'chain_centered' (the jac op and gradient()); 'direct_centered' |
-             'direct_forward': FD of the whole control step through Batch rollouts, the gradient truth's construction,
-             for truth cross-checks only (never a timing row)
-  eps        the FD step (default 1e-6); the "best eps (chosen with truth)" rows pass it explicitly
-  fd_chunk   worlds per Batch of the direct modes (default 256)
-  tolerance  None (default: the problem's) or the Newton tolerance (variant tol6: 1e-6, MuJoCo Warp's internal value)
-Variants: default (chain_forward, eps 1e-6), centered (chain_centered, eps 1e-6), single_thread (nthread 1: the
-single-thread rows at small nworld), tol6 (tolerance 1e-6).
-
-Diagnostics (of one control step from the loaded states, stepped substep by substep so every substep's counts are
-read; its final state is checked bitwise against fwd's): ncon / nefc per world and substep, Newton iterations per
-world and substep (the largest solver_niter over the world's islands), niter_hist (worlds by their largest substep
-iteration count), MuJoCo's warnings per world (overflow: worlds with mjWARN_CONTACTFULL or mjWARN_CNSTRFULL).
-"""
+"""MuJoCo C adapter (engine id mjc): the official mujoco wheel on the CPU, float64, Tracks A and B."""
 
 import os
 import time
@@ -47,7 +12,7 @@ from benchmarks.bench.adapters import base, mjc_fd
 FD_MODES = ("chain_forward", "chain_centered", "direct_centered", "direct_forward")
 TIMED_FD = ("chain_forward", "chain_centered")
 EPS = 1e-6
-BIG_FD_NWORLD = 4096  # MuJoCo C FD at 4096 worlds (and above): one call per round (N = 1), 3 rounds
+BIG_FD_NWORLD = 4096
 OVERFLOW_WARNINGS = ("mjWARN_CONTACTFULL", "mjWARN_CNSTRFULL")
 
 
@@ -88,7 +53,7 @@ class MjcAdapter(base.Adapter):
         if self.T < 1:
             raise ValueError(f"mjc: nthread must be >= 1, got {nthread}")
         self.dr = P.DR(m, problem)
-        self.s = states.inputs(np.float64)  # float32 corpus values, exactly
+        self.s = states.inputs(np.float64)
         model_s = time.perf_counter() - t0
         t0 = time.perf_counter()
         b = mjbatch.Batch(m, nsim=self.nworld, nthread=self.T)
@@ -111,7 +76,6 @@ class MjcAdapter(base.Adapter):
         self.fdj, self.J, self.J_out = None, None, None
         return dict(build_s=build_s, load_s=load_s, model_s=model_s, reset_s=self.reset_s)
 
-    # ------------------------------------------------------------------ ops
     def _fwd(self):
         self.b.state[:] = self.state0
         self.b.step(nstep=self.sub)
@@ -160,7 +124,6 @@ class MjcAdapter(base.Adapter):
             return dict(reps=1, rounds=3, warmup_calls=1, warmup_s=0.0)
         return {}
 
-    # ------------------------------------------------------------------ outputs, gradients, diagnostics
     def outputs(self):
         self._fwd()
         b = self.b
@@ -236,7 +199,7 @@ class MjcAdapter(base.Adapter):
 
     @classmethod
     def check_env(cls):
-        from mujoco import batch as mjbatch  # noqa: F401  (mujoco >= 3.17)
+        from mujoco import batch as mjbatch
         return dict(mujoco=mujoco.__version__, affinity_threads=affinity_threads(),
                     transitionFD=hasattr(mujoco, "mjd_transitionFD"))
 

@@ -1,0 +1,34 @@
+<!-- C2: a site-anchored connect on a floating base. A free body with a two-link arm (hinges y, x); a site on the arm's
+tip is connected to a site fixed in the world, so the free root's translations and rotations are on chain 1 and the
+world is body 2. The base rests on a floor (contacts). -->
+<mujoco model="c2_site_free">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default>
+    <joint damping="0.01"/>
+    <geom density="500"/>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <site name="hook" pos="0.3 0.1 0.19"/>
+    <body name="base" pos="0 0 0.04">
+      <freejoint name="base"/>
+      <geom name="base" type="box" size="0.08 0.06 0.04"/>
+      <body name="upper" pos="0.08 0 0.04">
+        <joint name="shoulder" type="hinge" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0.1 0 0.1" size="0.012" contype="0" conaffinity="0"/>
+        <body name="lower" pos="0.1 0 0.1">
+          <joint name="elbow" type="hinge" axis="1 0 0"/>
+          <geom type="capsule" fromto="0 0 0 0.12 0.1 0.01" size="0.01" contype="0" conaffinity="0"/>
+          <site name="tip" pos="0.12 0.1 0.01"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <equality>
+    <connect name="hook" site1="tip" site2="hook" solref="0.01 1"/>
+  </equality>
+  <actuator>
+    <motor joint="shoulder" ctrlrange="-1 1"/>
+    <motor joint="elbow" ctrlrange="-1 1"/>
+  </actuator>
+</mujoco>

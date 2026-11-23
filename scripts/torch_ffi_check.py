@@ -1,38 +1,5 @@
 """Check of nablaengine.torch_ffi against nablaengine.jax_ffi on the same GPU: bitwise equality of every output and
-gradient, plus CUDA-graph capture and torch.compile of the torch entries.
-
-Sections (all by default; --sections a,b,...):
-  forward    forward(..., tape=True) and forward(...) without tape: qpos', qvel', warm', info, tape (and the forward
-             without tape equals the taped one's outputs)
-  backward   backward() of the tape for the corpus's 3 stored cotangents in every adjoint variant (clamp_kv 0 / 1 / 2,
-             normal 0..3; clamp_kv 2 at the default delta): g_qpos, g_qvel, g_ctrl, info
-  step       torch.autograd through step() (default options, and clamp_kv=1 normal=0 grad_decay=0.98) against jax.vjp
-             of jax_ffi.step for the same cotangent
-  kinematics kinematics() outputs and VJP, and step(..., kinematics=True) with all eight cotangents, against jax_ffi
-  rollout    a 3-step rollout (ctrl per step requires grad, the state carried, scale_grad 0.98 on the state at the top
-             of each step, loss = cotangents . final state): gradients of the 3 controls and the initial state
-  diag       the device counters after one forward with tape and one backward: equal to jax_ffi.read_diagnostics()
-  graph      forward with tape + backward captured in one CUDA graph and replayed on new inputs: equal to eager calls
-  compile    torch.compile(fullgraph=True) of a function calling step and summing a loss: no graph break, values equal
-  multigpu   (two or more visible GPUs of one architecture) forward with tape + backward + kinematics on the last GPU
-             while the first is current, and the same calls on both GPUs alternately: bitwise equal to the first GPU's
-             results; per-device diagnostic counters; jax_ffi.step and its VJP on the last JAX device equal to the first
-             (the JAX interface's multi-device path); skipped (recorded) with one GPU
-  artifact   the module's interface constants equal jax_ffi's; a fresh process that cannot import mujoco or jax and
-             has no nvcc on PATH loads the current artifact and computes forward with tape + backward bitwise equal to
-             this process; an artifact whose recorded source hash differs is refused
-  overflow   states pushed 0.6 m into the floor with scrambled joints (contacts beyond 64 / rows beyond 192 per world):
-             torch and jax_ffi forward bitwise equal (info's overflow bits included), their overflow counters equal and
-             equal to the info bits; no warning by default, and read_diagnostics() warns in both with
-             set_overflow_warnings(True)
-  timing     ms per control step at --nworld (interface defaults), torch against jax_ffi in the same process: the
-             forward (torch step without grad / jax.jit(step)) and forward + backward (torch autograd of a cotangent
-             loss / jax.jit(jax.vjp)), wall time of --reps back-to-back calls ending in one synchronisation, --rounds
-             rounds (the first dropped), median and min; recorded, never gated (run it on an idle GPU)
-
-  PYTHONPATH=src python scripts/torch_ffi_check.py --out runs/torch_ffi_check.json [--nworld 1024]
-Exit 1 if any comparison fails. JAX runs with XLA_PYTHON_CLIENT_PREALLOCATE=false (both frameworks on one GPU).
-"""
+gradient, plus CUDA-graph capture and torch.compile of the torch entries."""
 import argparse
 import json
 import os
@@ -41,7 +8,7 @@ import time
 
 os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 
-import numpy as np  # noqa: E402
+import numpy as np
 
 SECTIONS = ("forward", "backward", "step", "kinematics", "rollout", "diag", "graph", "compile", "multigpu", "artifact", "overflow", "timing")
 
@@ -82,7 +49,7 @@ def main():
     cots = [(np.ascontiguousarray(z[f"cot{c}_qpos"][:B], np.float32),
              np.ascontiguousarray(z[f"cot{c}_qvel"][:B], np.float32)) for c in range(3)]
     dev = torch.device("cuda", torch.cuda.current_device())
-    T = lambda x: torch.from_numpy(np.ascontiguousarray(x)).to(dev)  # noqa: E731
+    T = lambda x: torch.from_numpy(np.ascontiguousarray(x)).to(dev)
     J = jnp.asarray
     tin = [T(x) for x in host]
     res = dict(corpus=a.corpus, nworld=B, sections={}, provenance=provenance.provenance(),
@@ -94,15 +61,13 @@ def main():
         if not ok:
             fails.append(f"{sec}.{key}")
 
-    # the CUDA graph first, before JAX's GPU runtime starts in this process (with several GPUs, JAX's runtime makes
-    # torch's allocations during a capture fail; a process without JAX is not affected)
     if "graph" in sections:
         cq, cv = cots[0]
         st = [t.clone() for t in tin]
         sc = [T(cq), T(cv)]
         side = torch.cuda.Stream()
         side.wait_stream(torch.cuda.current_stream())
-        with torch.cuda.stream(side):  # warm-up on the capture stream
+        with torch.cuda.stream(side):
             for _ in range(2):
                 f = torch_ffi.forward(*st, tape=True)
                 torch_ffi.backward(f[4], st[4], st[5], *sc)
@@ -111,7 +76,7 @@ def main():
         with torch.cuda.graph(g):
             gf = torch_ffi.forward(*st, tape=True)
             gb = torch_ffi.backward(gf[4], st[4], st[5], *sc)
-        shift = [np.roll(x, 1, axis=0) for x in host]  # new inputs into the static buffers
+        shift = [np.roll(x, 1, axis=0) for x in host]
         for t, x in zip(st, shift):
             t.copy_(T(x))
         g.replay()
@@ -148,7 +113,7 @@ def main():
         for tag, kw in (("default", {}), ("kv1_n0_decay0.98", dict(clamp_kv=1, normal=0, grad_decay=0.98))):
             x = [t.clone().requires_grad_(i in (0, 1, 3)) for i, t in enumerate(tin)]
             q1, v1, w1 = torch_ffi.step(*x, **kw)
-            (q1 * T(cq)).sum().add_((v1 * T(cv)).sum()).backward()  # d/dx of cq . q1 + cv . v1
+            (q1 * T(cq)).sum().add_((v1 * T(cv)).sum()).backward()
             tg = [x[i].grad for i in (0, 1, 3)]
             jo, vjp = jax.vjp(lambda q, v, u: jax_ffi.step(q, v, jin[2], u, jin[4], jin[5], **kw)[:2], jin[0], jin[1],
                               jin[3])
@@ -171,7 +136,6 @@ def main():
         jg = vjp(tuple(J(gi) for gi in g))
         cmp("kinematics", "vjp_g_qpos", x[0].grad, jg[0])
         cmp("kinematics", "vjp_g_qvel", x[1].grad, jg[1])
-        # step with kinematics outputs, a cotangent for each of the eight outputs (warm' has none)
         cq, cv = cots[1]
         x = [t.clone().requires_grad_(i in (0, 1, 3)) for i, t in enumerate(tin)]
         r = torch_ffi.step(*x, kinematics=True)
@@ -262,10 +226,10 @@ def main():
             torch_ffi.init(d1)
             torch_ffi.read_diagnostics(d1, reset=True)
             r0 = run(d0)
-            r1 = run(d1)  # d0 current, inputs on d1
+            r1 = run(d1)
             record("multigpu", "last_gpu_equals_first", all(bits_equal(p, q) for p, q in zip(r0, r1)),
                    devices=[0, ng - 1])
-            r = [run(d) for d in (d1, d0, d1)]  # alternating
+            r = [run(d) for d in (d1, d0, d1)]
             record("multigpu", "alternating_equal", all(bits_equal(p, q) for x in r for p, q in zip(r0, x)))
             c0, c1 = torch_ffi.read_diagnostics(d0), torch_ffi.read_diagnostics(d1)
             record("multigpu", "per_device_counters", c0["fwd_calls"] == 2 and c1["fwd_calls"] == 3
@@ -313,7 +277,7 @@ def main():
                 "np.savez(sys.argv[2], *[t.cpu().numpy() for t in list(f) + list(b)])\n"
                 "print(json.dumps(dict(mods=sorted(m for m in ('mujoco', 'jax', 'jaxlib', 'nablaengine.jax_ffi') "
                 "if m in sys.modules))))\n")
-            env = dict(os.environ, PATH="/usr/bin:/bin")  # no nvcc
+            env = dict(os.environ, PATH="/usr/bin:/bin")
             env.pop("NVCC", None)
             r = subprocess.run([sys.executable, "-c", child, os.path.join(tmp, "in.npz"), os.path.join(tmp, "out.npz")],
                                env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True,
@@ -343,7 +307,7 @@ def main():
             msg = json.loads(last) if last.startswith("{") else dict(error=r.stdout[-500:])
             err = msg.get("error", "")
             record("artifact", "stale_artifact_refused", "other package sources" in err,
-                   child_error=err.rsplit(": ", 2)[-2:] if err else None)  # without the artifact's local path
+                   child_error=err.rsplit(": ", 2)[-2:] if err else None)
         finally:
             import shutil
             shutil.rmtree(tmp, ignore_errors=True)
@@ -363,7 +327,7 @@ def main():
             cmp("overflow", k, t, j)
         u = to[3][:, 3].cpu().numpy()
         nc, nr = int(((u & torch_ffi.OVERFLOW_CONTACTS) != 0).sum()), int(((u & torch_ffi.OVERFLOW_ROWS) != 0).sum())
-        with warnings.catch_warnings(record=True) as w0:  # off by default: counted, not warned
+        with warnings.catch_warnings(record=True) as w0:
             warnings.simplefilter("always")
             td = torch_ffi.read_diagnostics(reset=False)
             jd = jax_ffi.read_diagnostics(reset=False)
@@ -383,7 +347,7 @@ def main():
         record("overflow", "counters_equal_info_bits", nc > 0 and nr > 0 and
                (td[keys[0]], td[keys[1]]) == (jd[keys[0]], jd[keys[1]]) == (nc, nr),
                contact_overflow_worlds=nc, row_overflow_worlds=nr, nworld=B)
-        warned = lambda ws: any(issubclass(w.category, RuntimeWarning) and "capacity" in str(w.message)  # noqa: E731
+        warned = lambda ws: any(issubclass(w.category, RuntimeWarning) and "capacity" in str(w.message)
                                 for w in ws)
         record("overflow", "warnings", warned(wt) and warned(wj))
     if "timing" in sections:
@@ -415,7 +379,7 @@ def main():
             k = sorted(out[1:])
             return dict(median=round(k[len(k) // 2], 4), min=round(k[0], 4), rounds=[round(v, 4) for v in out[1:]])
 
-        tsync = lambda r: torch.cuda.synchronize()  # noqa: E731
+        tsync = lambda r: torch.cuda.synchronize()
         jsync = jax.block_until_ready
         tim = dict(torch_forward=clock(t_fwd, tsync), jax_forward=clock(lambda: jf(*jin), jsync),
                    torch_forward_backward=clock(t_vjp, tsync),

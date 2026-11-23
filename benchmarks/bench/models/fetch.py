@@ -62,7 +62,6 @@ def pin(name=DEFAULT_MODEL):
 
 
 def _safe(path):
-    """A pinned path must be relative and stay inside the model directory."""
     p = PurePosixPath(path)
     if p.is_absolute() or not p.parts or any(x in ("", ".", "..") for x in p.parts):
         raise ValueError(f"unsafe pinned path {path!r}")
@@ -114,12 +113,11 @@ def compile_check(path):
 
 
 def _download(url, dest, retries=3, timeout=60):
-    """Download url to dest; returns its sha256."""
     for attempt in range(retries):
         try:
             h = hashlib.sha256()
             n = 0
-            with urllib.request.urlopen(url, timeout=timeout) as r, open(dest, "wb") as f:  # noqa: S310 (https)
+            with urllib.request.urlopen(url, timeout=timeout) as r, open(dest, "wb") as f:
                 for block in iter(lambda: r.read(1 << 20), b""):
                     n += len(block)
                     if n > MAX_FILE_BYTES:
@@ -134,7 +132,6 @@ def _download(url, dest, retries=3, timeout=60):
 
 
 def _fetch_into(entry, d, commit=None):
-    """Download the pinned files (at commit, default the pinned one) into the empty directory d; {path: sha256}."""
     commit = commit or entry["commit"]
     out = {}
     for p in sorted(entry["files"]):
@@ -167,7 +164,7 @@ def download(name=DEFAULT_MODEL, root=None, force=False, log=print):
                                                       files_sha256=files_digest(entry)), indent=1) + "\n")
         umask = os.umask(0)
         os.umask(umask)
-        os.chmod(tmp, 0o777 & ~umask)  # mkdtemp makes it private
+        os.chmod(tmp, 0o777 & ~umask)
         if final.exists():
             shutil.rmtree(final)
         os.replace(tmp, final)
@@ -206,7 +203,7 @@ def repin(name, commit, out, root=None):
         shutil.rmtree(tmp)
     entry.update(commit=commit, files=got)
     entry["license"]["url"] = entry["license"]["url"].replace(old["commit"], commit)
-    entry.pop("commit_date", None)  # unknown here: fill in by hand, with the reason for the new pin
+    entry.pop("commit_date", None)
     all_pins[name] = entry
     Path(out).write_text(json.dumps(all_pins, indent=1) + "\n")
 
@@ -244,7 +241,7 @@ def main(argv=None):
               f"nq {nq} nv {nv} nu {nu}; licence {entry['license']['url']}")
         print(d / _safe(entry["entry"]))
         return 0
-    except Exception as e:  # noqa: BLE001  (a gate: any failure is exit 1 with its message)
+    except Exception as e:
         print(f"FAIL {args.model}: {e}", file=sys.stderr)
         return 1
 

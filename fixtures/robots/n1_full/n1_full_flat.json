@@ -1,0 +1,63 @@
+{
+ "robot": "n1_full",
+ "source": "MuJoCo Menagerie fourier_n1/scene.xml",
+ "feet_only": false,
+ "locomotion": true,
+ "servo": [
+  80.0,
+  2.0
+ ],
+ "fusestatic": true,
+ "invweight": "geom",
+ "geom_invweight": true,
+ "init_qpos": [
+  0.0,
+  0.0,
+  0.7,
+  1.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "foot_pairs": [
+  4,
+  8
+ ],
+ "foot_geoms": [
+  "left_foot_pitch_link_collision0",
+  "right_foot_pitch_link_collision0"
+ ],
+ "com_body": "base_link",
+ "substeps_per_control_step": 10,
+ "nq": 30,
+ "nv": 29,
+ "nu": 23,
+ "nbody": 25,
+ "npair": 196,
+ "timestep": 0.002,
+ "mujoco_version": "3.17.0",
+ "reference_model": "n1_full_flat_reference"
+}

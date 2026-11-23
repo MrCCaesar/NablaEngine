@@ -1,0 +1,45 @@
+<!-- A multi-tree scene for scripts/contact_forces_check.py (the forest engine's foot_wrench on bodies of several trees):
+     a free box on the floor, a free sphere on the box, a free capsule leaning on the box, and a hinged arm from the
+     world whose capsule finger rests on the box. Explicit contact pairs (the engine collides pairs only). -->
+<mujoco model="cf_multitree">
+  <option timestep="0.002" integrator="implicitfast" cone="pyramidal"/>
+  <default>
+    <geom contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="0 0 1"/>
+    <body name="box" pos="0 0 0.1">
+      <freejoint/>
+      <geom name="box_g" type="box" size="0.1 0.1 0.1" mass="2"/>
+    </body>
+    <body name="ball" pos="0 0 0.25">
+      <freejoint/>
+      <geom name="ball_g" type="sphere" size="0.05" mass="0.5"/>
+    </body>
+    <body name="rod" pos="0.22 0 0.12" euler="0 -60 0">
+      <freejoint/>
+      <geom name="rod_g" type="capsule" size="0.03 0.12" mass="0.4"/>
+    </body>
+    <body name="arm" pos="-0.35 0 0.35">
+      <joint name="shoulder" type="hinge" axis="0 1 0" damping="0.5"/>
+      <geom name="arm_g" type="capsule" fromto="0 0 0 0.2 0 0" size="0.02" mass="0.3"/>
+      <body name="finger" pos="0.2 0 0">
+        <joint name="elbow" type="hinge" axis="0 1 0" damping="0.5"/>
+        <geom name="finger_g" type="capsule" fromto="0 0 0 0.15 0 -0.12" size="0.02" mass="0.2"/>
+      </body>
+    </body>
+  </worldbody>
+  <contact>
+    <pair geom1="floor" geom2="box_g" friction="0.8 0.8 0.005 0.0001 0.0001"/>
+    <pair geom1="floor" geom2="ball_g" friction="0.8 0.8 0.005 0.0001 0.0001"/>
+    <pair geom1="floor" geom2="rod_g" friction="0.8 0.8 0.005 0.0001 0.0001"/>
+    <pair geom1="ball_g" geom2="box_g" friction="0.6 0.6 0.005 0.0001 0.0001"/>
+    <pair geom1="rod_g" geom2="box_g" friction="0.6 0.6 0.005 0.0001 0.0001"/>
+    <pair geom1="finger_g" geom2="box_g" friction="0.6 0.6 0.005 0.0001 0.0001"/>
+    <pair geom1="finger_g" geom2="ball_g" friction="0.6 0.6 0.005 0.0001 0.0001"/>
+  </contact>
+  <actuator>
+    <motor name="shoulder" joint="shoulder" gear="1" ctrlrange="-5 5" ctrllimited="true"/>
+    <motor name="elbow" joint="elbow" gear="1" ctrlrange="-5 5" ctrllimited="true"/>
+  </actuator>
+</mujoco>

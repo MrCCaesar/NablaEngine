@@ -37,11 +37,10 @@ REPO = Path(__file__).resolve().parents[3]
 CAPACITY = (64, 192)
 ITERATIONS = (10, 50)
 QUANTILES = (0.5, 0.9, 0.99)
-# statistics compared against the range of the reference corpora (path in the corpus entry)
 COMPARED = ("it10.ncon_max.mean", "it10.ncon_max.p99", "it10.nefc_max.mean", "it10.nefc_max.p99",
             "it10.niter_max.mean", "it50.niter_max.mean", "it50.niter_max.p99", "qvel_norm.p50", "qvel_norm.p99",
             "shares.prefall", "shares.self_contact", "shares.clamped", "shares.limit", "it10.nonconv_share")
-TOL_REL, TOL_SHARE = 0.10, 0.05  # the widened range of acceptance(): 10% of a bound, 5 percentage points of a share
+TOL_REL, TOL_SHARE = 0.10, 0.05
 
 
 def rel(p):
@@ -71,7 +70,7 @@ def load_bench(path):
     z = corpus_format.read(path)
     meta = z["metadata"]
     mrec = meta["model"]
-    if "repo" in mrec:  # a model fetched at a pinned commit (models/fetch.py)
+    if "repo" in mrec:
         from benchmarks.bench.models import fetch
         name = next((k for k, v in fetch.pins().items() if v["repo"] == mrec["repo"] and v["entry"] == mrec["file"]
                      and v["commit"] == mrec["commit"]), None)
@@ -175,8 +174,8 @@ def acceptance(res, dev):
 def table(res):
     """Markdown table of the main statistics, one column per corpus."""
     names = list(res)
-    f = lambda v, d=2: f"{v:.{d}f}"  # noqa: E731
-    pct = lambda v: f"{100 * v:.1f}%"  # noqa: E731
+    f = lambda v, d=2: f"{v:.{d}f}"
+    pct = lambda v: f"{100 * v:.1f}%"
     rows = [
         ("kind", lambda r: r["info"]["kind"] + (", Track B" if r["info"]["track"] == "B" else "")),
         ("states", lambda r: str(r["n"])),

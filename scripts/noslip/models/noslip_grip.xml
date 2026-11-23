@@ -1,0 +1,28 @@
+<!-- Two slide fingers (position servos, gravity compensated) holding a free box (0.1 m cube, 1 kg) above the floor:
+     sticking friction under gravity. Explicit contact pairs, pyramidal cone, implicitfast; the noslip pass is set by
+     scripts/noslip/noslip_check.py (opt.noslip_iterations). -->
+<mujoco model="noslip_grip">
+  <option timestep="0.002" integrator="implicitfast" cone="pyramidal" iterations="50"/>
+  <default><geom contype="0" conaffinity="0"/></default>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <body name="box" pos="0 0 0.2"><freejoint/><geom name="box" type="box" size="0.05 0.05 0.05" mass="1"/></body>
+    <body name="f1" gravcomp="1" pos="-0.08 0 0.2">
+      <joint name="f1x" type="slide" axis="1 0 0" damping="2"/>
+      <geom name="f1" type="box" size="0.03 0.03 0.04" mass="0.2"/>
+    </body>
+    <body name="f2" gravcomp="1" pos="0.08 0 0.2">
+      <joint name="f2x" type="slide" axis="1 0 0" damping="2"/>
+      <geom name="f2" type="box" size="0.03 0.03 0.04" mass="0.2"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <position joint="f1x" kp="300" kv="10" ctrlrange="-0.1 0.1"/>
+    <position joint="f2x" kp="300" kv="10" ctrlrange="-0.1 0.1"/>
+  </actuator>
+  <contact>
+    <pair geom1="floor" geom2="box" friction="0.8 0.8 0.005 0.0001 0.0001"/>
+    <pair geom1="f1" geom2="box" friction="1.0 1.0 0.005 0.0001 0.0001"/>
+    <pair geom1="f2" geom2="box" friction="1.0 1.0 0.005 0.0001 0.0001"/>
+  </contact>
+</mujoco>

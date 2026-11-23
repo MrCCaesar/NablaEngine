@@ -32,7 +32,7 @@ def _delegate(name, argv):
     for mod in DELEGATES[name]:
         try:
             found = importlib.util.find_spec(mod) is not None
-        except ModuleNotFoundError:  # a parent package does not exist
+        except ModuleNotFoundError:
             found = False
         if not found:
             continue

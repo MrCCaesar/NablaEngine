@@ -1,0 +1,42 @@
+<mujoco model="margin_mesh">
+  <option timestep="0.002" cone="pyramidal"></option>
+  <asset>
+    <mesh name="hex" vertex="0.09000 0.00000 -0.05 0.04500 0.07794 -0.05 -0.04500 0.07794 -0.05 -0.09000 0.00000 -0.05 -0.04500 -0.07794 -0.05 0.04500 -0.07794 -0.05 0.09000 0.00000 0.05 0.04500 0.07794 0.05 -0.04500 0.07794 0.05 -0.09000 0.00000 0.05 -0.04500 -0.07794 0.05 0.04500 -0.07794 0.05"/>
+    <mesh name="oct" vertex="0.07 0 0  -0.07 0 0  0 0.06 0  0 -0.06 0  0 0 0.05  0 0 -0.05  0.03 0.03 0.03"/>
+  </asset>
+  <default><geom margin="0.003" condim="3" friction="0.8 0.005 0.0001" contype="0" conaffinity="0"/></default>
+  <worldbody>
+    <geom name="floor" type="plane" size="5 5 0.1" margin="0.002"/>
+    <body name="b0" pos="0.0 0.0 0.053000000000000005" euler="0 0 0"><freejoint/><geom name="b0" type="mesh" mesh="hex"/></body>
+    <body name="t0" pos="0.01 0.0 0.15200000000000002" euler="4 3 0"><freejoint/><geom name="t0" type="capsule" size="0.04 0.08" euler="0 90 0"/></body>
+    <body name="b1" pos="0.4 0.0 0.053000000000000005" euler="0 0 7"><freejoint/><geom name="b1" type="mesh" mesh="hex"/></body>
+    <body name="t1" pos="0.41000000000000003 0.0 0.16200000000000003" euler="4 3 11"><freejoint/><geom name="t1" type="mesh" mesh="oct"/></body>
+    <body name="b2" pos="0.8 0.0 0.053000000000000005" euler="0 0 14"><freejoint/><geom name="b2" type="mesh" mesh="hex"/></body>
+    <body name="t2" pos="0.81 0.0 0.16200000000000003" euler="4 3 22"><freejoint/><geom name="t2" type="box" size="0.06 0.05 0.05"/></body>
+    <body name="b3" pos="1.2000000000000002 0.0 0.053000000000000005" euler="0 0 21"><freejoint/><geom name="b3" type="mesh" mesh="hex"/></body>
+    <body name="t3" pos="1.2100000000000002 0.0 0.17200000000000001" euler="4 3 33"><freejoint/><geom name="t3" type="sphere" size="0.06"/></body>
+    <body name="b4" pos="1.6 0.0 0.053000000000000005" euler="0 0 28"><freejoint/><geom name="b4" type="mesh" mesh="hex"/></body>
+    <body name="t4" pos="1.61 0.0 0.16200000000000003" euler="4 3 44"><freejoint/><geom name="t4" type="cylinder" size="0.05 0.05"/></body>
+    <body name="b5" pos="0.0 0.4 0.053000000000000005" euler="0 0 35"><freejoint/><geom name="b5" type="mesh" mesh="hex"/></body>
+    <body name="t5" pos="0.01 0.4 0.15200000000000002" euler="4 3 55"><freejoint/><geom name="t5" type="ellipsoid" size="0.06 0.05 0.04"/></body>
+    <body name="b6" pos="0.4 0.4 0.063" euler="0 0 42"><freejoint/><geom name="b6" type="box" size="0.08 0.07 0.06"/></body>
+    <body name="t6" pos="0.41000000000000003 0.4 0.182" euler="4 3 66"><freejoint/><geom name="t6" type="mesh" mesh="oct"/></body>
+  </worldbody>
+  <contact>
+    <pair geom1="floor" geom2="b0" margin="0.005"/>
+    <pair geom1="b0" geom2="t0" margin="0.006"/>
+    <pair geom1="floor" geom2="b1" margin="0.005"/>
+    <pair geom1="b1" geom2="t1" margin="0.007"/>
+    <pair geom1="floor" geom2="b2" margin="0.005"/>
+    <pair geom1="b2" geom2="t2" margin="0.008"/>
+    <pair geom1="floor" geom2="b3" margin="0.005"/>
+    <pair geom1="b3" geom2="t3" margin="0.009000000000000001"/>
+    <pair geom1="floor" geom2="b4" margin="0.005"/>
+    <pair geom1="b4" geom2="t4" margin="0.006"/>
+    <pair geom1="floor" geom2="b5" margin="0.005"/>
+    <pair geom1="b5" geom2="t5" margin="0.007"/>
+    <pair geom1="floor" geom2="b6" margin="0.005"/>
+    <pair geom1="b6" geom2="t6" margin="0.008"/>
+  </contact>
+  <keyframe><key name="home" qpos="6.35919e-06 4.35304e-06 0.0548239 1 -4.63413e-05 9.1476e-05 -6.02872e-05 0.00771917 2.11909e-05 0.150527 0.999398 0.0346428 0.000153082 0.00178988 0.40001 8.12208e-06 0.0548658 0.998136 -6.82098e-05 3.296e-05 0.061023 0.440313 -0.0198113 0.145398 0.908174 0.27189 0.2979 0.112036 0.799991 2.45481e-05 0.054818 0.992561 -0.000108131 1.93695e-05 0.121751 0.807054 0.00393106 0.162651 0.981487 -0.000112252 0.000104542 0.191528 1.20001 -3.73304e-06 0.0548324 0.98326 4.77946e-05 6.54856e-05 0.182209 1.21004 2.17427e-05 0.173365 0.957655 0.0407046 0.0153965 0.284609 1.59999 5.4727e-06 0.0548395 0.970314 1.4139e-05 -7.14721e-05 0.241849 1.6071 0.00385951 0.160693 0.926928 9.49794e-05 3.08935e-05 0.37524 -4.36571e-06 0.399995 0.0548537 0.953724 5.90381e-05 -1.745e-05 0.300685 0.0095651 0.40165 0.151457 0.887248 0.0242371 0.0122434 0.460493 0.400005 0.399995 0.0648807 0.93358 4.48121e-05 1.94484e-05 0.358368 0.429535 0.370081 0.166408 0.731485 0.402591 -0.0254838 0.549728"/></keyframe>
+</mujoco>

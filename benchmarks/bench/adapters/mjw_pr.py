@@ -2,32 +2,13 @@
 open google-deepmind/mujoco_warp#1535 "hybrid analytic differentiability", unmodified) and 'mjw_pr1535_fix' (357a75d +
 etaoxing/mujoco_warp#1 = 4af093f, the two public fixes of that pull request: the pyramidal-contact skip and the
 actuator-clamp multiplier). Environment 'mjw-pr': mujoco 3.17.0 + warp-lang 1.18.0 with the tree on PYTHONPATH
-(benchmarks/envs/envs.toml, made by benchmarks/envs/setup.sh); setup refuses any other tree (package source hash).
-
-Forward (op fwd; fwd_train is the same callable, recorded as alias_of: the PR's backward recomputes the forward from
-the stored inputs, so the forward a backward needs is the plain one): the tree's own 3.12 mjw.step, CUDA graph of
-[copy the inputs into Data; substeps x mjw.step] as in mjw.py (mjw_common.MjwBase), after mjw.enable_grad() (which the
-PR's demos call at import; it installs the backward hooks and a safe sqrt, so it changes the forward kernels too).
-
-Backward (op bwd): the adjoint-graph pattern of the PR's contrib/diffsim/_rollout.py (Rollout._backward_step and
-_capture; Apache-2.0, The Newton Developers), applied to one control step of `substeps` steps: a chain of Data
-D[0..substeps] with D[0].qpos / qvel / ctrl requiring gradients and mjw.create_backward_context(m, D[0]); then, captured
-as one CUDA graph, [copy the inputs into D[0]; under mjw.backward_context: the forward recomputed under wp.Tape as
-mjw.step(m, D[k], D[k+1]); tape.zero(); the output cotangent into D[-1].qpos.grad / qvel.grad; tape.backward()]; the
-gradient is D[0].qpos.grad, D[0].qvel.grad and the sum of D[k].ctrl.grad over the substeps (ctrl is held). op vjp =
-fwd graph + bwd graph, every call from the loaded states. gradient() runs the bwd graph for the given cotangents and
-returns the harness convention (qpos in tangent form via base.qpos_tangent). No Jacobian API (jac not_supported).
-
-Variants: default (capacity "procedure" as mjw), matched (64 contacts / 192 rows per world, NablaEngine's
-capacity), warn_none (opt.warn_overflow = 0, as NablaEngine's reference _Sim).
-Options as mjw_common.MjwBase (capacity, capacity_file, nconmax, naconmax, njmax, warn).
-"""
+(benchmarks/envs/envs.toml, made by benchmarks/envs/setup.sh); setup refuses any other tree (package source hash)."""
 
 import warp as wp
 
 from benchmarks.bench.adapters import mjw_common
 
-TREES = {  # mjw_common.tree_sha256 of the mujoco_warp package (setup.sh's checkouts; git commit for reference)
+TREES = {
     "mjw_pr1535": dict(commit="357a75d60a56d67d476942a1b6e54b3045ee8e87",
                        tree_sha256="58f6458cb8065c9dea0b6a304723c112adc8859c2d8f4e21caaec47582a20481"),
     "mjw_pr1535_fix": dict(commit="4af093f02a3f48f0009ca7c916674b928136f310",
@@ -65,7 +46,6 @@ class MjwPrAdapter(mjw_common.MjwAdjointBase):
         self.bc = mjw.create_backward_context(self.m, self.D[0])
 
     def _bwd_body(self):
-        """The adjoint of one control step (module docstring; contrib/diffsim/_rollout.py's _backward_step)."""
         mjw, D = self.mjw, self.D
         self._load(D[0])
         tape = wp.Tape()

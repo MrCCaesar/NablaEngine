@@ -1,26 +1,4 @@
-"""Physics-only timing of Isaac Lab's own Unitree G1 task with the backend Isaac Lab runs it on (one configuration).
-
-Called by run_suite.py (one process per configuration: Kit cannot be restarted inside a process). It builds the task
-exactly as Isaac Lab registers it (``gym.make`` of ``Isaac-Velocity-Flat-G1``: Isaac Lab's G1 USD asset, actuators,
-sim and physics settings), then times only the physics part of ``ManagerBasedRLEnv.step``:
-
-    per control step:  action_manager.process_action(a),  a ~ U[-1, 1]^37   (target = default pose + 0.5 a, held)
-                       decimation x [ apply_action -> scene.write_data_to_sim -> sim.step(render=False) -> scene.update ]
-
-No rewards, observations, terminations, resets or policy inside the timed loop. ``env.reset()`` (the task's own reset
-events, untimed) starts every round, so each round of ``--steps_per_round`` control steps (default 50 = 1 s simulated)
-covers robots that flail, fall and hit the ground. Timing: wall clock with ``torch.cuda.synchronize()`` and
-``wp.synchronize()`` at round boundaries; the headline is the median over timed rounds. Two diagnostic passes follow
-(not part of the headline): one round synchronised after every control step (per-step distribution) and one
-synchronised after every operation (where the time goes; serialising inflates the sum).
-
-The live USD stage is dumped into the result (physics scene, articulation root and collider attributes of env 0,
-per-joint drive values as Isaac Lab reports them), so the JSON records what PhysX was actually given.
-
-usage: python bench_physics_only.py --out r.json --label x --num_envs 4096 physics=isaacsim_physx
-       [--robot task|full] [--self_collision default|on|off] [--rounds 8] [--steps_per_round 50]
-Hydra preset tokens (``physics=...``) are passed through exactly as Isaac Lab's own scripts take them.
-"""
+"""Physics-only timing of Isaac Lab's own Unitree G1 task with the backend Isaac Lab runs it on (one configuration)."""
 from __future__ import annotations
 
 import argparse
@@ -136,7 +114,7 @@ def dump_stage(u) -> dict:
         if stage is None:
             import omni.usd
             stage = omni.usd.get_context().get_stage()
-    except Exception as e:  # pragma: no cover
+    except Exception as e:
         return {"error": f"no stage: {e}"}
     scenes = {}
     for prim in stage.Traverse():
@@ -186,7 +164,7 @@ def main():
 
     from isaaclab.app import launch_simulation
 
-    import isaaclab_tasks  # noqa: F401
+    import isaaclab_tasks
     from isaaclab_tasks.utils import resolve_task_config
 
     env_cfg, _ = resolve_task_config(args.task, None)
@@ -203,9 +181,9 @@ def main():
         on = args.self_collision == "on"
         props = env_cfg.scene.robot.spawn.articulation_props
         for pr in props if isinstance(props, (list, tuple)) else [props]:
-            if hasattr(pr, "enabled_self_collisions"):  # PhysX
+            if hasattr(pr, "enabled_self_collisions"):
                 pr.enabled_self_collisions = on
-            if hasattr(pr, "self_collision_enabled"):  # Newton
+            if hasattr(pr, "self_collision_enabled"):
                 pr.self_collision_enabled = on
 
     rec: dict = {"label": args.label, "task": args.task, "num_envs": args.num_envs, "hydra_overrides": remaining,
@@ -275,7 +253,7 @@ def main():
                     acts = new_actions()
                     sync()
                     k0 = 0
-                    if first_ms is None:  # first control step after creation (includes lazy init / JIT)
+                    if first_ms is None:
                         t0 = time.perf_counter()
                         control_step(acts[0])
                         sync()
@@ -291,7 +269,6 @@ def main():
                                    "frac_base_below_0p4m_end": float((z < 0.4).float().mean())})
                     print(f"[bench] {args.label} round {r}{' (warm-up)' if r < args.warmup_rounds else ''}: "
                           f"{ms:.3f} ms/control step, base z {float(z.mean()):.3f}", flush=True)
-                # diagnostic 1: synchronised after every control step
                 u.reset()
                 acts = new_actions()
                 per = []
@@ -301,7 +278,6 @@ def main():
                     control_step(acts[k])
                     sync()
                     per.append(1e3 * (time.perf_counter() - t0))
-                # diagnostic 2: synchronised after every operation
                 u.reset()
                 acts = new_actions()
                 ops = dict.fromkeys(["process_action", "apply_action", "write_data_to_sim", "sim_step", "scene_update"], 0.0)
@@ -357,7 +333,6 @@ def main():
                                   "gpu_memory_total_mib": gpu.split(", ")[2] if gpu else None,
                                   "cpu": cpu_model(), "logical_cpus": os.cpu_count(),
                                   "python": platform.python_version(), "versions": versions()}
-            # write before leaving the launch context: Kit may end the process on shutdown
             with open(args.out, "w") as f:
                 json.dump(rec, f, indent=1, default=str)
                 f.flush()

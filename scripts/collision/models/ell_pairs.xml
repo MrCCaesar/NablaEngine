@@ -1,0 +1,60 @@
+<!-- Ellipsoid pairs (forest engine): a free ellipsoid on the plane (plane-ellipsoid), free ellipsoids dropped on a static
+     sphere, capsule, box, lying cylinder and convex mesh (sphere-, capsule-, box-, cylinder-, mesh-ellipsoid: GJK / EPA,
+     one contact), and an ellipsoid resting on a free ellipsoid on the floor (ellipsoid-ellipsoid, two moving bodies).
+     The free bodies have isotropic inertia (diaginertia), so the free-body rotation of the forest engine against MuJoCo
+     is not mixed into the contact comparison. -->
+<mujoco model="ell_pairs">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <asset>
+    <mesh name="rock" vertex="0.06 0 0  -0.06 0 0  0 0.05 0  0 -0.05 0  0 0 0.04  0 0 -0.04  0.035 0.03 0.025
+                               -0.035 0.03 0.025  0.035 -0.03 -0.025  -0.035 -0.03 0.025  0.03 0.03 -0.025  -0.03 0.03 -0.025"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" type="plane" size="3 3 0.1"/>
+    <geom name="ball" type="sphere" size="0.05" pos="0 -0.6 0.05"/>
+    <geom name="post" type="capsule" size="0.03 0.08" pos="0 -0.3 0.03" euler="0 90 0"/>
+    <geom name="block" type="box" size="0.06 0.05 0.04" pos="0 0 0.04" euler="0 0 20"/>
+    <geom name="log" type="cylinder" size="0.05 0.1" pos="0 0.3 0.05" euler="90 0 0"/>
+    <geom name="rock" type="mesh" mesh="rock" pos="0 0.6 0.04"/>
+    <body name="e0" pos="0.6 0 0.06" euler="20 40 0">
+      <freejoint/>
+      <geom name="e0" type="ellipsoid" size="0.06 0.04 0.03"/>
+      <inertial pos="0 0 0" mass="0.2" diaginertia="1.5e-4 1.5e-4 1.5e-4"/>
+    </body>
+    <body name="e1" pos="0.005 -0.6 0.13" euler="10 20 30">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.15" diaginertia="1e-4 1e-4 1e-4"/>
+      <geom name="e1" type="ellipsoid" size="0.05 0.035 0.03"/>
+    </body>
+    <body name="e2" pos="0.01 -0.3 0.1" euler="30 10 0">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.15" diaginertia="1e-4 1e-4 1e-4"/>
+      <geom name="e2" type="ellipsoid" size="0.05 0.035 0.03"/>
+    </body>
+    <body name="e3" pos="0.0 0.0 0.115" euler="0 15 40">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.15" diaginertia="1e-4 1e-4 1e-4"/>
+      <geom name="e3" type="ellipsoid" size="0.05 0.035 0.03"/>
+    </body>
+    <body name="e4" pos="0.01 0.3 0.13" euler="45 0 10">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.15" diaginertia="1e-4 1e-4 1e-4"/>
+      <geom name="e4" type="ellipsoid" size="0.05 0.035 0.03"/>
+    </body>
+    <body name="e5" pos="0.0 0.6 0.11" euler="0 30 0">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.15" diaginertia="1e-4 1e-4 1e-4"/>
+      <geom name="e5" type="ellipsoid" size="0.05 0.035 0.03"/>
+    </body>
+    <body name="e6" pos="-0.6 0 0.03">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.3" diaginertia="2e-4 2e-4 2e-4"/>
+      <geom name="e6" type="ellipsoid" size="0.08 0.06 0.03"/>
+    </body>
+    <body name="e7" pos="-0.6 0.01 0.085" euler="0 0 50">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.1" diaginertia="6e-5 6e-5 6e-5"/>
+      <geom name="e7" type="ellipsoid" size="0.04 0.03 0.025"/>
+    </body>
+  </worldbody>
+</mujoco>

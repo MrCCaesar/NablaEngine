@@ -1,0 +1,1010 @@
+<!-- More than 64 bodies (forest engine, nb128): twelve 9-link capsule snakes (hinge chains with limits and
+     position servos, fixed roots) lying on a plane, a plank across all of them and a brick and a ball dropped on
+     top. The plank is body 64 (bit 0 of the body masks' second 64-bit word), its contacts couple snakes on both
+     sides of it; the brick and the ball are bodies 110 and 111 (fourth body slot of their lanes). NB 112, nv 126,
+     explicit pairs only (snake - floor, free body - floor / snakes / free bodies). Free bodies with isotropic
+     inertia, as nb64_snake.xml. -->
+<mujoco model="nb128_snake">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default><joint damping="0.05" armature="0.002" range="-0.6 0.6" limited="true"/><geom density="800" friction="0.8" contype="0" conaffinity="0"/></default>
+  <worldbody>
+    <geom name="floor" type="plane" size="3 3 0.1"/>
+    <body name="s0l0" pos="-0.45 -0.660 0.023">
+      <joint name="s0j0" type="hinge" axis="0 0 1"/>
+      <geom name="s0g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s0l1" pos="0.1 0 0">
+        <joint name="s0j1" type="hinge" axis="0 1 0"/>
+        <geom name="s0g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s0l2" pos="0.1 0 0">
+          <joint name="s0j2" type="hinge" axis="0 0 1"/>
+          <geom name="s0g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s0l3" pos="0.1 0 0">
+            <joint name="s0j3" type="hinge" axis="0 1 0"/>
+            <geom name="s0g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s0l4" pos="0.1 0 0">
+              <joint name="s0j4" type="hinge" axis="0 0 1"/>
+              <geom name="s0g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s0l5" pos="0.1 0 0">
+                <joint name="s0j5" type="hinge" axis="0 1 0"/>
+                <geom name="s0g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s0l6" pos="0.1 0 0">
+                  <joint name="s0j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s0g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s0l7" pos="0.1 0 0">
+                    <joint name="s0j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s0g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s0l8" pos="0.1 0 0">
+                      <joint name="s0j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s0g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s1l0" pos="-0.45 -0.540 0.023">
+      <joint name="s1j0" type="hinge" axis="0 0 1"/>
+      <geom name="s1g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s1l1" pos="0.1 0 0">
+        <joint name="s1j1" type="hinge" axis="0 1 0"/>
+        <geom name="s1g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s1l2" pos="0.1 0 0">
+          <joint name="s1j2" type="hinge" axis="0 0 1"/>
+          <geom name="s1g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s1l3" pos="0.1 0 0">
+            <joint name="s1j3" type="hinge" axis="0 1 0"/>
+            <geom name="s1g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s1l4" pos="0.1 0 0">
+              <joint name="s1j4" type="hinge" axis="0 0 1"/>
+              <geom name="s1g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s1l5" pos="0.1 0 0">
+                <joint name="s1j5" type="hinge" axis="0 1 0"/>
+                <geom name="s1g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s1l6" pos="0.1 0 0">
+                  <joint name="s1j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s1g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s1l7" pos="0.1 0 0">
+                    <joint name="s1j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s1g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s1l8" pos="0.1 0 0">
+                      <joint name="s1j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s1g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s2l0" pos="-0.45 -0.420 0.023">
+      <joint name="s2j0" type="hinge" axis="0 0 1"/>
+      <geom name="s2g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s2l1" pos="0.1 0 0">
+        <joint name="s2j1" type="hinge" axis="0 1 0"/>
+        <geom name="s2g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s2l2" pos="0.1 0 0">
+          <joint name="s2j2" type="hinge" axis="0 0 1"/>
+          <geom name="s2g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s2l3" pos="0.1 0 0">
+            <joint name="s2j3" type="hinge" axis="0 1 0"/>
+            <geom name="s2g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s2l4" pos="0.1 0 0">
+              <joint name="s2j4" type="hinge" axis="0 0 1"/>
+              <geom name="s2g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s2l5" pos="0.1 0 0">
+                <joint name="s2j5" type="hinge" axis="0 1 0"/>
+                <geom name="s2g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s2l6" pos="0.1 0 0">
+                  <joint name="s2j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s2g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s2l7" pos="0.1 0 0">
+                    <joint name="s2j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s2g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s2l8" pos="0.1 0 0">
+                      <joint name="s2j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s2g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s3l0" pos="-0.45 -0.300 0.023">
+      <joint name="s3j0" type="hinge" axis="0 0 1"/>
+      <geom name="s3g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s3l1" pos="0.1 0 0">
+        <joint name="s3j1" type="hinge" axis="0 1 0"/>
+        <geom name="s3g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s3l2" pos="0.1 0 0">
+          <joint name="s3j2" type="hinge" axis="0 0 1"/>
+          <geom name="s3g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s3l3" pos="0.1 0 0">
+            <joint name="s3j3" type="hinge" axis="0 1 0"/>
+            <geom name="s3g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s3l4" pos="0.1 0 0">
+              <joint name="s3j4" type="hinge" axis="0 0 1"/>
+              <geom name="s3g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s3l5" pos="0.1 0 0">
+                <joint name="s3j5" type="hinge" axis="0 1 0"/>
+                <geom name="s3g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s3l6" pos="0.1 0 0">
+                  <joint name="s3j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s3g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s3l7" pos="0.1 0 0">
+                    <joint name="s3j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s3g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s3l8" pos="0.1 0 0">
+                      <joint name="s3j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s3g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s4l0" pos="-0.45 -0.180 0.023">
+      <joint name="s4j0" type="hinge" axis="0 0 1"/>
+      <geom name="s4g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s4l1" pos="0.1 0 0">
+        <joint name="s4j1" type="hinge" axis="0 1 0"/>
+        <geom name="s4g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s4l2" pos="0.1 0 0">
+          <joint name="s4j2" type="hinge" axis="0 0 1"/>
+          <geom name="s4g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s4l3" pos="0.1 0 0">
+            <joint name="s4j3" type="hinge" axis="0 1 0"/>
+            <geom name="s4g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s4l4" pos="0.1 0 0">
+              <joint name="s4j4" type="hinge" axis="0 0 1"/>
+              <geom name="s4g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s4l5" pos="0.1 0 0">
+                <joint name="s4j5" type="hinge" axis="0 1 0"/>
+                <geom name="s4g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s4l6" pos="0.1 0 0">
+                  <joint name="s4j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s4g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s4l7" pos="0.1 0 0">
+                    <joint name="s4j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s4g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s4l8" pos="0.1 0 0">
+                      <joint name="s4j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s4g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s5l0" pos="-0.45 -0.060 0.023">
+      <joint name="s5j0" type="hinge" axis="0 0 1"/>
+      <geom name="s5g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s5l1" pos="0.1 0 0">
+        <joint name="s5j1" type="hinge" axis="0 1 0"/>
+        <geom name="s5g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s5l2" pos="0.1 0 0">
+          <joint name="s5j2" type="hinge" axis="0 0 1"/>
+          <geom name="s5g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s5l3" pos="0.1 0 0">
+            <joint name="s5j3" type="hinge" axis="0 1 0"/>
+            <geom name="s5g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s5l4" pos="0.1 0 0">
+              <joint name="s5j4" type="hinge" axis="0 0 1"/>
+              <geom name="s5g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s5l5" pos="0.1 0 0">
+                <joint name="s5j5" type="hinge" axis="0 1 0"/>
+                <geom name="s5g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s5l6" pos="0.1 0 0">
+                  <joint name="s5j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s5g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s5l7" pos="0.1 0 0">
+                    <joint name="s5j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s5g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s5l8" pos="0.1 0 0">
+                      <joint name="s5j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s5g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s6l0" pos="-0.45 0.060 0.023">
+      <joint name="s6j0" type="hinge" axis="0 0 1"/>
+      <geom name="s6g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s6l1" pos="0.1 0 0">
+        <joint name="s6j1" type="hinge" axis="0 1 0"/>
+        <geom name="s6g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s6l2" pos="0.1 0 0">
+          <joint name="s6j2" type="hinge" axis="0 0 1"/>
+          <geom name="s6g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s6l3" pos="0.1 0 0">
+            <joint name="s6j3" type="hinge" axis="0 1 0"/>
+            <geom name="s6g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s6l4" pos="0.1 0 0">
+              <joint name="s6j4" type="hinge" axis="0 0 1"/>
+              <geom name="s6g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s6l5" pos="0.1 0 0">
+                <joint name="s6j5" type="hinge" axis="0 1 0"/>
+                <geom name="s6g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s6l6" pos="0.1 0 0">
+                  <joint name="s6j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s6g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s6l7" pos="0.1 0 0">
+                    <joint name="s6j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s6g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s6l8" pos="0.1 0 0">
+                      <joint name="s6j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s6g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="plank" pos="0 0 0.09">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.15" diaginertia="2e-4 2e-4 2e-4"/>
+      <geom name="plank" type="box" size="0.04 0.75 0.015"/>
+    </body>
+    <body name="s7l0" pos="-0.45 0.180 0.023">
+      <joint name="s7j0" type="hinge" axis="0 0 1"/>
+      <geom name="s7g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s7l1" pos="0.1 0 0">
+        <joint name="s7j1" type="hinge" axis="0 1 0"/>
+        <geom name="s7g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s7l2" pos="0.1 0 0">
+          <joint name="s7j2" type="hinge" axis="0 0 1"/>
+          <geom name="s7g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s7l3" pos="0.1 0 0">
+            <joint name="s7j3" type="hinge" axis="0 1 0"/>
+            <geom name="s7g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s7l4" pos="0.1 0 0">
+              <joint name="s7j4" type="hinge" axis="0 0 1"/>
+              <geom name="s7g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s7l5" pos="0.1 0 0">
+                <joint name="s7j5" type="hinge" axis="0 1 0"/>
+                <geom name="s7g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s7l6" pos="0.1 0 0">
+                  <joint name="s7j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s7g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s7l7" pos="0.1 0 0">
+                    <joint name="s7j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s7g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s7l8" pos="0.1 0 0">
+                      <joint name="s7j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s7g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s8l0" pos="-0.45 0.300 0.023">
+      <joint name="s8j0" type="hinge" axis="0 0 1"/>
+      <geom name="s8g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s8l1" pos="0.1 0 0">
+        <joint name="s8j1" type="hinge" axis="0 1 0"/>
+        <geom name="s8g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s8l2" pos="0.1 0 0">
+          <joint name="s8j2" type="hinge" axis="0 0 1"/>
+          <geom name="s8g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s8l3" pos="0.1 0 0">
+            <joint name="s8j3" type="hinge" axis="0 1 0"/>
+            <geom name="s8g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s8l4" pos="0.1 0 0">
+              <joint name="s8j4" type="hinge" axis="0 0 1"/>
+              <geom name="s8g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s8l5" pos="0.1 0 0">
+                <joint name="s8j5" type="hinge" axis="0 1 0"/>
+                <geom name="s8g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s8l6" pos="0.1 0 0">
+                  <joint name="s8j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s8g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s8l7" pos="0.1 0 0">
+                    <joint name="s8j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s8g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s8l8" pos="0.1 0 0">
+                      <joint name="s8j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s8g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s9l0" pos="-0.45 0.420 0.023">
+      <joint name="s9j0" type="hinge" axis="0 0 1"/>
+      <geom name="s9g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s9l1" pos="0.1 0 0">
+        <joint name="s9j1" type="hinge" axis="0 1 0"/>
+        <geom name="s9g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s9l2" pos="0.1 0 0">
+          <joint name="s9j2" type="hinge" axis="0 0 1"/>
+          <geom name="s9g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s9l3" pos="0.1 0 0">
+            <joint name="s9j3" type="hinge" axis="0 1 0"/>
+            <geom name="s9g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s9l4" pos="0.1 0 0">
+              <joint name="s9j4" type="hinge" axis="0 0 1"/>
+              <geom name="s9g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s9l5" pos="0.1 0 0">
+                <joint name="s9j5" type="hinge" axis="0 1 0"/>
+                <geom name="s9g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s9l6" pos="0.1 0 0">
+                  <joint name="s9j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s9g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s9l7" pos="0.1 0 0">
+                    <joint name="s9j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s9g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s9l8" pos="0.1 0 0">
+                      <joint name="s9j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s9g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s10l0" pos="-0.45 0.540 0.023">
+      <joint name="s10j0" type="hinge" axis="0 0 1"/>
+      <geom name="s10g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s10l1" pos="0.1 0 0">
+        <joint name="s10j1" type="hinge" axis="0 1 0"/>
+        <geom name="s10g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s10l2" pos="0.1 0 0">
+          <joint name="s10j2" type="hinge" axis="0 0 1"/>
+          <geom name="s10g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s10l3" pos="0.1 0 0">
+            <joint name="s10j3" type="hinge" axis="0 1 0"/>
+            <geom name="s10g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s10l4" pos="0.1 0 0">
+              <joint name="s10j4" type="hinge" axis="0 0 1"/>
+              <geom name="s10g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s10l5" pos="0.1 0 0">
+                <joint name="s10j5" type="hinge" axis="0 1 0"/>
+                <geom name="s10g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s10l6" pos="0.1 0 0">
+                  <joint name="s10j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s10g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s10l7" pos="0.1 0 0">
+                    <joint name="s10j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s10g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s10l8" pos="0.1 0 0">
+                      <joint name="s10j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s10g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="s11l0" pos="-0.45 0.660 0.023">
+      <joint name="s11j0" type="hinge" axis="0 0 1"/>
+      <geom name="s11g0" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+      <body name="s11l1" pos="0.1 0 0">
+        <joint name="s11j1" type="hinge" axis="0 1 0"/>
+        <geom name="s11g1" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+        <body name="s11l2" pos="0.1 0 0">
+          <joint name="s11j2" type="hinge" axis="0 0 1"/>
+          <geom name="s11g2" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+          <body name="s11l3" pos="0.1 0 0">
+            <joint name="s11j3" type="hinge" axis="0 1 0"/>
+            <geom name="s11g3" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+            <body name="s11l4" pos="0.1 0 0">
+              <joint name="s11j4" type="hinge" axis="0 0 1"/>
+              <geom name="s11g4" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+              <body name="s11l5" pos="0.1 0 0">
+                <joint name="s11j5" type="hinge" axis="0 1 0"/>
+                <geom name="s11g5" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                <body name="s11l6" pos="0.1 0 0">
+                  <joint name="s11j6" type="hinge" axis="0 0 1"/>
+                  <geom name="s11g6" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                  <body name="s11l7" pos="0.1 0 0">
+                    <joint name="s11j7" type="hinge" axis="0 1 0"/>
+                    <geom name="s11g7" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    <body name="s11l8" pos="0.1 0 0">
+                      <joint name="s11j8" type="hinge" axis="0 0 1"/>
+                      <geom name="s11g8" type="capsule" fromto="0 0 0 0.092 0 0" size="0.022"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="brick" pos="-0.15 0.2 0.12">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.15" diaginertia="2e-4 2e-4 2e-4"/>
+      <geom name="brick" type="box" size="0.06 0.04 0.03"/>
+    </body>
+    <body name="ball" pos="0.2 -0.3 0.12">
+      <freejoint/>
+      <inertial pos="0 0 0" mass="0.15" diaginertia="2e-4 2e-4 2e-4"/>
+      <geom name="ball" type="sphere" size="0.04"/>
+    </body>
+  </worldbody>
+  <contact>
+    <pair geom1="floor" geom2="s0g0"/>
+    <pair geom1="floor" geom2="s0g1"/>
+    <pair geom1="floor" geom2="s0g2"/>
+    <pair geom1="floor" geom2="s0g3"/>
+    <pair geom1="floor" geom2="s0g4"/>
+    <pair geom1="floor" geom2="s0g5"/>
+    <pair geom1="floor" geom2="s0g6"/>
+    <pair geom1="floor" geom2="s0g7"/>
+    <pair geom1="floor" geom2="s0g8"/>
+    <pair geom1="floor" geom2="s1g0"/>
+    <pair geom1="floor" geom2="s1g1"/>
+    <pair geom1="floor" geom2="s1g2"/>
+    <pair geom1="floor" geom2="s1g3"/>
+    <pair geom1="floor" geom2="s1g4"/>
+    <pair geom1="floor" geom2="s1g5"/>
+    <pair geom1="floor" geom2="s1g6"/>
+    <pair geom1="floor" geom2="s1g7"/>
+    <pair geom1="floor" geom2="s1g8"/>
+    <pair geom1="floor" geom2="s2g0"/>
+    <pair geom1="floor" geom2="s2g1"/>
+    <pair geom1="floor" geom2="s2g2"/>
+    <pair geom1="floor" geom2="s2g3"/>
+    <pair geom1="floor" geom2="s2g4"/>
+    <pair geom1="floor" geom2="s2g5"/>
+    <pair geom1="floor" geom2="s2g6"/>
+    <pair geom1="floor" geom2="s2g7"/>
+    <pair geom1="floor" geom2="s2g8"/>
+    <pair geom1="floor" geom2="s3g0"/>
+    <pair geom1="floor" geom2="s3g1"/>
+    <pair geom1="floor" geom2="s3g2"/>
+    <pair geom1="floor" geom2="s3g3"/>
+    <pair geom1="floor" geom2="s3g4"/>
+    <pair geom1="floor" geom2="s3g5"/>
+    <pair geom1="floor" geom2="s3g6"/>
+    <pair geom1="floor" geom2="s3g7"/>
+    <pair geom1="floor" geom2="s3g8"/>
+    <pair geom1="floor" geom2="s4g0"/>
+    <pair geom1="floor" geom2="s4g1"/>
+    <pair geom1="floor" geom2="s4g2"/>
+    <pair geom1="floor" geom2="s4g3"/>
+    <pair geom1="floor" geom2="s4g4"/>
+    <pair geom1="floor" geom2="s4g5"/>
+    <pair geom1="floor" geom2="s4g6"/>
+    <pair geom1="floor" geom2="s4g7"/>
+    <pair geom1="floor" geom2="s4g8"/>
+    <pair geom1="floor" geom2="s5g0"/>
+    <pair geom1="floor" geom2="s5g1"/>
+    <pair geom1="floor" geom2="s5g2"/>
+    <pair geom1="floor" geom2="s5g3"/>
+    <pair geom1="floor" geom2="s5g4"/>
+    <pair geom1="floor" geom2="s5g5"/>
+    <pair geom1="floor" geom2="s5g6"/>
+    <pair geom1="floor" geom2="s5g7"/>
+    <pair geom1="floor" geom2="s5g8"/>
+    <pair geom1="floor" geom2="s6g0"/>
+    <pair geom1="floor" geom2="s6g1"/>
+    <pair geom1="floor" geom2="s6g2"/>
+    <pair geom1="floor" geom2="s6g3"/>
+    <pair geom1="floor" geom2="s6g4"/>
+    <pair geom1="floor" geom2="s6g5"/>
+    <pair geom1="floor" geom2="s6g6"/>
+    <pair geom1="floor" geom2="s6g7"/>
+    <pair geom1="floor" geom2="s6g8"/>
+    <pair geom1="floor" geom2="s7g0"/>
+    <pair geom1="floor" geom2="s7g1"/>
+    <pair geom1="floor" geom2="s7g2"/>
+    <pair geom1="floor" geom2="s7g3"/>
+    <pair geom1="floor" geom2="s7g4"/>
+    <pair geom1="floor" geom2="s7g5"/>
+    <pair geom1="floor" geom2="s7g6"/>
+    <pair geom1="floor" geom2="s7g7"/>
+    <pair geom1="floor" geom2="s7g8"/>
+    <pair geom1="floor" geom2="s8g0"/>
+    <pair geom1="floor" geom2="s8g1"/>
+    <pair geom1="floor" geom2="s8g2"/>
+    <pair geom1="floor" geom2="s8g3"/>
+    <pair geom1="floor" geom2="s8g4"/>
+    <pair geom1="floor" geom2="s8g5"/>
+    <pair geom1="floor" geom2="s8g6"/>
+    <pair geom1="floor" geom2="s8g7"/>
+    <pair geom1="floor" geom2="s8g8"/>
+    <pair geom1="floor" geom2="s9g0"/>
+    <pair geom1="floor" geom2="s9g1"/>
+    <pair geom1="floor" geom2="s9g2"/>
+    <pair geom1="floor" geom2="s9g3"/>
+    <pair geom1="floor" geom2="s9g4"/>
+    <pair geom1="floor" geom2="s9g5"/>
+    <pair geom1="floor" geom2="s9g6"/>
+    <pair geom1="floor" geom2="s9g7"/>
+    <pair geom1="floor" geom2="s9g8"/>
+    <pair geom1="floor" geom2="s10g0"/>
+    <pair geom1="floor" geom2="s10g1"/>
+    <pair geom1="floor" geom2="s10g2"/>
+    <pair geom1="floor" geom2="s10g3"/>
+    <pair geom1="floor" geom2="s10g4"/>
+    <pair geom1="floor" geom2="s10g5"/>
+    <pair geom1="floor" geom2="s10g6"/>
+    <pair geom1="floor" geom2="s10g7"/>
+    <pair geom1="floor" geom2="s10g8"/>
+    <pair geom1="floor" geom2="s11g0"/>
+    <pair geom1="floor" geom2="s11g1"/>
+    <pair geom1="floor" geom2="s11g2"/>
+    <pair geom1="floor" geom2="s11g3"/>
+    <pair geom1="floor" geom2="s11g4"/>
+    <pair geom1="floor" geom2="s11g5"/>
+    <pair geom1="floor" geom2="s11g6"/>
+    <pair geom1="floor" geom2="s11g7"/>
+    <pair geom1="floor" geom2="s11g8"/>
+    <pair geom1="floor" geom2="plank"/>
+    <pair geom1="floor" geom2="brick"/>
+    <pair geom1="floor" geom2="ball"/>
+    <pair geom1="plank" geom2="s0g0"/>
+    <pair geom1="plank" geom2="s0g1"/>
+    <pair geom1="plank" geom2="s0g2"/>
+    <pair geom1="plank" geom2="s0g3"/>
+    <pair geom1="plank" geom2="s0g4"/>
+    <pair geom1="plank" geom2="s0g5"/>
+    <pair geom1="plank" geom2="s0g6"/>
+    <pair geom1="plank" geom2="s0g7"/>
+    <pair geom1="plank" geom2="s0g8"/>
+    <pair geom1="plank" geom2="s1g0"/>
+    <pair geom1="plank" geom2="s1g1"/>
+    <pair geom1="plank" geom2="s1g2"/>
+    <pair geom1="plank" geom2="s1g3"/>
+    <pair geom1="plank" geom2="s1g4"/>
+    <pair geom1="plank" geom2="s1g5"/>
+    <pair geom1="plank" geom2="s1g6"/>
+    <pair geom1="plank" geom2="s1g7"/>
+    <pair geom1="plank" geom2="s1g8"/>
+    <pair geom1="plank" geom2="s2g0"/>
+    <pair geom1="plank" geom2="s2g1"/>
+    <pair geom1="plank" geom2="s2g2"/>
+    <pair geom1="plank" geom2="s2g3"/>
+    <pair geom1="plank" geom2="s2g4"/>
+    <pair geom1="plank" geom2="s2g5"/>
+    <pair geom1="plank" geom2="s2g6"/>
+    <pair geom1="plank" geom2="s2g7"/>
+    <pair geom1="plank" geom2="s2g8"/>
+    <pair geom1="plank" geom2="s3g0"/>
+    <pair geom1="plank" geom2="s3g1"/>
+    <pair geom1="plank" geom2="s3g2"/>
+    <pair geom1="plank" geom2="s3g3"/>
+    <pair geom1="plank" geom2="s3g4"/>
+    <pair geom1="plank" geom2="s3g5"/>
+    <pair geom1="plank" geom2="s3g6"/>
+    <pair geom1="plank" geom2="s3g7"/>
+    <pair geom1="plank" geom2="s3g8"/>
+    <pair geom1="plank" geom2="s4g0"/>
+    <pair geom1="plank" geom2="s4g1"/>
+    <pair geom1="plank" geom2="s4g2"/>
+    <pair geom1="plank" geom2="s4g3"/>
+    <pair geom1="plank" geom2="s4g4"/>
+    <pair geom1="plank" geom2="s4g5"/>
+    <pair geom1="plank" geom2="s4g6"/>
+    <pair geom1="plank" geom2="s4g7"/>
+    <pair geom1="plank" geom2="s4g8"/>
+    <pair geom1="plank" geom2="s5g0"/>
+    <pair geom1="plank" geom2="s5g1"/>
+    <pair geom1="plank" geom2="s5g2"/>
+    <pair geom1="plank" geom2="s5g3"/>
+    <pair geom1="plank" geom2="s5g4"/>
+    <pair geom1="plank" geom2="s5g5"/>
+    <pair geom1="plank" geom2="s5g6"/>
+    <pair geom1="plank" geom2="s5g7"/>
+    <pair geom1="plank" geom2="s5g8"/>
+    <pair geom1="plank" geom2="s6g0"/>
+    <pair geom1="plank" geom2="s6g1"/>
+    <pair geom1="plank" geom2="s6g2"/>
+    <pair geom1="plank" geom2="s6g3"/>
+    <pair geom1="plank" geom2="s6g4"/>
+    <pair geom1="plank" geom2="s6g5"/>
+    <pair geom1="plank" geom2="s6g6"/>
+    <pair geom1="plank" geom2="s6g7"/>
+    <pair geom1="plank" geom2="s6g8"/>
+    <pair geom1="plank" geom2="s7g0"/>
+    <pair geom1="plank" geom2="s7g1"/>
+    <pair geom1="plank" geom2="s7g2"/>
+    <pair geom1="plank" geom2="s7g3"/>
+    <pair geom1="plank" geom2="s7g4"/>
+    <pair geom1="plank" geom2="s7g5"/>
+    <pair geom1="plank" geom2="s7g6"/>
+    <pair geom1="plank" geom2="s7g7"/>
+    <pair geom1="plank" geom2="s7g8"/>
+    <pair geom1="plank" geom2="s8g0"/>
+    <pair geom1="plank" geom2="s8g1"/>
+    <pair geom1="plank" geom2="s8g2"/>
+    <pair geom1="plank" geom2="s8g3"/>
+    <pair geom1="plank" geom2="s8g4"/>
+    <pair geom1="plank" geom2="s8g5"/>
+    <pair geom1="plank" geom2="s8g6"/>
+    <pair geom1="plank" geom2="s8g7"/>
+    <pair geom1="plank" geom2="s8g8"/>
+    <pair geom1="plank" geom2="s9g0"/>
+    <pair geom1="plank" geom2="s9g1"/>
+    <pair geom1="plank" geom2="s9g2"/>
+    <pair geom1="plank" geom2="s9g3"/>
+    <pair geom1="plank" geom2="s9g4"/>
+    <pair geom1="plank" geom2="s9g5"/>
+    <pair geom1="plank" geom2="s9g6"/>
+    <pair geom1="plank" geom2="s9g7"/>
+    <pair geom1="plank" geom2="s9g8"/>
+    <pair geom1="plank" geom2="s10g0"/>
+    <pair geom1="plank" geom2="s10g1"/>
+    <pair geom1="plank" geom2="s10g2"/>
+    <pair geom1="plank" geom2="s10g3"/>
+    <pair geom1="plank" geom2="s10g4"/>
+    <pair geom1="plank" geom2="s10g5"/>
+    <pair geom1="plank" geom2="s10g6"/>
+    <pair geom1="plank" geom2="s10g7"/>
+    <pair geom1="plank" geom2="s10g8"/>
+    <pair geom1="plank" geom2="s11g0"/>
+    <pair geom1="plank" geom2="s11g1"/>
+    <pair geom1="plank" geom2="s11g2"/>
+    <pair geom1="plank" geom2="s11g3"/>
+    <pair geom1="plank" geom2="s11g4"/>
+    <pair geom1="plank" geom2="s11g5"/>
+    <pair geom1="plank" geom2="s11g6"/>
+    <pair geom1="plank" geom2="s11g7"/>
+    <pair geom1="plank" geom2="s11g8"/>
+    <pair geom1="brick" geom2="s0g0"/>
+    <pair geom1="brick" geom2="s0g1"/>
+    <pair geom1="brick" geom2="s0g2"/>
+    <pair geom1="brick" geom2="s0g3"/>
+    <pair geom1="brick" geom2="s0g4"/>
+    <pair geom1="brick" geom2="s0g5"/>
+    <pair geom1="brick" geom2="s0g6"/>
+    <pair geom1="brick" geom2="s0g7"/>
+    <pair geom1="brick" geom2="s0g8"/>
+    <pair geom1="brick" geom2="s1g0"/>
+    <pair geom1="brick" geom2="s1g1"/>
+    <pair geom1="brick" geom2="s1g2"/>
+    <pair geom1="brick" geom2="s1g3"/>
+    <pair geom1="brick" geom2="s1g4"/>
+    <pair geom1="brick" geom2="s1g5"/>
+    <pair geom1="brick" geom2="s1g6"/>
+    <pair geom1="brick" geom2="s1g7"/>
+    <pair geom1="brick" geom2="s1g8"/>
+    <pair geom1="brick" geom2="s2g0"/>
+    <pair geom1="brick" geom2="s2g1"/>
+    <pair geom1="brick" geom2="s2g2"/>
+    <pair geom1="brick" geom2="s2g3"/>
+    <pair geom1="brick" geom2="s2g4"/>
+    <pair geom1="brick" geom2="s2g5"/>
+    <pair geom1="brick" geom2="s2g6"/>
+    <pair geom1="brick" geom2="s2g7"/>
+    <pair geom1="brick" geom2="s2g8"/>
+    <pair geom1="brick" geom2="s3g0"/>
+    <pair geom1="brick" geom2="s3g1"/>
+    <pair geom1="brick" geom2="s3g2"/>
+    <pair geom1="brick" geom2="s3g3"/>
+    <pair geom1="brick" geom2="s3g4"/>
+    <pair geom1="brick" geom2="s3g5"/>
+    <pair geom1="brick" geom2="s3g6"/>
+    <pair geom1="brick" geom2="s3g7"/>
+    <pair geom1="brick" geom2="s3g8"/>
+    <pair geom1="brick" geom2="s4g0"/>
+    <pair geom1="brick" geom2="s4g1"/>
+    <pair geom1="brick" geom2="s4g2"/>
+    <pair geom1="brick" geom2="s4g3"/>
+    <pair geom1="brick" geom2="s4g4"/>
+    <pair geom1="brick" geom2="s4g5"/>
+    <pair geom1="brick" geom2="s4g6"/>
+    <pair geom1="brick" geom2="s4g7"/>
+    <pair geom1="brick" geom2="s4g8"/>
+    <pair geom1="brick" geom2="s5g0"/>
+    <pair geom1="brick" geom2="s5g1"/>
+    <pair geom1="brick" geom2="s5g2"/>
+    <pair geom1="brick" geom2="s5g3"/>
+    <pair geom1="brick" geom2="s5g4"/>
+    <pair geom1="brick" geom2="s5g5"/>
+    <pair geom1="brick" geom2="s5g6"/>
+    <pair geom1="brick" geom2="s5g7"/>
+    <pair geom1="brick" geom2="s5g8"/>
+    <pair geom1="brick" geom2="s6g0"/>
+    <pair geom1="brick" geom2="s6g1"/>
+    <pair geom1="brick" geom2="s6g2"/>
+    <pair geom1="brick" geom2="s6g3"/>
+    <pair geom1="brick" geom2="s6g4"/>
+    <pair geom1="brick" geom2="s6g5"/>
+    <pair geom1="brick" geom2="s6g6"/>
+    <pair geom1="brick" geom2="s6g7"/>
+    <pair geom1="brick" geom2="s6g8"/>
+    <pair geom1="brick" geom2="s7g0"/>
+    <pair geom1="brick" geom2="s7g1"/>
+    <pair geom1="brick" geom2="s7g2"/>
+    <pair geom1="brick" geom2="s7g3"/>
+    <pair geom1="brick" geom2="s7g4"/>
+    <pair geom1="brick" geom2="s7g5"/>
+    <pair geom1="brick" geom2="s7g6"/>
+    <pair geom1="brick" geom2="s7g7"/>
+    <pair geom1="brick" geom2="s7g8"/>
+    <pair geom1="brick" geom2="s8g0"/>
+    <pair geom1="brick" geom2="s8g1"/>
+    <pair geom1="brick" geom2="s8g2"/>
+    <pair geom1="brick" geom2="s8g3"/>
+    <pair geom1="brick" geom2="s8g4"/>
+    <pair geom1="brick" geom2="s8g5"/>
+    <pair geom1="brick" geom2="s8g6"/>
+    <pair geom1="brick" geom2="s8g7"/>
+    <pair geom1="brick" geom2="s8g8"/>
+    <pair geom1="brick" geom2="s9g0"/>
+    <pair geom1="brick" geom2="s9g1"/>
+    <pair geom1="brick" geom2="s9g2"/>
+    <pair geom1="brick" geom2="s9g3"/>
+    <pair geom1="brick" geom2="s9g4"/>
+    <pair geom1="brick" geom2="s9g5"/>
+    <pair geom1="brick" geom2="s9g6"/>
+    <pair geom1="brick" geom2="s9g7"/>
+    <pair geom1="brick" geom2="s9g8"/>
+    <pair geom1="brick" geom2="s10g0"/>
+    <pair geom1="brick" geom2="s10g1"/>
+    <pair geom1="brick" geom2="s10g2"/>
+    <pair geom1="brick" geom2="s10g3"/>
+    <pair geom1="brick" geom2="s10g4"/>
+    <pair geom1="brick" geom2="s10g5"/>
+    <pair geom1="brick" geom2="s10g6"/>
+    <pair geom1="brick" geom2="s10g7"/>
+    <pair geom1="brick" geom2="s10g8"/>
+    <pair geom1="brick" geom2="s11g0"/>
+    <pair geom1="brick" geom2="s11g1"/>
+    <pair geom1="brick" geom2="s11g2"/>
+    <pair geom1="brick" geom2="s11g3"/>
+    <pair geom1="brick" geom2="s11g4"/>
+    <pair geom1="brick" geom2="s11g5"/>
+    <pair geom1="brick" geom2="s11g6"/>
+    <pair geom1="brick" geom2="s11g7"/>
+    <pair geom1="brick" geom2="s11g8"/>
+    <pair geom1="ball" geom2="s0g0"/>
+    <pair geom1="ball" geom2="s0g1"/>
+    <pair geom1="ball" geom2="s0g2"/>
+    <pair geom1="ball" geom2="s0g3"/>
+    <pair geom1="ball" geom2="s0g4"/>
+    <pair geom1="ball" geom2="s0g5"/>
+    <pair geom1="ball" geom2="s0g6"/>
+    <pair geom1="ball" geom2="s0g7"/>
+    <pair geom1="ball" geom2="s0g8"/>
+    <pair geom1="ball" geom2="s1g0"/>
+    <pair geom1="ball" geom2="s1g1"/>
+    <pair geom1="ball" geom2="s1g2"/>
+    <pair geom1="ball" geom2="s1g3"/>
+    <pair geom1="ball" geom2="s1g4"/>
+    <pair geom1="ball" geom2="s1g5"/>
+    <pair geom1="ball" geom2="s1g6"/>
+    <pair geom1="ball" geom2="s1g7"/>
+    <pair geom1="ball" geom2="s1g8"/>
+    <pair geom1="ball" geom2="s2g0"/>
+    <pair geom1="ball" geom2="s2g1"/>
+    <pair geom1="ball" geom2="s2g2"/>
+    <pair geom1="ball" geom2="s2g3"/>
+    <pair geom1="ball" geom2="s2g4"/>
+    <pair geom1="ball" geom2="s2g5"/>
+    <pair geom1="ball" geom2="s2g6"/>
+    <pair geom1="ball" geom2="s2g7"/>
+    <pair geom1="ball" geom2="s2g8"/>
+    <pair geom1="ball" geom2="s3g0"/>
+    <pair geom1="ball" geom2="s3g1"/>
+    <pair geom1="ball" geom2="s3g2"/>
+    <pair geom1="ball" geom2="s3g3"/>
+    <pair geom1="ball" geom2="s3g4"/>
+    <pair geom1="ball" geom2="s3g5"/>
+    <pair geom1="ball" geom2="s3g6"/>
+    <pair geom1="ball" geom2="s3g7"/>
+    <pair geom1="ball" geom2="s3g8"/>
+    <pair geom1="ball" geom2="s4g0"/>
+    <pair geom1="ball" geom2="s4g1"/>
+    <pair geom1="ball" geom2="s4g2"/>
+    <pair geom1="ball" geom2="s4g3"/>
+    <pair geom1="ball" geom2="s4g4"/>
+    <pair geom1="ball" geom2="s4g5"/>
+    <pair geom1="ball" geom2="s4g6"/>
+    <pair geom1="ball" geom2="s4g7"/>
+    <pair geom1="ball" geom2="s4g8"/>
+    <pair geom1="ball" geom2="s5g0"/>
+    <pair geom1="ball" geom2="s5g1"/>
+    <pair geom1="ball" geom2="s5g2"/>
+    <pair geom1="ball" geom2="s5g3"/>
+    <pair geom1="ball" geom2="s5g4"/>
+    <pair geom1="ball" geom2="s5g5"/>
+    <pair geom1="ball" geom2="s5g6"/>
+    <pair geom1="ball" geom2="s5g7"/>
+    <pair geom1="ball" geom2="s5g8"/>
+    <pair geom1="ball" geom2="s6g0"/>
+    <pair geom1="ball" geom2="s6g1"/>
+    <pair geom1="ball" geom2="s6g2"/>
+    <pair geom1="ball" geom2="s6g3"/>
+    <pair geom1="ball" geom2="s6g4"/>
+    <pair geom1="ball" geom2="s6g5"/>
+    <pair geom1="ball" geom2="s6g6"/>
+    <pair geom1="ball" geom2="s6g7"/>
+    <pair geom1="ball" geom2="s6g8"/>
+    <pair geom1="ball" geom2="s7g0"/>
+    <pair geom1="ball" geom2="s7g1"/>
+    <pair geom1="ball" geom2="s7g2"/>
+    <pair geom1="ball" geom2="s7g3"/>
+    <pair geom1="ball" geom2="s7g4"/>
+    <pair geom1="ball" geom2="s7g5"/>
+    <pair geom1="ball" geom2="s7g6"/>
+    <pair geom1="ball" geom2="s7g7"/>
+    <pair geom1="ball" geom2="s7g8"/>
+    <pair geom1="ball" geom2="s8g0"/>
+    <pair geom1="ball" geom2="s8g1"/>
+    <pair geom1="ball" geom2="s8g2"/>
+    <pair geom1="ball" geom2="s8g3"/>
+    <pair geom1="ball" geom2="s8g4"/>
+    <pair geom1="ball" geom2="s8g5"/>
+    <pair geom1="ball" geom2="s8g6"/>
+    <pair geom1="ball" geom2="s8g7"/>
+    <pair geom1="ball" geom2="s8g8"/>
+    <pair geom1="ball" geom2="s9g0"/>
+    <pair geom1="ball" geom2="s9g1"/>
+    <pair geom1="ball" geom2="s9g2"/>
+    <pair geom1="ball" geom2="s9g3"/>
+    <pair geom1="ball" geom2="s9g4"/>
+    <pair geom1="ball" geom2="s9g5"/>
+    <pair geom1="ball" geom2="s9g6"/>
+    <pair geom1="ball" geom2="s9g7"/>
+    <pair geom1="ball" geom2="s9g8"/>
+    <pair geom1="ball" geom2="s10g0"/>
+    <pair geom1="ball" geom2="s10g1"/>
+    <pair geom1="ball" geom2="s10g2"/>
+    <pair geom1="ball" geom2="s10g3"/>
+    <pair geom1="ball" geom2="s10g4"/>
+    <pair geom1="ball" geom2="s10g5"/>
+    <pair geom1="ball" geom2="s10g6"/>
+    <pair geom1="ball" geom2="s10g7"/>
+    <pair geom1="ball" geom2="s10g8"/>
+    <pair geom1="ball" geom2="s11g0"/>
+    <pair geom1="ball" geom2="s11g1"/>
+    <pair geom1="ball" geom2="s11g2"/>
+    <pair geom1="ball" geom2="s11g3"/>
+    <pair geom1="ball" geom2="s11g4"/>
+    <pair geom1="ball" geom2="s11g5"/>
+    <pair geom1="ball" geom2="s11g6"/>
+    <pair geom1="ball" geom2="s11g7"/>
+    <pair geom1="ball" geom2="s11g8"/>
+    <pair geom1="plank" geom2="brick"/>
+    <pair geom1="plank" geom2="ball"/>
+    <pair geom1="brick" geom2="ball"/>
+  </contact>
+  <actuator>
+    <position name="a_s0j0" joint="s0j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s0j1" joint="s0j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s0j2" joint="s0j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s0j3" joint="s0j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s0j4" joint="s0j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s0j5" joint="s0j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s0j6" joint="s0j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s0j7" joint="s0j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s0j8" joint="s0j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s1j0" joint="s1j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s1j1" joint="s1j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s1j2" joint="s1j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s1j3" joint="s1j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s1j4" joint="s1j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s1j5" joint="s1j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s1j6" joint="s1j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s1j7" joint="s1j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s1j8" joint="s1j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s2j0" joint="s2j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s2j1" joint="s2j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s2j2" joint="s2j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s2j3" joint="s2j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s2j4" joint="s2j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s2j5" joint="s2j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s2j6" joint="s2j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s2j7" joint="s2j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s2j8" joint="s2j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s3j0" joint="s3j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s3j1" joint="s3j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s3j2" joint="s3j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s3j3" joint="s3j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s3j4" joint="s3j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s3j5" joint="s3j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s3j6" joint="s3j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s3j7" joint="s3j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s3j8" joint="s3j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s4j0" joint="s4j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s4j1" joint="s4j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s4j2" joint="s4j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s4j3" joint="s4j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s4j4" joint="s4j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s4j5" joint="s4j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s4j6" joint="s4j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s4j7" joint="s4j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s4j8" joint="s4j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s5j0" joint="s5j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s5j1" joint="s5j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s5j2" joint="s5j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s5j3" joint="s5j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s5j4" joint="s5j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s5j5" joint="s5j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s5j6" joint="s5j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s5j7" joint="s5j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s5j8" joint="s5j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s6j0" joint="s6j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s6j1" joint="s6j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s6j2" joint="s6j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s6j3" joint="s6j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s6j4" joint="s6j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s6j5" joint="s6j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s6j6" joint="s6j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s6j7" joint="s6j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s6j8" joint="s6j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s7j0" joint="s7j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s7j1" joint="s7j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s7j2" joint="s7j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s7j3" joint="s7j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s7j4" joint="s7j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s7j5" joint="s7j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s7j6" joint="s7j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s7j7" joint="s7j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s7j8" joint="s7j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s8j0" joint="s8j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s8j1" joint="s8j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s8j2" joint="s8j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s8j3" joint="s8j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s8j4" joint="s8j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s8j5" joint="s8j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s8j6" joint="s8j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s8j7" joint="s8j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s8j8" joint="s8j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s9j0" joint="s9j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s9j1" joint="s9j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s9j2" joint="s9j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s9j3" joint="s9j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s9j4" joint="s9j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s9j5" joint="s9j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s9j6" joint="s9j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s9j7" joint="s9j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s9j8" joint="s9j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s10j0" joint="s10j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s10j1" joint="s10j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s10j2" joint="s10j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s10j3" joint="s10j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s10j4" joint="s10j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s10j5" joint="s10j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s10j6" joint="s10j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s10j7" joint="s10j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s10j8" joint="s10j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s11j0" joint="s11j0" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s11j1" joint="s11j1" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s11j2" joint="s11j2" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s11j3" joint="s11j3" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s11j4" joint="s11j4" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s11j5" joint="s11j5" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s11j6" joint="s11j6" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s11j7" joint="s11j7" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+    <position name="a_s11j8" joint="s11j8" kp="2" kv="0.05" ctrlrange="-0.5 0.5"/>
+  </actuator>
+</mujoco>

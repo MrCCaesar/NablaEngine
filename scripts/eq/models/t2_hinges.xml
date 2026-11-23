@@ -1,0 +1,49 @@
+<!-- T2: a 4-hinge arm with a nonlinear tendon equality (tendon "c" = h4 against tendon "ab" = 0.5 h1 + 0.5 h2,
+     polycoef 0.05 0.8 0.3: J changes with q), a limited coupling tendon over three joints (as ToddlerBot's waist,
+     range -0.03 .. 0.03, margin 0.01, its own solreflimit / solimplimit) and a narrow band tendon (range -0.01 .. 0.01,
+     margin 0.015: both sides can be active at once) -->
+<mujoco model="eq_t2_hinges">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default>
+    <joint damping="0.1" armature="0.005"/>
+    <geom type="capsule" size="0.02" density="500" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body name="l1" pos="0 0 1">
+      <joint name="h1" axis="0 0 1"/>
+      <geom fromto="0 0 0 0.2 0 0"/>
+      <body name="l2" pos="0.2 0 0">
+        <joint name="h2" axis="0 1 0"/>
+        <geom fromto="0 0 0 0.2 0 0"/>
+        <body name="l3" pos="0.2 0 0">
+          <joint name="h3" axis="0 1 0"/>
+          <geom fromto="0 0 0 0.15 0 0"/>
+          <body name="l4" pos="0.15 0 0">
+            <joint name="h4" axis="1 0 0"/>
+            <geom fromto="0 0 0 0.1 0 0.05"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <tendon>
+    <fixed name="c"><joint joint="h4" coef="1"/></fixed>
+    <fixed name="ab"><joint joint="h1" coef="0.5"/><joint joint="h2" coef="0.5"/></fixed>
+    <fixed name="waist" limited="true" range="-0.03 0.03" margin="0.01" solreflimit="0.01 0.8"
+           solimplimit="0.9 0.98 0.005 0.4 3">
+      <joint joint="h1" coef="0.29166667"/><joint joint="h2" coef="-0.29166667"/><joint joint="h3" coef="1"/>
+    </fixed>
+    <fixed name="band" limited="true" range="-0.01 0.01" margin="0.015">
+      <joint joint="h2" coef="1"/><joint joint="h3" coef="0.5"/>
+    </fixed>
+  </tendon>
+  <equality>
+    <tendon name="poly" tendon1="c" tendon2="ab" polycoef="0.05 0.8 0.3 0 0" solref="0.01 1"
+            solimp="0.9 0.95 0.001 0.5 2"/>
+  </equality>
+  <actuator>
+    <motor joint="h1" ctrlrange="-2 2"/>
+    <motor joint="h2" ctrlrange="-2 2"/>
+    <motor joint="h3" ctrlrange="-2 2"/>
+  </actuator>
+</mujoco>

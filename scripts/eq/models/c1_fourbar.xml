@@ -1,0 +1,35 @@
+<!-- C1: a planar four-bar linkage on a turntable (connect equality, body objects). One tree: turntable (hinge z) ->
+crank (hinge y) -> coupler (hinge y), and turntable -> rocker (hinge y); the coupler's tip is connected to the rocker's
+tip, so the turntable is a common ancestor of both chains. A motor drives the crank; gravity loads the linkage. -->
+<mujoco model="c1_fourbar">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default>
+    <joint damping="0.02"/>
+    <geom type="capsule" size="0.01" density="1000" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body name="table" pos="0 0 0.5">
+      <joint name="table" type="hinge" axis="0 0 1"/>
+      <geom type="cylinder" size="0.1 0.01" fromto="0 0 -0.01 0 0 0.01"/>
+      <body name="crank" pos="0 0 0.02">
+        <joint name="crank" type="hinge" axis="0 1 0"/>
+        <geom fromto="0 0 0 0.1 0 0"/>
+        <body name="coupler" pos="0.1 0 0">
+          <joint name="coupler" type="hinge" axis="0 1 0"/>
+          <geom fromto="0 0 0 0.05 0 0.25"/>
+        </body>
+      </body>
+      <body name="rocker" pos="0.25 0 0.02">
+        <joint name="rocker" type="hinge" axis="0 1 0"/>
+        <geom fromto="0 0 0 -0.1 0 0.25"/>
+      </body>
+    </body>
+  </worldbody>
+  <equality>
+    <connect name="loop" body1="coupler" body2="rocker" anchor="0.05 0 0.25" solref="0.005 1" solimp="0.95 0.99 0.001"/>
+  </equality>
+  <actuator>
+    <motor name="crank" joint="crank" gear="1" ctrlrange="-1 1"/>
+    <motor name="table" joint="table" gear="1" ctrlrange="-0.5 0.5"/>
+  </actuator>
+</mujoco>

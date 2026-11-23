@@ -19,6 +19,12 @@ The other files are reference data for the checks, all computed with this model:
 of the benchmark corpora `mf_s0` / `mf_s1` (`scripts/make_mjw_reference.py`), and `engine_digests.json`, the sha256
 digests of the engine's forward outputs (`nablaengine.checks`).
 
+Terrain (`docs/terrain.md`): `g1_terrain_feet.mjb` and `g1_terrain_body.mjb` are this G1 with its floor replaced by
+a test terrain (stairs, a rotated box obstacle, a 41 x 41 heightfield and a ground box) and explicit pairs between the
+terrain and the robot's foot geoms or every robot geom with a floor pair (the floor pairs' parameters; visual meshes
+and textures dropped). `mjw317_terrain_feet.npz` is native MuJoCo Warp 3.17.0's control step of 1024 `mf_s0` states
+placed on that terrain (`scripts/terrain_check.py ref --scene fixtures/mjlab/g1_terrain_feet.mjb`).
+
 ## The model
 
 | | |

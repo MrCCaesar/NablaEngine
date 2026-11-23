@@ -4,6 +4,582 @@
   {
    "key": {
     "build": {
+     "arch": "sm_103",
+     "forward_flags": [
+      "-arch=sm_103"
+     ],
+     "nvcc": "12.9.86",
+     "options": [
+      "-DSPLIT_PRE_MINB=16",
+      "-DSPLIT_POST_MAXNREG=128"
+     ]
+    },
+    "corpus": "mf_s0",
+    "inputs_sha256": "88c57f6787989e34ae09bd1d611abf080f4b146250d040d89e17360e7a94c8a3",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "fused": false,
+     "iterations": 50,
+     "nworld": 256,
+     "select": "truth",
+     "substeps": 4,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "10.3",
+     "driver": "595.71.05",
+     "name": "NVIDIA B300 SXM6 AC"
+    },
+    "source_sha256": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "ae4b379ea464cb5eb0c21b9efe77695c79cb2fb27fc3a20388b0950313b13291",
+     "shape": [
+      256,
+      64,
+      8
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "0fe99ba12b90d029893db6770e971cef32bbfa337797fef7221f0aa68decffa9",
+     "shape": [
+      256,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "ba9da1a10c00e540b2396c1ca109cff6ccbc24e8a76382d903a06d9b34713816",
+     "shape": [
+      256,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "710e3b286972292fcb139f97492ade5880c1f4f5dcd8c0a692b0bdcdb6332501",
+     "shape": [
+      256,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "ae1495d4cc678d04f0f4fb536d878e08c67a93595c6b169304c5b9c612366dee",
+     "shape": [
+      256,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_103",
+     "forward_flags": [
+      "-arch=sm_103"
+     ],
+     "nvcc": "12.9.86",
+     "options": [
+      "-DSPLIT_PRE_MINB=16",
+      "-DSPLIT_POST_MAXNREG=128"
+     ]
+    },
+    "corpus": "mf_s0",
+    "inputs_sha256": "b2dbcd8858ec807cb2e4dfc9641c625bbfaeed44c688c2440185f2e9ee0a0253",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "fused": false,
+     "iterations": 50,
+     "nworld": 4096,
+     "select": "first",
+     "substeps": 1,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "10.3",
+     "driver": "595.71.05",
+     "name": "NVIDIA B300 SXM6 AC"
+    },
+    "source_sha256": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "28d838423180f5f9c94d248ee800d32d67f328670852e0b6b599660c33cd4247",
+     "shape": [
+      4096,
+      64,
+      8
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "6570ca25c49fb1363fab67139466d85f84330f7ad7d84f87c515dcef31a507e4",
+     "shape": [
+      4096,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "16af768b3cf307a69683bb0439b74e3c53243ad28d32144ce27947642984676a",
+     "shape": [
+      4096,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "725cf2e73c669785c4b83cb42a9e8ca0e089d20ce360754a4979a9cb4f05818d",
+     "shape": [
+      4096,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "14fd9abb45bb51165cf824f8cf28c73a5c386f3f772a925990e25a30d4f46e3c",
+     "shape": [
+      4096,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_103",
+     "forward_flags": [
+      "-arch=sm_103"
+     ],
+     "nvcc": "12.9.86",
+     "options": [
+      "-DSPLIT_PRE_MINB=16",
+      "-DSPLIT_POST_MAXNREG=128"
+     ]
+    },
+    "corpus": "mf_s0",
+    "inputs_sha256": "b2dbcd8858ec807cb2e4dfc9641c625bbfaeed44c688c2440185f2e9ee0a0253",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "fused": false,
+     "iterations": 50,
+     "nworld": 4096,
+     "select": "first",
+     "substeps": 4,
+     "tape": true,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "10.3",
+     "driver": "595.71.05",
+     "name": "NVIDIA B300 SXM6 AC"
+    },
+    "source_sha256": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "c68a5618c1ddc317da8e2f323e180fa384ab4fe21d698cd4a75e2c2aa68d537b",
+     "shape": [
+      4096,
+      64,
+      8
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "347e75ebe36a259ff799532bb1410d05f07a4abe7c3e4be5ac7bb955b7a386ac",
+     "shape": [
+      4096,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "df57d0ca1a8f6976ad5b0e0c04e3de8e5201545837103c68440b4f46669ea7a3",
+     "shape": [
+      4096,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "223ac925016efad6364326f48f390155feb5abeafe4b23734a556c6f3093d26c",
+     "shape": [
+      4096,
+      35
+     ]
+    },
+    "tape": {
+     "dtype": "<f4",
+     "sha256": "fc42be254208ad04e8ae4000b2bf18da8532cb0c19dcad3b458a8d98c8e83153",
+     "shape": [
+      4096,
+      4,
+      1472
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "7bb7b432add2f307e99b6fddb5c124a1da147a681995e8eb7995bc73cf3cf588",
+     "shape": [
+      4096,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_103",
+     "forward_flags": [
+      "-arch=sm_103"
+     ],
+     "nvcc": "12.9.86",
+     "options": [
+      "-DSPLIT_PRE_MINB=16",
+      "-DSPLIT_POST_MAXNREG=128"
+     ]
+    },
+    "corpus": "mf_s1",
+    "inputs_sha256": "a67672f096e21a39d0699c2ce66fd79f46489b9c4057a34fb191fc4488f6c604",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "fused": false,
+     "iterations": 50,
+     "nworld": 256,
+     "select": "truth",
+     "substeps": 4,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "10.3",
+     "driver": "595.71.05",
+     "name": "NVIDIA B300 SXM6 AC"
+    },
+    "source_sha256": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "59ef1f6b972546c6139e5f79fcfcb36d45894b640acf900675f3afef6ba7f99e",
+     "shape": [
+      256,
+      64,
+      8
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "d8c231a6e1c1acfa2135cbc833a8146d5a3c35932b9371ee7a1c1ce82756d305",
+     "shape": [
+      256,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "3b3c1a6b23f14b2a73e41320b609e8c37ebec0d592d2ff6e50d1499bd086f876",
+     "shape": [
+      256,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "506ffe1f4b91a5ca3e1350e44c186ae73443ad687b0f17a31f1d5630ee54ea68",
+     "shape": [
+      256,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "039d4ac050167eb3a13816bcbdceb03331831c5df208bd5327fff9c194bebcab",
+     "shape": [
+      256,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_103",
+     "forward_flags": [
+      "-arch=sm_103"
+     ],
+     "nvcc": "12.9.86",
+     "options": [
+      "-DSPLIT_PRE_MINB=16",
+      "-DSPLIT_POST_MAXNREG=128"
+     ]
+    },
+    "corpus": "mf_s1",
+    "inputs_sha256": "f5956e18dfcfee6088c9e3c6c32b27f74076bb103c50cebc9f1600372ed452cd",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "fused": false,
+     "iterations": 50,
+     "nworld": 4096,
+     "select": "first",
+     "substeps": 1,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "10.3",
+     "driver": "595.71.05",
+     "name": "NVIDIA B300 SXM6 AC"
+    },
+    "source_sha256": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "a98622013f043918aa5e1bb219dd43383245a66d3d6526b69990794ce20272cc",
+     "shape": [
+      4096,
+      64,
+      8
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "48a15404b89bed3dd4363c9c5d7ee46adba99f8b02561444dab5a415ca9057d4",
+     "shape": [
+      4096,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "8310a555e1497d222d73ad348862c86190127e3b73c549baed60ece7d9626c24",
+     "shape": [
+      4096,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "ecd1bebbc6d023c6435544b09a283d15c0018078484d03282c24ad2798cdfba8",
+     "shape": [
+      4096,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "e5fc13dbc7707e33ae2bd85616ca3250e6381ada6eeb931cc6699860a4754afa",
+     "shape": [
+      4096,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_103",
+     "forward_flags": [
+      "-arch=sm_103"
+     ],
+     "nvcc": "12.9.86",
+     "options": [
+      "-DSPLIT_PRE_MINB=16",
+      "-DSPLIT_POST_MAXNREG=128"
+     ]
+    },
+    "corpus": "mf_s1",
+    "inputs_sha256": "f5956e18dfcfee6088c9e3c6c32b27f74076bb103c50cebc9f1600372ed452cd",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "fused": false,
+     "iterations": 50,
+     "nworld": 4096,
+     "select": "first",
+     "substeps": 4,
+     "tape": true,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "10.3",
+     "driver": "595.71.05",
+     "name": "NVIDIA B300 SXM6 AC"
+    },
+    "source_sha256": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "3633d21ca60420a631cd2f980950b7b46eb9d56e928af58121510d01270c1a2f",
+     "shape": [
+      4096,
+      64,
+      8
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "5334d667d55441ae3089377e2a51547f28f82f508e4ae3be9eab6ffee6623850",
+     "shape": [
+      4096,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "739d0adfce7bb7c345dc9086ee4d2b64ed8fcda00de1a4a124a7d49a8c35a797",
+     "shape": [
+      4096,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "3ff4ff1331d7a0ab10cbecde6809d5a59b6e818c5ba2037bfec69718d2780078",
+     "shape": [
+      4096,
+      35
+     ]
+    },
+    "tape": {
+     "dtype": "<f4",
+     "sha256": "6eec1e86e797a6b44fc9006bb82fcd35cf4114963461217e815746b023f2cee8",
+     "shape": [
+      4096,
+      4,
+      1472
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "8ebbdb656cbe23c97feee8d2c10a03045e76a5ff4a458059745c290396c85749",
+     "shape": [
+      4096,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_70",
+     "forward_flags": [
+      "-arch=sm_70"
+     ],
+     "nvcc": "12.4.131",
+     "options": []
+    },
+    "corpus": "mf_s0",
+    "inputs_sha256": "88c57f6787989e34ae09bd1d611abf080f4b146250d040d89e17360e7a94c8a3",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "engine": "forest",
+     "fused": false,
+     "iterations": 50,
+     "nworld": 256,
+     "select": "truth",
+     "substeps": 4,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "7.0",
+     "driver": "550.90.07",
+     "name": "Tesla V100-SXM2-16GB"
+    },
+    "source_sha256": "1fc1560cadc4242c6a08710d63b79b6bef30d3ec85f2f8088f11a1420f4a489c"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "16d6639643183465e53134347096895474db259b94742c35c73a5a7be4fc8244",
+     "shape": [
+      256,
+      64,
+      12
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "1ae9177795235d4100956633a330fcb4547890bf0d6e5a57c57409ec5747d81d",
+     "shape": [
+      256,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "a7fbc5cad7397c9bac8e162933579ad06612cd46141556201fd0b78fb8a7279c",
+     "shape": [
+      256,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "43794f8ff7d04744ebd1f3e4f734c9cb80d6a5e1903232b9499822fbc4f7c022",
+     "shape": [
+      256,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "1c6166f7816a73c96cef8ca0838ee066d407c93fbe0d460043a91e602b9c2a16",
+     "shape": [
+      256,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
      "arch": "sm_70",
      "forward_flags": [
       "-arch=sm_70"
@@ -73,6 +649,162 @@
      "sha256": "ae1495d4cc678d04f0f4fb536d878e08c67a93595c6b169304c5b9c612366dee",
      "shape": [
       256,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_70",
+     "forward_flags": [
+      "-arch=sm_70"
+     ],
+     "nvcc": "12.4.131",
+     "options": []
+    },
+    "corpus": "mf_s0",
+    "inputs_sha256": "b2dbcd8858ec807cb2e4dfc9641c625bbfaeed44c688c2440185f2e9ee0a0253",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "engine": "forest",
+     "fused": false,
+     "iterations": 50,
+     "nworld": 4096,
+     "select": "first",
+     "substeps": 1,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "7.0",
+     "driver": "550.90.07",
+     "name": "Tesla V100-SXM2-16GB"
+    },
+    "source_sha256": "1fc1560cadc4242c6a08710d63b79b6bef30d3ec85f2f8088f11a1420f4a489c"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "13178cc0e3d34214da156e6ac854b7f0848062f1abd1be1dfeef4754e812f036",
+     "shape": [
+      4096,
+      64,
+      12
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "5ad8e01f0360168812fd90e9a338fa7a81c3a7c20460b0c41f1b86b7f6e718f2",
+     "shape": [
+      4096,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "a9d880ccbde116e878919c460a0f238cf2ee88472b769308c33a2c5bb2283b90",
+     "shape": [
+      4096,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "0a06e053ca41169fd17b66ceca2047133548270a2e681f1e431b81f91e48b169",
+     "shape": [
+      4096,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "2c469b80d3584de85444395b0604a7da03a9d3f500711f24be183b7cc702e1db",
+     "shape": [
+      4096,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_70",
+     "forward_flags": [
+      "-arch=sm_70"
+     ],
+     "nvcc": "12.4.131",
+     "options": []
+    },
+    "corpus": "mf_s0",
+    "inputs_sha256": "b2dbcd8858ec807cb2e4dfc9641c625bbfaeed44c688c2440185f2e9ee0a0253",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "engine": "forest",
+     "fused": false,
+     "iterations": 50,
+     "nworld": 4096,
+     "select": "first",
+     "substeps": 4,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "7.0",
+     "driver": "550.90.07",
+     "name": "Tesla V100-SXM2-16GB"
+    },
+    "source_sha256": "1fc1560cadc4242c6a08710d63b79b6bef30d3ec85f2f8088f11a1420f4a489c"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "9e85c5002c80bf3a92f5cb3200c212782789c0ffaea22b24e0f0b6d7e54dd7fd",
+     "shape": [
+      4096,
+      64,
+      12
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "1087068d55ae2c362265034b8bc9bc4e74f425b2801b5f82b8325f5674c16ae2",
+     "shape": [
+      4096,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "6ec28f6346d929b5a386f3a7c012e9bc664b86b0ccd85b31366f9e706a7d9529",
+     "shape": [
+      4096,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "54ceab58098725127abe5eb3e3f6e91fcebb508beeb7d24a5938648b053ff891",
+     "shape": [
+      4096,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "81bd60698673d87174f98dd37441bcace8281052eaa69e3abd774664b994f3e1",
+     "shape": [
+      4096,
       35
      ]
     }
@@ -255,6 +987,84 @@
     "inputs_sha256": "a67672f096e21a39d0699c2ce66fd79f46489b9c4057a34fb191fc4488f6c604",
     "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
     "run": {
+     "engine": "forest",
+     "fused": false,
+     "iterations": 50,
+     "nworld": 256,
+     "select": "truth",
+     "substeps": 4,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "7.0",
+     "driver": "550.90.07",
+     "name": "Tesla V100-SXM2-16GB"
+    },
+    "source_sha256": "1fc1560cadc4242c6a08710d63b79b6bef30d3ec85f2f8088f11a1420f4a489c"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "733f7787d4d4c0cd8456b3cb10f71a595342dcdbd783abcf8b691f74be62b748",
+     "shape": [
+      256,
+      64,
+      12
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "843bd0f378e1ac9ba852ffaacea7fe5f398d4b00f282d441983299a20a41f1f8",
+     "shape": [
+      256,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "58f91a38972b8a34f5c63bc8407921272348ec0610fc2a717a68a0de5b5ed5fb",
+     "shape": [
+      256,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "da96c976e0297f699e73d12f1e08825e6ae2b4f0ed12f78719fe91f002cabae0",
+     "shape": [
+      256,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "ebcd29ac9a01062dcc475a841ef8df3059a94323902a6bc5dc3100c61e7d8ce2",
+     "shape": [
+      256,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_70",
+     "forward_flags": [
+      "-arch=sm_70"
+     ],
+     "nvcc": "12.4.131",
+     "options": []
+    },
+    "corpus": "mf_s1",
+    "inputs_sha256": "a67672f096e21a39d0699c2ce66fd79f46489b9c4057a34fb191fc4488f6c604",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
      "fused": false,
      "iterations": 50,
      "nworld": 256,
@@ -313,6 +1123,162 @@
      "sha256": "38f33768fd73289542f552eeafb4aa4ef22f0c14d03ae326df320c094618b0e8",
      "shape": [
       256,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_70",
+     "forward_flags": [
+      "-arch=sm_70"
+     ],
+     "nvcc": "12.4.131",
+     "options": []
+    },
+    "corpus": "mf_s1",
+    "inputs_sha256": "f5956e18dfcfee6088c9e3c6c32b27f74076bb103c50cebc9f1600372ed452cd",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "engine": "forest",
+     "fused": false,
+     "iterations": 50,
+     "nworld": 4096,
+     "select": "first",
+     "substeps": 1,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "7.0",
+     "driver": "550.90.07",
+     "name": "Tesla V100-SXM2-16GB"
+    },
+    "source_sha256": "1fc1560cadc4242c6a08710d63b79b6bef30d3ec85f2f8088f11a1420f4a489c"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "40cb242de5d446d352c34ec6d60b0d7543c994ce7d6e83925d350889ef0415e7",
+     "shape": [
+      4096,
+      64,
+      12
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "66b86018236d36b1b774e0dcc11a572f40fc421a923374fef24bf0e55fa994e3",
+     "shape": [
+      4096,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "4a2cf25d3becb34eccf0824094b66aa43ddb5a3163d18d99380006b29f022aff",
+     "shape": [
+      4096,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "fc57d8b23432f228f14f38fed88938ff6ae8639d95afea30f192b1dc0795c3a8",
+     "shape": [
+      4096,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "83f62e03785bba25f7408533b8b205c73723ffb2f73c454bade2b49bb69d6762",
+     "shape": [
+      4096,
+      35
+     ]
+    }
+   }
+  },
+  {
+   "key": {
+    "build": {
+     "arch": "sm_70",
+     "forward_flags": [
+      "-arch=sm_70"
+     ],
+     "nvcc": "12.4.131",
+     "options": []
+    },
+    "corpus": "mf_s1",
+    "inputs_sha256": "f5956e18dfcfee6088c9e3c6c32b27f74076bb103c50cebc9f1600372ed452cd",
+    "model_sha256": "757b0997d992073b645732a1daaeab92587f00e29691b93aa76094a3f02ef379",
+    "run": {
+     "engine": "forest",
+     "fused": false,
+     "iterations": 50,
+     "nworld": 4096,
+     "select": "first",
+     "substeps": 4,
+     "tape": false,
+     "tolerance": 1e-08
+    },
+    "unit": "check_forward"
+   },
+   "made": {
+    "date": "2026-11-13",
+    "gpu": {
+     "compute_cap": "7.0",
+     "driver": "550.90.07",
+     "name": "Tesla V100-SXM2-16GB"
+    },
+    "source_sha256": "1fc1560cadc4242c6a08710d63b79b6bef30d3ec85f2f8088f11a1420f4a489c"
+   },
+   "outputs": {
+    "con": {
+     "dtype": "<f4",
+     "sha256": "58d298481812a6b0185bd4bb039e3f501c3b739031995b0737b2a2e1b9311eb3",
+     "shape": [
+      4096,
+      64,
+      12
+     ]
+    },
+    "info": {
+     "dtype": "<i4",
+     "sha256": "7cce850fa103b3e6ef80cd9c2fa68577532ef4c578e94fba2d23fe45902ae02c",
+     "shape": [
+      4096,
+      4
+     ]
+    },
+    "qpos": {
+     "dtype": "<f4",
+     "sha256": "7ba1ef7e1d66d2d8eb2aeb1f2db908324f157a2811a891a520120d49faed9841",
+     "shape": [
+      4096,
+      36
+     ]
+    },
+    "qvel": {
+     "dtype": "<f4",
+     "sha256": "ca2067bd7d64b5b05a0f77889ad6fe299589545877d178ad9d6e7abf5e5740a5",
+     "shape": [
+      4096,
+      35
+     ]
+    },
+    "warm": {
+     "dtype": "<f4",
+     "sha256": "97efe27eca1af8865d1ba17c8c73258cdc280c6c5d95ec3e3696c113e79a8d0e",
+     "shape": [
+      4096,
       35
      ]
     }

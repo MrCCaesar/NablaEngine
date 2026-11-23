@@ -1,29 +1,4 @@
-"""Run the PhysX baseline suite (called by run.sh; one subprocess per configuration) and write one JSON + one table.
-
-Plan (``--mode full``), in this order; the last two are optional and skipped when the time budget would be exceeded
-(estimated from the measured wall time of the N=8192 / N=4096 run of the same variant, x2.6):
-
-  1  physx_task_n1024             physics=isaacsim_physx, Isaac Lab task defaults (G1_MINIMAL_CFG, self-collision off)
-  2  physx_task_n4096
-  3  physx_task_n8192
-  4  physx_full_selfcoll_n4096    G1_CFG (full collision meshes) + self-collision on
-  5  newton_task_n1024            physics=newton_mjwarp (Isaac Lab 3.0's default backend for this task), context
-  6  newton_task_n4096
-  7  official_runtime_physx_n4096 Isaac Lab's own `isaaclab benchmark runtime` (full env.step, random actions)
-  8  physx_task_n16384            optional
-  9  physx_full_selfcoll_n8192    optional
-
-``--mode quick`` (validation): items 1, 4 and 5 at N=1024 with 2 short rounds, and the official benchmark at N=1024.
-
-Before every configuration the GPU is checked to be idle (no compute processes, < 1 GiB in use) unless
-``--no-idle-check``; a busy GPU stops the suite (exit 3). Outputs (in --out-dir, which must not exist yet or be empty):
-  physx_bench_results.json   environment, versions, install choices, commands, per-configuration results
-  physx_bench_results.md     the summary table
-  runs/<label>.json          per-configuration result of bench_physics_only.py (incl. the live-stage settings dump)
-  runs/official_runtime_*/   Isaac Lab's own benchmark output
-  logs/<label>.log           full stdout/stderr of each configuration
-Exit status: 0 when every mandatory configuration produced a result, 1 otherwise.
-"""
+"""Run the PhysX baseline suite (called by run.sh; one subprocess per configuration) and write one JSON + one table."""
 from __future__ import annotations
 
 import argparse

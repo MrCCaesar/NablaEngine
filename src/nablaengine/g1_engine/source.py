@@ -1,33 +1,22 @@
-"""CUDA source of the G1-specific physics engine (block per world), generated from the MuJoCo model.
+"""CUDA source of the G1-specific physics engine (block per world), generated from the MuJoCo model."""
 
-The smooth dynamics: forward kinematics, velocity / acceleration propagation, inverse dynamics (RNE) and the
-joint-space mass matrix by the composite-rigid-body algorithm, as device functions over shared-memory state with one
-warp per world (lane b owns body b; the tree is walked one depth level at a time). Conventions follow MuJoCo: free root
-joint (world linear / local angular velocity), hinge joints at the body origin, spatial quantities in the world frame;
-the mass matrix is taken about the root body's origin and includes the armature (as mj_crb's qM).
-
-constants(m) packs the model arrays the kernels read (global memory, see DKC; load order = CONST_LAYOUT) and
-asserts the model structure the kernels assume, among others: a free root at body 1, then one hinge per body at
-its origin, at most 32 bodies and MAX_CHILDREN children per body, nv >= MIN_NV (model_hooks.py adapts the kernels'
-text to nv < 32 and to more than 3 children per body), position actuators in joint order
-(actuator a on dof 6 + a), and the COM-offset body (default torso_link).
-"""
+import os
 
 import mujoco
 import numpy as np
 
-CONST_LAYOUT = (  # (symbol, kind, length in units of the body count or "nv", per-entry width)
+CONST_LAYOUT = (
     ("c_parent", "i", "nb", 1), ("c_depth", "i", "nb", 1), ("c_qadr", "i", "nb", 1), ("c_dadr", "i", "nb", 1),
     ("c_nchild", "i", "nb", 1), ("c_child", "i", "nb", 3), ("c_pos", "f", "nb", 3), ("c_quat", "f", "nb", 4),
     ("c_axis", "f", "nb", 3), ("c_ipos", "f", "nb", 3), ("c_iquat", "f", "nb", 4), ("c_mass", "f", "nb", 1),
     ("c_inert", "f", "nb", 3), ("c_grav", "f", "one", 3), ("c_armature", "f", "nv", 1), ("c_nanc", "i", "nb", 1),
     ("c_anc", "i", "nb", 12), ("c_kp", "f", "nv", 1), ("c_kv", "f", "nv", 1), ("c_frclim", "f", "nv", 1),
-    ("c_misc", "f", "one", 2),  # timestep, torso body id
+    ("c_misc", "f", "one", 2),
 )
 
 
-MAX_CHILDREN = 8  # children per body (c_child's width: child_width; model_hooks.py beyond 3)
-MIN_NV = 7  # a free root and at least one hinge (model_hooks.py below 32)
+MAX_CHILDREN = 8
+MIN_NV = 7
 
 
 def children_of(m):
@@ -55,7 +44,7 @@ def const_layout(m):
     return lay + ((("c_damp", "f", "nv", 1),) if has_damping(m) else ())
 
 
-COM_BODY = "torso_link"  # the body that takes the per-world COM offset by default (the G1's torso)
+COM_BODY = "torso_link"
 
 
 def max_depth(m):
@@ -73,7 +62,7 @@ def constants(m, com_body=None):
     depth, children = [0] * nb, children_of(m)
     for b in range(1, nb):
         depth[b] = depth[m.body_parentid[b]] + 1
-    assert nb <= 32 and max(len(c) for c in children[1:]) <= MAX_CHILDREN
+    assert nb <= 63 and max(len(c) for c in children[1:]) <= MAX_CHILDREN
     assert m.jnt_type[m.body_jntadr[1]] == mujoco.mjtJoint.mjJNT_FREE and m.body_jntnum[1] == 1
     qadr, dadr, axis = np.zeros(nb), np.zeros(nb), np.zeros((nb, 3))
     for b in range(2, nb):
@@ -81,12 +70,11 @@ def constants(m, com_body=None):
         assert m.body_jntnum[b] == 1 and m.jnt_type[j] == mujoco.mjtJoint.mjJNT_HINGE and not m.jnt_pos[j].any()
         qadr[b], dadr[b], axis[b] = m.jnt_qposadr[j], m.jnt_dofadr[j], m.jnt_axis[j]
     assert m.nv >= MIN_NV, f"nv = {m.nv}: a free root and at least one hinge"
-    # (nv < 32: the solves' lanes beyond the last dof repeat its row, model_hooks.py)
     child = np.zeros((nb, child_width(m)))
     for b in range(1, nb):
         child[b, :len(children[b])] = children[b]
     nchild = np.array([len(children[b]) if b else 0 for b in range(nb)])
-    anc, nanc = np.zeros((nb, 12)), np.zeros(nb)  # hinge-joint ancestors of each body (root excluded), nearest first
+    anc, nanc = np.zeros((nb, 12)), np.zeros(nb)
     for b in range(2, nb):
         k, lst = m.body_parentid[b], []
         while k >= 2:
@@ -95,7 +83,7 @@ def constants(m, com_body=None):
         assert len(lst) <= 12
         anc[b, :len(lst)], nanc[b] = lst, len(lst)
     kp, kv, frclim = np.zeros(m.nv), np.zeros(m.nv), np.full(m.nv, 1e30)
-    for a in range(m.nu):  # position actuators on hinge joints, gear 1: force = kp (ctrl - q) - kv qdot
+    for a in range(m.nu):
         j = m.actuator_trnid[a, 0]
         assert m.actuator_trntype[a] == mujoco.mjtTrn.mjTRN_JOINT, f"actuator {a}: joint transmissions only"
         assert m.jnt_dofadr[j] == 6 + a, (
@@ -767,3 +755,353 @@ __device__ __forceinline__ void chol_solve_warp(const float* L, float* b, int la
   }
 }
 """
+
+
+
+def tri(i, j):
+    """TRI(i, j): the packed lower triangle's index, j <= i."""
+    return i * (i + 1) // 2 + j
+
+
+def tree_tables(m):
+    """The tree-sparse factorization's schedule for model m (MuJoCo's dof order: a dof's parent has a smaller index):
+    {name: list of ints} of the device tables (tree_chol_device), and steps / levels."""
+    nv, par = m.nv, [int(p) for p in m.dof_parentid]
+    assert nv < 256 and nv * (nv + 1) // 2 < 65536, "tree_tables: 8-bit dof and 16-bit triangle indices"
+    anc = []
+    for i in range(nv):
+        a, j = [], par[i]
+        while j >= 0:
+            assert j < i, "tree_tables: a dof's parent must come first"
+            a.append(j)
+            j = par[j]
+        anc.append(a)
+    children = [[] for _ in range(nv)]
+    for i in range(nv):
+        if par[i] >= 0:
+            children[par[i]].append(i)
+    height = [0] * nv
+    for i in reversed(range(nv)):
+        height[i] = 1 + max((height[c] for c in children[i]), default=-1)
+    steps = max(height) + 1
+    depth = [len(a) for a in anc]
+    pattern = {tri(i, i) for i in range(nv)} | {tri(i, j) for i in range(nv) for j in anc[i]}
+    zero = [e for e in range(nv * (nv + 1) // 2) if e not in pattern]
+    pa_off, pd_off, pa, pd = [0], [0], [], []
+    pb_off, pb_tgt, pb_coff, pb_c = [0], [], [0], []
+    sa_off, sa = [0], []
+    sb_off, sb_tgt, sb_coff, sb_c = [0], [], [0], []
+    for s in range(steps):
+        piv = [k for k in range(nv) if height[k] == s]
+        for k in piv:
+            pa += [(k << 8) | i for i in anc[k]]
+            pd.append(k)
+            sa.append(k)
+        pa_off.append(len(pa))
+        pd_off.append(len(pd))
+        sa_off.append(len(sa))
+        targets = {}
+        for k in piv:
+            for i in anc[k]:
+                for j in anc[k]:
+                    if j <= i:
+                        targets.setdefault(tri(i, j), []).append((tri(k, i) << 16) | tri(k, j))
+        for e in sorted(targets):
+            pb_tgt.append(e)
+            pb_c += targets[e]
+            pb_coff.append(len(pb_c))
+        pb_off.append(len(pb_tgt))
+        vt = {}
+        for k in piv:
+            for i in anc[k]:
+                vt.setdefault(i, []).append((k << 16) | tri(k, i))
+        for i in sorted(vt):
+            sb_tgt.append(i)
+            sb_c += vt[i]
+            sb_coff.append(len(sb_c))
+        sb_off.append(len(sb_tgt))
+    levels = max(depth) + 1
+    lv_off, lv = [0], []
+    for d in range(levels):
+        lv += [i for i in range(nv) if depth[i] == d]
+        lv_off.append(len(lv))
+    ds_off, ds = [0], []
+    for d in range(levels):
+        for j in range(nv):
+            if depth[j] > d:
+                i = anc[j][depth[j] - 1 - d]
+                ds += [(j << 8) | i, tri(j, i)]
+        ds_off.append(len(ds) // 2)
+    return dict(steps=steps, levels=levels, zero=zero, pa_off=pa_off, pa=pa, pd_off=pd_off, pd=pd, pb_off=pb_off,
+                pb_tgt=pb_tgt, pb_coff=pb_coff, pb_c=pb_c, sa_off=sa_off, sa=sa, sb_off=sb_off, sb_tgt=sb_tgt,
+                sb_coff=sb_coff, sb_c=sb_c, lv_off=lv_off, lv=lv, ds_off=ds_off, ds=ds)
+
+
+TREE_TABLES = ("zero", "pa_off", "pa", "pd_off", "pd", "pb_off", "pb_tgt", "pb_coff", "pb_c", "sa_off", "sa", "sb_off",
+               "sb_tgt", "sb_coff", "sb_c", "lv_off", "lv", "ds_off", "ds")
+
+TREE_CHOL_DEVICE = r"""#define TC_FMS(a, b, c) __fmaf_rn(-(a), (b), (c))
+// R (packed lower triangle) from A (A may be L: copy 0): leaves first, the dofs of a step in parallel
+__device__ __noinline__ void chol_tree_factor(const float* A, float* L, int copy, int lane) {
+  if (copy)
+    for (int e = lane; e < NTRI; e += 32) L[e] = A[e];
+  __syncwarp();
+  for (int z = lane; z < TC_NZERO; z += 32) L[tc_zero[z]] = 0.f;
+  __syncwarp();
+  for (int st = 0; st < TC_STEPS; st++) {
+    for (int q = tc_pa_off[st] + lane; q < (int)tc_pa_off[st + 1]; q += 32) {  // R[k][i] = A[k][i] / R[k][k]
+      const int k = tc_pa[q] >> 8, i = tc_pa[q] & 255;
+      L[TRI(k, i)] = L[TRI(k, i)] / sqrtf(fmaxf(L[TRI(k, k)], 1e-30f));
+    }
+    __syncwarp();
+    for (int q = tc_pd_off[st] + lane; q < (int)tc_pd_off[st + 1]; q += 32) {  // R[k][k] = sqrt(A[k][k])
+      const int k = tc_pd[q];
+      L[TRI(k, k)] = sqrtf(fmaxf(L[TRI(k, k)], 1e-30f));
+    }
+    __syncwarp();
+    for (int q = tc_pb_off[st] + lane; q < (int)tc_pb_off[st + 1]; q += 32) {  // the ancestors' block, fixed order
+      float a = L[tc_pb_tgt[q]];
+      for (int c = tc_pb_coff[q]; c < (int)tc_pb_coff[q + 1]; c++)
+        a = TC_FMS(L[tc_pb_c[c] >> 16], L[tc_pb_c[c] & 65535u], a);
+      L[tc_pb_tgt[q]] = a;
+    }
+    __syncwarp();
+  }
+}
+// b := (R' R)^-1 b in place (b: shared NV vector)
+__device__ __noinline__ void chol_tree_solve(const float* L, float* b, int lane) {
+  for (int st = 0; st < TC_STEPS; st++) {  // R' z = b, leaves first
+    for (int q = tc_sa_off[st] + lane; q < (int)tc_sa_off[st + 1]; q += 32) {
+      const int k = tc_sa[q];
+      b[k] = b[k] / L[TRI(k, k)];
+    }
+    __syncwarp();
+    for (int q = tc_sb_off[st] + lane; q < (int)tc_sb_off[st + 1]; q += 32) {
+      const int i = tc_sb_tgt[q];
+      float a = b[i];
+      for (int c = tc_sb_coff[q]; c < (int)tc_sb_coff[q + 1]; c++)
+        a = TC_FMS(L[tc_sb_c[c] & 65535u], b[tc_sb_c[c] >> 16], a);
+      b[i] = a;
+    }
+    __syncwarp();
+  }
+  for (int d = 0; d < TC_LEVELS; d++) {  // R x = z, root first: the level's x, then each descendant's one update
+    for (int q = tc_lv_off[d] + lane; q < (int)tc_lv_off[d + 1]; q += 32) {
+      const int i = tc_lv[q];
+      b[i] = b[i] / L[TRI(i, i)];
+    }
+    __syncwarp();
+    for (int q = tc_ds_off[d] + lane; q < (int)tc_ds_off[d + 1]; q += 32) {
+      const unsigned ji = tc_ds[2 * q];
+      b[ji >> 8] = TC_FMS(L[tc_ds[2 * q + 1]], b[ji & 255u], b[ji >> 8]);
+    }
+    __syncwarp();
+  }
+}
+// out = R' (R x) (-DDK_ADJ_DEBUG's |M a*| with L_Q = R); tmp: an NV scratch vector; all shared
+__device__ void tri_mul_rtr(const float* L, const float* x, float* tmp, float* out, int lane) {
+  for (int i = lane; i < NV; i += 32) {  // tmp = R x, row i
+    float acc = 0.f;
+    for (int j = 0; j <= i; j++) acc += L[TRI(i, j)] * x[j];
+    tmp[i] = acc;
+  }
+  __syncwarp();
+  for (int j = lane; j < NV; j += 32) {  // out = R' tmp, column j
+    float acc = 0.f;
+    for (int i = j; i < NV; i++) acc += L[TRI(i, j)] * tmp[i];
+    out[j] = acc;
+  }
+  __syncwarp();
+}
+
+"""
+
+
+def tree_chol_device(m):
+    """The tree-sparse factorization's device code for model m: the schedule tables (tree_tables) as constants, then
+    chol_tree_factor, chol_tree_solve and tri_mul_rtr (placed before CHOL_SOLVE's definition: step.tree_chol_hooks)."""
+    if tree_chol_emit() == "straight":
+        return tree_chol_device_straight(m)
+    t = tree_tables(m)
+    out = ("// tree-sparse Cholesky (DK_TREE_CHOL, docs/tree_sparse_cholesky.md): A = R' R on the tree pattern, the\n"
+           "// schedule from dof_parentid (source.tree_tables)\n"
+           f"#define TC_STEPS {t['steps']}\n#define TC_LEVELS {t['levels']}\n#define TC_NZERO {len(t['zero'])}\n")
+    for k in TREE_TABLES:
+        v = t[k]
+        out += f"__device__ const unsigned tc_{k}[{max(len(v), 1)}] = {{{', '.join(str(int(x)) for x in v) or '0'}}};\n"
+    return out + TREE_CHOL_DEVICE
+
+
+def tree_chol_device_straight(m):
+    """chol_tree_factor and chol_tree_solve for model m as straight-line code (DK_TREE_CHOL_EMIT=straight, the
+    default): lane c holds column c of the factor (and c + 32 for NV > 32) in registers, the pivots run one after the
+    other in tree_tables' order (height, then index), each ancestor lane divides its own entry of the pivot row, the
+    pivot row's entries go to the lanes by shuffles, and every index is a compile-time constant (no table reads, no shared-memory traffic inside the factorization). Only the tree
+    pattern's entries are computed. Same operations in the same order as the table form (tree_chol_device's
+    TREE_CHOL_DEVICE), so the results are bitwise the same; tri_mul_rtr is shared."""
+    nv, par = m.nv, [int(p) for p in m.dof_parentid]
+    assert nv <= 64, "tree_chol_device_straight: two rows per lane"
+    two = nv > 32
+    anc = []
+    for i in range(nv):
+        a, j = [], par[i]
+        while j >= 0:
+            a.append(j)
+            j = par[j]
+        anc.append(a)
+    children = [[] for _ in range(nv)]
+    for i in range(nv):
+        if par[i] >= 0:
+            children[par[i]].append(i)
+    height = [0] * nv
+    for i in reversed(range(nv)):
+        height[i] = 1 + max((height[c] for c in children[i]), default=-1)
+    order = sorted(range(nv), key=lambda k: (height[k], k))
+    depth = [len(a) for a in anc]
+    desc = [[j for j in range(nv) if i in anc[j]] for i in range(nv)]
+
+    def mask(rows, slot):
+        return sum(1 << (r - 32 * slot) for r in rows if 32 * slot <= r < 32 * slot + 32)
+
+    slots = (0, 1) if two else (0,)
+    src = lambda k: k & 31
+    o = ["#define TC_FMS(a, b, c) __fmaf_rn(-(a), (b), (c))",
+         "// R (packed lower triangle) from A (A may be L: copy 0), straight-line (source.tree_chol_device_straight):",
+         "// lane c holds column c (and c + 32) of the factor, a<slot>[r] = entry (r, c); rows above c unused",
+         "__device__ __noinline__ void chol_tree_factor(const float* A, float* L, int copy, int lane) {",
+         "  (void)copy;",
+         "  const unsigned bit = 1u << lane;"]
+    for t in slots:
+        o.append(f"  float a{t}[NV];")
+    for r in range(nv):
+        for t in slots:
+            mk = mask([r] + anc[r], t)
+            o.append(f"  a{t}[{r}] = (0x{mk:08x}u & bit) ? A[{tri(r, 0)} + lane + {32 * t}] : 0.f;" if mk else f"  a{t}[{r}] = 0.f;")
+    o.append("  __syncwarp();")
+    for k in order:
+        a = anc[k]
+        o.append(f"  {{  // pivot {k}")
+        o.append(f"    const float d = sqrtf(fmaxf(__shfl_sync(0xffffffffu, a{k >> 5}[{k}], {src(k)}), 1e-30f));")
+        for t in slots:
+            mk = mask(a, t)
+            if mk:
+                o.append(f"    if (0x{mk:08x}u & bit) a{t}[{k}] = a{t}[{k}] / d;")
+        for i in a:
+            o.append(f"    const float c{i} = __shfl_sync(0xffffffffu, a{i >> 5}[{k}], {src(i)});")
+        for t in slots:
+            mk = mask(a, t)
+            if not mk:
+                continue
+            o.append(f"    if (0x{mk:08x}u & bit) {{")
+            for i in reversed(a):
+                o.append(f"      a{t}[{i}] = TC_FMS(c{i}, a{t}[{k}], a{t}[{i}]);")
+            o.append("    }")
+        o.append(f"    if (lane == {src(k)}) a{k >> 5}[{k}] = d;")
+        o.append("  }")
+    o.append("  __syncwarp();")
+    for r in range(nv):
+        for t in slots:
+            if 32 * t <= r:
+                o.append(f"  if (lane + {32 * t} <= {r}) L[{tri(r, 0)} + lane + {32 * t}] = a{t}[{r}];")
+    o.append("  __syncwarp();")
+    o.append("}")
+    o.append("// b := (R' R)^-1 b in place (b: shared NV vector), straight-line")
+    o.append("__device__ __noinline__ void chol_tree_solve(const float* L, float* b, int lane) {")
+    o.append("  const unsigned bit = 1u << lane;")
+    for t in slots:
+        o.append(f"  float y{t} = lane + {32 * t} < NV ? b[lane + {32 * t}] : 0.f;")
+    yreg = lambda k: f"y{k >> 5}"
+    for k in order:
+        o.append(f"  {{ const float z = __shfl_sync(0xffffffffu, {yreg(k)}, {src(k)}) / L[{tri(k, k)}];")
+        o.append(f"    if (lane == {src(k)}) {yreg(k)} = z;")
+        for t in slots:
+            mk = mask(anc[k], t)
+            if mk:
+                o.append(f"    if (0x{mk:08x}u & bit) y{t} = TC_FMS(L[{tri(k, 0)} + lane + {32 * t}], z, y{t});")
+        o.append("  }")
+    for dd in range(max(depth) + 1):
+        for i in [i for i in range(nv) if depth[i] == dd]:
+            o.append(f"  {{ const float x = __shfl_sync(0xffffffffu, {yreg(i)}, {src(i)}) / L[{tri(i, i)}];")
+            o.append(f"    if (lane == {src(i)}) {yreg(i)} = x;")
+            for t in slots:
+                mk = mask(desc[i], t)
+                if mk:
+                    o.append(f"    if (0x{mk:08x}u & bit) y{t} = TC_FMS(L[TRI(lane + {32 * t}, {i})], x, y{t});")
+            o.append("  }")
+    o.append("  __syncwarp();")
+    for t in slots:
+        o.append(f"  if (lane + {32 * t} < NV) b[lane + {32 * t}] = y{t};")
+    o.append("  __syncwarp();")
+    o.append("}")
+    rtr = TREE_CHOL_DEVICE[TREE_CHOL_DEVICE.index("// out = R' (R x)"):]
+    return ("// tree-sparse Cholesky (DK_TREE_CHOL, docs/tree_sparse_cholesky.md): A = R' R on the tree pattern, the\n"
+            "// schedule from dof_parentid, as straight-line code (source.tree_chol_device_straight)\n"
+            + "\n".join(o) + "\n" + rtr)
+
+
+def tree_chol_emit():
+    """$DK_TREE_CHOL_EMIT at source generation: straight (default; tree_chol_device_straight) or tables (the
+    table-interpreted form, tree_chol_device's TREE_CHOL_DEVICE). Bitwise the same results; only with DK_TREE_CHOL."""
+    raw = os.environ.get("DK_TREE_CHOL_EMIT", "") or "straight"
+    if raw not in ("straight", "tables"):
+        raise ValueError(f"DK_TREE_CHOL_EMIT={raw!r}: straight or tables")
+    return raw
+
+
+def tree_tables_check(m, n=64, seed=0):
+    """Self-test of tree_tables: the factor and the solve in float64 with the device code's schedule, on random SPD
+    matrices with model m's tree pattern; returns (max relative residual of R' R - A and of A x - b, steps, levels)."""
+    t = tree_tables(m)
+    nv = m.nv
+    rng = np.random.default_rng(seed)
+    d = np.zeros((nv, nv), bool)
+    for i in range(nv):
+        d[i, i] = True
+        j = m.dof_parentid[i]
+        while j >= 0:
+            d[i, j] = d[j, i] = True
+            j = m.dof_parentid[j]
+    worst = 0.0
+    for _ in range(n):
+        B = rng.normal(size=(nv, nv)) * d
+        A = B @ B.T * d + nv * np.eye(nv)
+        A = (A + A.T) / 2
+        try:
+            np.linalg.cholesky(A)
+        except np.linalg.LinAlgError:
+            continue
+        L = np.array([A[i, j] for i in range(nv) for j in range(i + 1)])
+        L[t["zero"]] = 0.0
+        for st in range(t["steps"]):
+            for q in range(t["pa_off"][st], t["pa_off"][st + 1]):
+                k, i = t["pa"][q] >> 8, t["pa"][q] & 255
+                L[tri(k, i)] /= np.sqrt(L[tri(k, k)])
+            for q in range(t["pd_off"][st], t["pd_off"][st + 1]):
+                k = t["pd"][q]
+                L[tri(k, k)] = np.sqrt(L[tri(k, k)])
+            for q in range(t["pb_off"][st], t["pb_off"][st + 1]):
+                for c in range(t["pb_coff"][q], t["pb_coff"][q + 1]):
+                    L[t["pb_tgt"][q]] -= L[t["pb_c"][c] >> 16] * L[t["pb_c"][c] & 65535]
+        R = np.zeros((nv, nv))
+        for i in range(nv):
+            for j in range(i + 1):
+                R[i, j] = L[tri(i, j)]
+        worst = max(worst, np.abs(R.T @ R - A).max() / np.abs(A).max())
+        b = rng.normal(size=nv)
+        x = b.copy()
+        for st in range(t["steps"]):
+            for q in range(t["sa_off"][st], t["sa_off"][st + 1]):
+                k = t["sa"][q]
+                x[k] /= L[tri(k, k)]
+            for q in range(t["sb_off"][st], t["sb_off"][st + 1]):
+                for c in range(t["sb_coff"][q], t["sb_coff"][q + 1]):
+                    x[t["sb_tgt"][q]] -= L[t["sb_c"][c] & 65535] * x[t["sb_c"][c] >> 16]
+        for dd in range(t["levels"]):
+            for q in range(t["lv_off"][dd], t["lv_off"][dd + 1]):
+                i = t["lv"][q]
+                x[i] /= L[tri(i, i)]
+            for q in range(t["ds_off"][dd], t["ds_off"][dd + 1]):
+                ji = t["ds"][2 * q]
+                x[ji >> 8] -= L[t["ds"][2 * q + 1]] * x[ji & 255]
+        worst = max(worst, np.abs(A @ x - b).max() / np.abs(b).max())
+    return worst, t["steps"], t["levels"]

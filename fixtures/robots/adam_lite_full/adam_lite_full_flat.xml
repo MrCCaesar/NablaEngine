@@ -1,0 +1,259 @@
+<mujoco model="adam_lite scene">
+  <compiler angle="radian" meshdir="assets" texturedir="assets"/>
+
+  <option integrator="implicitfast"/>
+
+  <visual>
+    <global azimuth="160" elevation="-20"/>
+    <headlight ambient="0.3 0.3 0.3" diffuse="0.6 0.6 0.6" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+  </visual>
+
+  <default>
+    <default class="adam_lite">
+      <site group="4" rgba="1 0 0 1"/>
+      <default class="visual">
+        <geom type="mesh" contype="0" conaffinity="0" group="2" density="0" material="sliver"/>
+      </default>
+      <default class="collision">
+        <geom group="3"/>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" colorspace="auto" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" colorspace="auto" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="black" specular="1" shininess="1" metallic="1" roughness="0" rgba="0.2 0.2 0.2 1"/>
+    <material name="sliver" specular="1" shininess="1" metallic="1" roughness="0" rgba="0.7 0.7 0.7 1"/>
+    <material name="pnd_logo" specular="1" shininess="1"/>
+    <material name="groundplane" texture="groundplane" texrepeat="5 5" texuniform="true" reflectance="0.2"/>
+  </asset>
+
+  <worldbody>
+    <geom name="floor" size="0 0 0.05" type="plane" contype="0" conaffinity="0" material="groundplane"/>
+    <light pos="0 0 3.5" type="directional"/>
+    <body name="pelvis" childclass="adam_lite" pos="0 0 0.93">
+      <inertial pos="-0.00120281 -1.19e-06 -0.00802155" quat="0.498488 0.49834 -0.501668 0.501493" mass="10.1873" diaginertia="0.0751974 0.068395 0.0375323"/>
+      <joint name="floating_joint" type="free"/>
+      <geom name="pelvis_collision0" class="collision" size="0.1 0.1" quat="0.707388 0.706825 0 0" type="cylinder" contype="0" conaffinity="0"/>
+      <site name="imu"/>
+      <body name="hipPitchLeft" pos="0 0.096192 -0.033241" quat="0.953716 -0.300708 0 0">
+        <inertial pos="-0.0581819 0.0588948 -0.00031205" quat="0.254193 0.376686 0.60653 0.652391" mass="2.15125" diaginertia="0.00511936 0.00508028 0.00314942"/>
+        <joint name="hipPitch_Left" range="-2.09 2.09" actuatorfrcrange="-230 230" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+        <body name="hipRollLeft" pos="-0.0255 0.069 0" quat="0.953716 0.300708 0 0">
+          <inertial pos="0.0399541 -0.00011618 -0.011021" quat="-0.106213 0.535564 0.044112 0.836627" mass="1.29422" diaginertia="0.001475 0.001371 0.00131215"/>
+          <joint name="hipRoll_Left" range="-0.78 1.57" actuatorfrcrange="-160 160" damping="2" axis="1 0 0" actuatorfrclimited="true"/>
+          <body name="thighLeft" pos="0.044 0 -0.0525">
+            <inertial pos="0.00331195 -0.0111247 -0.135198" quat="0.675183 0.0507397 -0.0286771 0.735344" mass="6.6475" diaginertia="0.0628071 0.056896 0.0145546"/>
+            <joint name="hipYaw_Left" range="-0.78 0.78" actuatorfrcrange="-105 105" damping="2" actuatorfrclimited="true"/>
+            <body name="shinLeft" pos="0 -0.0355 -0.369">
+              <inertial pos="-0.00080913 0.00097265 -0.145408" quat="0.6612 -0.003018 -0.00584383 0.75018" mass="2.19866" diaginertia="0.0194116 0.0193296 0.00136517"/>
+              <joint name="kneePitch_Left" range="-0.09 2.4" actuatorfrcrange="-230 230" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+              <geom name="shinLeft_collision0" class="collision" size="0.04 0.03 0.15" pos="0 0 -0.2" type="box" contype="0" conaffinity="0"/>
+              <body name="anklePitchLeft" pos="0 0 -0.37">
+                <inertial pos="0 0 0" mass="0.031" diaginertia="3.23e-06 3.23e-06 2.1e-06"/>
+                <joint name="anklePitch_Left" range="-1 0.35" actuatorfrcrange="-40 40" armature="0.001" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+                <body name="toeLeft">
+                  <inertial pos="0.0370066 -2.063e-05 -0.0419868" quat="0.00469469 0.673963 -0.00294814 0.738744" mass="0.4758" diaginertia="0.00159292 0.00152195 0.000273726"/>
+                  <joint name="ankleRoll_Left" range="-0.3491 0.3491" actuatorfrcrange="-12 12" damping="2" axis="1 0 0" actuatorfrclimited="true"/>
+                  <geom name="toe1_left" class="collision" size="0.015 0.11" pos="0.045 0.025 -0.049" quat="0.703845 0 0.710353 0" type="cylinder" contype="0" conaffinity="0"/>
+                  <geom name="toe2_left" class="collision" size="0.015 0.11" pos="0.045 -0.025 -0.049" quat="0.703845 0 0.710353 0" type="cylinder" contype="0" conaffinity="0"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="hipPitchRight" pos="0 -0.096192 -0.033241" quat="0.953716 0.300708 0 0">
+        <inertial pos="-0.0581816 -0.0588696 -0.00032981" quat="0.648631 0.611936 0.367995 0.263425" mass="2.15124" diaginertia="0.0051141 0.0050828 0.00314994"/>
+        <joint name="hipPitch_Right" range="-2.09 2.09" actuatorfrcrange="-230 230" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+        <body name="hipRollRight" pos="-0.0255 -0.069 0" quat="0.953716 -0.300708 0 0">
+          <inertial pos="0.0398817 0.00011594 -0.0110209" quat="0.102657 0.530738 -0.0414919 0.840272" mass="1.29423" diaginertia="0.00147637 0.00137013 0.00131019"/>
+          <joint name="hipRoll_Right" range="-1.57 0.78" actuatorfrcrange="-160 160" damping="2" axis="1 0 0" actuatorfrclimited="true"/>
+          <body name="thighRight" pos="0.044 0 -0.0525">
+            <inertial pos="0.00332701 0.0111027 -0.13529" quat="0.734268 -0.0285841 0.0502267 0.676395" mass="6.64755" diaginertia="0.0630598 0.0571586 0.0145332"/>
+            <joint name="hipYaw_Right" range="-0.78 0.78" actuatorfrcrange="-105 105" damping="2" actuatorfrclimited="true"/>
+            <body name="shinRight" pos="0 0.0355 -0.369">
+              <inertial pos="-0.00079979 -0.00097288 -0.146351" quat="0.750551 -0.00574198 -0.00281104 0.660781" mass="2.20809" diaginertia="0.0198783 0.0197996 0.00136891"/>
+              <joint name="kneePitch_Right" range="-0.09 2.4" actuatorfrcrange="-230 230" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+              <geom name="shinRight_collision0" class="collision" size="0.04 0.03 0.15" pos="0 0 -0.2" type="box" contype="0" conaffinity="0"/>
+              <body name="anklePitchRight" pos="0 0 -0.37">
+                <inertial pos="0 0 0" mass="0.031" diaginertia="3.23e-06 3.23e-06 2.1e-06"/>
+                <joint name="anklePitch_Right" range="-1 0.35" actuatorfrcrange="-40 40" armature="0.001" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+                <body name="toeRight">
+                  <inertial pos="0.037003 2.151e-05 -0.0419756" quat="-0.00470409 0.67392 0.00290833 0.738784" mass="0.4758" diaginertia="0.00159272 0.00152205 0.000274003"/>
+                  <joint name="ankleRoll_Right" range="-0.3491 0.3491" actuatorfrcrange="-12 12" damping="2" axis="1 0 0" actuatorfrclimited="true"/>
+                  <geom name="toe1_right" class="collision" size="0.015 0.11" pos="0.045 0.025 -0.049" quat="0.703845 0 0.710353 0" type="cylinder" contype="0" conaffinity="0"/>
+                  <geom name="toe2_right" class="collision" size="0.015 0.11" pos="0.045 -0.025 -0.049" quat="0.703845 0 0.710353 0" type="cylinder" contype="0" conaffinity="0"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="waistRoll" pos="0 0 0.044">
+        <inertial pos="0.00212014 0.00212051 0.0399999" quat="0.923038 0.0138501 0.0334997 -0.382998" mass="2.18431" diaginertia="0.0049266 0.00489447 0.00200283"/>
+        <joint name="waistRoll" range="-0.52 0.52" actuatorfrcrange="-110 110" damping="2" axis="1 0 0" actuatorfrclimited="true"/>
+        <body name="waistPitch" pos="0 0 0.08">
+          <inertial pos="-0.00066627 0.00070478 0.0250655" quat="0.490275 0.505791 -0.509543 0.494137" mass="0.4987" diaginertia="0.00144147 0.0013606 0.000609845"/>
+          <joint name="waistPitch" range="-0.78 0.78" actuatorfrcrange="-110 110" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+          <body name="torso" pos="0 0.0005 0.053">
+            <inertial pos="0.00080019 -3.149e-05 0.183003" quat="0.999892 -0.000596029 -0.0147105 0.000333188" mass="13.286" diaginertia="0.199038 0.161154 0.0724599"/>
+            <joint name="waistYaw" range="-0.78 0.78" actuatorfrcrange="-110 110" damping="2" actuatorfrclimited="true"/>
+            <geom name="torso_collision0" class="collision" size="0.13" pos="0 0 0.15" contype="0" conaffinity="0"/>
+            <body name="shoulderPitchLeft" pos="0 0.16011 0.25742" quat="0.984807 0.17365 0 0">
+              <inertial pos="-0.00150404 0.0268884 0.00010848" quat="-0.0108407 0.705644 0.0165332 0.70829" mass="0.2031" diaginertia="0.000343856 0.000289125 0.000170019"/>
+              <joint name="shoulderPitch_Left" range="-2.7 1" actuatorfrcrange="-65 65" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+              <body name="shoulderRollLeft" pos="0.0335 0.0435 0" quat="0.984807 -0.17365 0 0">
+                <inertial pos="-0.0286045 0.0110425 -0.0140531" quat="0.376737 -0.1477 0.30048 0.863693" mass="0.7248" diaginertia="0.000958643 0.000867101 0.000403886"/>
+                <joint name="shoulderRoll_Left" range="-0.3 3.14" actuatorfrcrange="-65 65" damping="2" axis="1 0 0" actuatorfrclimited="true"/>
+                <geom name="shoulderRollLeft_collision0" class="collision" size="0.035 0.05" pos="-0.03 0 0" quat="0.707105 0 0.707108 0" type="cylinder" contype="0" conaffinity="0"/>
+                <body name="shoulderYawLeft" pos="-0.0335 0.034 -0.0585">
+                  <inertial pos="-0.00069813 0.00102049 -0.0684231" quat="0.999758 -0.0173498 -0.010067 -0.00907623" mass="0.6963" diaginertia="0.00317999 0.00310761 0.000390118"/>
+                  <joint name="shoulderYaw_Left" range="-1.6 1.6" actuatorfrcrange="-65 65" damping="2" actuatorfrclimited="true"/>
+                  <geom name="shoulderYawLeft_collision0" class="collision" size="0.038 0.075" pos="0 0 -0.08" type="cylinder" contype="0" conaffinity="0"/>
+                  <body name="elbowLeft" pos="0 -0.0285 -0.20415">
+                    <inertial pos="-0.0216442 0.0277621 -0.0446964" quat="0.897923 0.0631943 -0.210786 -0.381195" mass="0.854" diaginertia="0.000828975 0.000780354 0.000400291"/>
+                    <joint name="elbow_Left" range="-2 0" actuatorfrcrange="-30 30" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+                    <body name="wristYawLeft" pos="-0.025 0.0285 -0.0729">
+                      <inertial pos="1.826e-05 -0.00013856 -0.156089" quat="0.724287 0.000597867 -0.000753285 0.689498" mass="0.7346" diaginertia="0.00772314 0.00772306 0.000299893"/>
+                      <joint name="wristYaw_Left" actuatorfrcrange="-6.4 6.4" damping="2" actuatorfrclimited="true"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+            <body name="shoulderPitchRight" pos="0 -0.16011 0.25742" quat="0.984807 -0.17365 0 0">
+              <inertial pos="-0.00150404 -0.0268723 0.00010766" quat="0.0103482 0.705652 -0.0161722 0.708298" mass="0.2031" diaginertia="0.000343746 0.000289114 0.00016992"/>
+              <joint name="shoulderPitch_Right" range="-2.7 1.1" actuatorfrcrange="-65 65" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+              <body name="shoulderRollRight" pos="0.0335 -0.0435 0" quat="0.984807 0.17365 0 0">
+                <inertial pos="-0.0286045 -0.0110459 -0.0140499" quat="0.863671 0.30066 -0.147632 0.37667" mass="0.7248" diaginertia="0.000958654 0.000867086 0.00040393"/>
+                <joint name="shoulderRoll_Right" range="-3.14 0.3" actuatorfrcrange="-65 65" damping="2" axis="1 0 0" actuatorfrclimited="true"/>
+                <geom name="shoulderRollRight_collision0" class="collision" size="0.035 0.05" pos="-0.03 0 0" quat="0.707105 0 0.707108 0" type="cylinder" contype="0" conaffinity="0"/>
+                <body name="shoulderYawRight" pos="-0.0335 -0.034 -0.0585">
+                  <inertial pos="-0.00089274 -0.00096643 -0.0698052" quat="0.999767 0.0172729 -0.0100354 0.00814411" mass="0.6963" diaginertia="0.00304741 0.00298071 0.000413386"/>
+                  <joint name="shoulderYaw_Right" range="-1.6 1.6" actuatorfrcrange="-65 65" damping="2" actuatorfrclimited="true"/>
+                  <geom name="shoulderYawRight_collision0" class="collision" size="0.038 0.075" pos="0 0 -0.08" type="cylinder" contype="0" conaffinity="0"/>
+                  <body name="elbowRight" pos="0 0.0285 -0.20415">
+                    <inertial pos="-0.0121233 -0.0262957 -0.026584" quat="0.913189 -0.0537938 -0.213066 0.343213" mass="0.854" diaginertia="0.00116315 0.00108042 0.000405614"/>
+                    <joint name="elbow_Right" range="-2 0" actuatorfrcrange="-30 30" damping="2" axis="0 1 0" actuatorfrclimited="true"/>
+                    <body name="wristYawRight" pos="-0.025 -0.0285 -0.0729">
+                      <inertial pos="1.64e-05 0.00018166 -0.177952" quat="0.698472 -0.000816832 0.000645819 0.715636" mass="0.7346" diaginertia="0.00788006 0.00787989 0.000312547"/>
+                      <joint name="wristYaw_Right" actuatorfrcrange="-6.4 6.4" damping="2" actuatorfrclimited="true"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <pair geom1="floor" geom2="pelvis_collision0" name="p0_floor__pelvis_collision0"/>
+    <pair geom1="floor" geom2="shinLeft_collision0" name="p1_floor__shinLeft_collision0"/>
+    <pair geom1="floor" geom2="toe1_left" name="p2_floor__toe1_left"/>
+    <pair geom1="floor" geom2="toe2_left" name="p3_floor__toe2_left"/>
+    <pair geom1="floor" geom2="shinRight_collision0" name="p4_floor__shinRight_collision0"/>
+    <pair geom1="floor" geom2="toe1_right" name="p5_floor__toe1_right"/>
+    <pair geom1="floor" geom2="toe2_right" name="p6_floor__toe2_right"/>
+    <pair geom1="floor" geom2="torso_collision0" name="p7_floor__torso_collision0"/>
+    <pair geom1="floor" geom2="shoulderRollLeft_collision0" name="p8_floor__shoulderRollLeft_collision0"/>
+    <pair geom1="floor" geom2="shoulderYawLeft_collision0" name="p9_floor__shoulderYawLeft_collision0"/>
+    <pair geom1="floor" geom2="shoulderRollRight_collision0" name="p10_floor__shoulderRollRight_collision0"/>
+    <pair geom1="floor" geom2="shoulderYawRight_collision0" name="p11_floor__shoulderYawRight_collision0"/>
+    <pair geom1="pelvis_collision0" geom2="shinLeft_collision0" name="p12_pelvis_collision0__shinLeft_collision0"/>
+    <pair geom1="pelvis_collision0" geom2="toe1_left" name="p13_pelvis_collision0__toe1_left"/>
+    <pair geom1="pelvis_collision0" geom2="toe2_left" name="p14_pelvis_collision0__toe2_left"/>
+    <pair geom1="pelvis_collision0" geom2="shinRight_collision0" name="p15_pelvis_collision0__shinRight_collision0"/>
+    <pair geom1="pelvis_collision0" geom2="toe1_right" name="p16_pelvis_collision0__toe1_right"/>
+    <pair geom1="pelvis_collision0" geom2="toe2_right" name="p17_pelvis_collision0__toe2_right"/>
+    <pair geom1="pelvis_collision0" geom2="torso_collision0" name="p18_pelvis_collision0__torso_collision0"/>
+    <pair geom1="pelvis_collision0" geom2="shoulderRollLeft_collision0" name="p19_pelvis_collision0__shoulderRollLeft_collision0"/>
+    <pair geom1="pelvis_collision0" geom2="shoulderYawLeft_collision0" name="p20_pelvis_collision0__shoulderYawLeft_collision0"/>
+    <pair geom1="pelvis_collision0" geom2="shoulderRollRight_collision0" name="p21_pelvis_collision0__shoulderRollRight_collision0"/>
+    <pair geom1="pelvis_collision0" geom2="shoulderYawRight_collision0" name="p22_pelvis_collision0__shoulderYawRight_collision0"/>
+    <pair geom1="shinLeft_collision0" geom2="toe1_left" name="p23_shinLeft_collision0__toe1_left"/>
+    <pair geom1="shinLeft_collision0" geom2="toe2_left" name="p24_shinLeft_collision0__toe2_left"/>
+    <pair geom1="shinLeft_collision0" geom2="shinRight_collision0" name="p25_shinLeft_collision0__shinRight_collision0"/>
+    <pair geom1="shinLeft_collision0" geom2="toe1_right" name="p26_shinLeft_collision0__toe1_right"/>
+    <pair geom1="shinLeft_collision0" geom2="toe2_right" name="p27_shinLeft_collision0__toe2_right"/>
+    <pair geom1="shinLeft_collision0" geom2="torso_collision0" name="p28_shinLeft_collision0__torso_collision0"/>
+    <pair geom1="shinLeft_collision0" geom2="shoulderRollLeft_collision0" name="p29_shinLeft_collision0__shoulderRollLeft_collision0"/>
+    <pair geom1="shinLeft_collision0" geom2="shoulderYawLeft_collision0" name="p30_shinLeft_collision0__shoulderYawLeft_collision0"/>
+    <pair geom1="shinLeft_collision0" geom2="shoulderRollRight_collision0" name="p31_shinLeft_collision0__shoulderRollRight_collision0"/>
+    <pair geom1="shinLeft_collision0" geom2="shoulderYawRight_collision0" name="p32_shinLeft_collision0__shoulderYawRight_collision0"/>
+    <pair geom1="toe1_left" geom2="shinRight_collision0" name="p33_toe1_left__shinRight_collision0"/>
+    <pair geom1="toe1_left" geom2="toe1_right" name="p34_toe1_left__toe1_right"/>
+    <pair geom1="toe1_left" geom2="toe2_right" name="p35_toe1_left__toe2_right"/>
+    <pair geom1="toe1_left" geom2="torso_collision0" name="p36_toe1_left__torso_collision0"/>
+    <pair geom1="toe1_left" geom2="shoulderRollLeft_collision0" name="p37_toe1_left__shoulderRollLeft_collision0"/>
+    <pair geom1="toe1_left" geom2="shoulderYawLeft_collision0" name="p38_toe1_left__shoulderYawLeft_collision0"/>
+    <pair geom1="toe1_left" geom2="shoulderRollRight_collision0" name="p39_toe1_left__shoulderRollRight_collision0"/>
+    <pair geom1="toe1_left" geom2="shoulderYawRight_collision0" name="p40_toe1_left__shoulderYawRight_collision0"/>
+    <pair geom1="toe2_left" geom2="shinRight_collision0" name="p41_toe2_left__shinRight_collision0"/>
+    <pair geom1="toe2_left" geom2="toe1_right" name="p42_toe2_left__toe1_right"/>
+    <pair geom1="toe2_left" geom2="toe2_right" name="p43_toe2_left__toe2_right"/>
+    <pair geom1="toe2_left" geom2="torso_collision0" name="p44_toe2_left__torso_collision0"/>
+    <pair geom1="toe2_left" geom2="shoulderRollLeft_collision0" name="p45_toe2_left__shoulderRollLeft_collision0"/>
+    <pair geom1="toe2_left" geom2="shoulderYawLeft_collision0" name="p46_toe2_left__shoulderYawLeft_collision0"/>
+    <pair geom1="toe2_left" geom2="shoulderRollRight_collision0" name="p47_toe2_left__shoulderRollRight_collision0"/>
+    <pair geom1="toe2_left" geom2="shoulderYawRight_collision0" name="p48_toe2_left__shoulderYawRight_collision0"/>
+    <pair geom1="shinRight_collision0" geom2="toe1_right" name="p49_shinRight_collision0__toe1_right"/>
+    <pair geom1="shinRight_collision0" geom2="toe2_right" name="p50_shinRight_collision0__toe2_right"/>
+    <pair geom1="shinRight_collision0" geom2="torso_collision0" name="p51_shinRight_collision0__torso_collision0"/>
+    <pair geom1="shinRight_collision0" geom2="shoulderRollLeft_collision0" name="p52_shinRight_collision0__shoulderRollLeft_collision0"/>
+    <pair geom1="shinRight_collision0" geom2="shoulderYawLeft_collision0" name="p53_shinRight_collision0__shoulderYawLeft_collision0"/>
+    <pair geom1="shinRight_collision0" geom2="shoulderRollRight_collision0" name="p54_shinRight_collision0__shoulderRollRight_collision0"/>
+    <pair geom1="shinRight_collision0" geom2="shoulderYawRight_collision0" name="p55_shinRight_collision0__shoulderYawRight_collision0"/>
+    <pair geom1="toe1_right" geom2="torso_collision0" name="p56_toe1_right__torso_collision0"/>
+    <pair geom1="toe1_right" geom2="shoulderRollLeft_collision0" name="p57_toe1_right__shoulderRollLeft_collision0"/>
+    <pair geom1="toe1_right" geom2="shoulderYawLeft_collision0" name="p58_toe1_right__shoulderYawLeft_collision0"/>
+    <pair geom1="toe1_right" geom2="shoulderRollRight_collision0" name="p59_toe1_right__shoulderRollRight_collision0"/>
+    <pair geom1="toe1_right" geom2="shoulderYawRight_collision0" name="p60_toe1_right__shoulderYawRight_collision0"/>
+    <pair geom1="toe2_right" geom2="torso_collision0" name="p61_toe2_right__torso_collision0"/>
+    <pair geom1="toe2_right" geom2="shoulderRollLeft_collision0" name="p62_toe2_right__shoulderRollLeft_collision0"/>
+    <pair geom1="toe2_right" geom2="shoulderYawLeft_collision0" name="p63_toe2_right__shoulderYawLeft_collision0"/>
+    <pair geom1="toe2_right" geom2="shoulderRollRight_collision0" name="p64_toe2_right__shoulderRollRight_collision0"/>
+    <pair geom1="toe2_right" geom2="shoulderYawRight_collision0" name="p65_toe2_right__shoulderYawRight_collision0"/>
+    <pair geom1="torso_collision0" geom2="shoulderRollLeft_collision0" name="p66_torso_collision0__shoulderRollLeft_collision0"/>
+    <pair geom1="torso_collision0" geom2="shoulderYawLeft_collision0" name="p67_torso_collision0__shoulderYawLeft_collision0"/>
+    <pair geom1="torso_collision0" geom2="shoulderRollRight_collision0" name="p68_torso_collision0__shoulderRollRight_collision0"/>
+    <pair geom1="torso_collision0" geom2="shoulderYawRight_collision0" name="p69_torso_collision0__shoulderYawRight_collision0"/>
+    <pair geom1="shoulderRollLeft_collision0" geom2="shoulderRollRight_collision0" name="p70_shoulderRollLeft_collision0__shoulderRollRight_collision0"/>
+    <pair geom1="shoulderRollLeft_collision0" geom2="shoulderYawRight_collision0" name="p71_shoulderRollLeft_collision0__shoulderYawRight_collision0"/>
+    <pair geom1="shoulderYawLeft_collision0" geom2="shoulderRollRight_collision0" name="p72_shoulderYawLeft_collision0__shoulderRollRight_collision0"/>
+    <pair geom1="shoulderYawLeft_collision0" geom2="shoulderYawRight_collision0" name="p73_shoulderYawLeft_collision0__shoulderYawRight_collision0"/>
+  </contact>
+
+  <actuator>
+    <general name="hipPitch_Left" joint="hipPitch_Left" ctrlrange="-2.09 2.09" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="hipRoll_Left" joint="hipRoll_Left" ctrlrange="-0.78 1.57" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="hipYaw_Left" joint="hipYaw_Left" ctrlrange="-0.78 0.78" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="kneePitch_Left" joint="kneePitch_Left" ctrlrange="-0.09 2.4" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="anklePitch_Left" joint="anklePitch_Left" ctrlrange="-1 0.35" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="ankleRoll_Left" joint="ankleRoll_Left" ctrlrange="-0.3491 0.3491" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="hipPitch_Right" joint="hipPitch_Right" ctrlrange="-2.09 2.09" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="hipRoll_Right" joint="hipRoll_Right" ctrlrange="-1.57 0.78" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="hipYaw_Right" joint="hipYaw_Right" ctrlrange="-0.78 0.78" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="kneePitch_Right" joint="kneePitch_Right" ctrlrange="-0.09 2.4" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="anklePitch_Right" joint="anklePitch_Right" ctrlrange="-1 0.35" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="ankleRoll_Right" joint="ankleRoll_Right" ctrlrange="-0.3491 0.3491" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="waistRoll" joint="waistRoll" ctrlrange="-0.52 0.52" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="waistPitch" joint="waistPitch" ctrlrange="-0.78 0.78" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="waistYaw" joint="waistYaw" ctrlrange="-0.78 0.78" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="shoulderPitch_Left" joint="shoulderPitch_Left" ctrlrange="-2.7 1" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="shoulderRoll_Left" joint="shoulderRoll_Left" ctrlrange="-0.3 3.14" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="shoulderYaw_Left" joint="shoulderYaw_Left" ctrlrange="-1.6 1.6" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="elbow_Left" joint="elbow_Left" ctrlrange="-2 0" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="wristYaw_Left" joint="wristYaw_Left" ctrllimited="false" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="shoulderPitch_Right" joint="shoulderPitch_Right" ctrlrange="-2.7 1.1" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="shoulderRoll_Right" joint="shoulderRoll_Right" ctrlrange="-3.14 0.3" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="shoulderYaw_Right" joint="shoulderYaw_Right" ctrlrange="-1.6 1.6" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="elbow_Right" joint="elbow_Right" ctrlrange="-2 0" ctrllimited="true" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+    <general name="wristYaw_Right" joint="wristYaw_Right" ctrllimited="false" forcelimited="false" biastype="affine" gainprm="100" biasprm="0 -100"/>
+  </actuator>
+</mujoco>

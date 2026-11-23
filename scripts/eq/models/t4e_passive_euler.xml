@@ -1,0 +1,43 @@
+<!-- T4E: T4 with the Euler integrator (eulerdamp: the joint damping implicit, the tendon damping explicit as in MuJoCo C). T4: tendon passive forces and armature on a 4-dof arm (hinge, hinge, slide, hinge), implicitfast: tendon "s1" with
+     stiffness and a deadband (springlength -0.05 .. 0.05), damping and armature; tendon "s2" with stiffness to a
+     single rest length, damping and armature, overlapping s1 on two dofs (M and the implicit matrix get off-diagonal
+     entries within the tree) -->
+<mujoco model="eq_t4_passive">
+  <option timestep="0.002" integrator="Euler"/>
+  <default>
+    <joint damping="0.05" armature="0.002"/>
+    <geom type="capsule" size="0.02" density="500" contype="0" conaffinity="0"/>
+  </default>
+  <worldbody>
+    <body name="l1" pos="0 0 1">
+      <joint name="h1" axis="0 0 1"/>
+      <geom fromto="0 0 0 0.2 0 0"/>
+      <body name="l2" pos="0.2 0 0">
+        <joint name="h2" axis="0 1 0"/>
+        <geom fromto="0 0 0 0.2 0 0"/>
+        <body name="l3" pos="0.2 0 0">
+          <joint name="s3" type="slide" axis="1 0 0"/>
+          <geom fromto="0 0 0 0.15 0 0"/>
+          <body name="l4" pos="0.15 0 0">
+            <joint name="h4" axis="0 1 0"/>
+            <geom fromto="0 0 0 0.1 0 -0.05"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <tendon>
+    <fixed name="s1" stiffness="8" springlength="-0.05 0.05" damping="0.6" armature="0.03">
+      <joint joint="h1" coef="0.7"/><joint joint="h2" coef="-0.4"/><joint joint="s3" coef="2"/>
+    </fixed>
+    <fixed name="s2" stiffness="3" springlength="0.1" damping="0.9" armature="0.01">
+      <joint joint="h2" coef="1"/><joint joint="s3" coef="-1.5"/><joint joint="h4" coef="0.5"/>
+    </fixed>
+  </tendon>
+  <actuator>
+    <motor joint="h1" ctrlrange="-2 2"/>
+    <motor joint="h2" ctrlrange="-2 2"/>
+    <motor joint="s3" ctrlrange="-5 5"/>
+    <motor joint="h4" ctrlrange="-1 1"/>
+  </actuator>
+</mujoco>

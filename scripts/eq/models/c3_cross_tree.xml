@@ -1,0 +1,42 @@
+<!-- C3: a connect across two kinematic trees, in a model with nv > 32 (the Newton Hessian's per-component Cholesky,
+chol_solve_comps, is on). Arm A (hinges z, y) and arm B (slide x, hinge y) hang from the world as separate trees; A's
+tip is connected to B's tip, coupling the trees through the Hessian only. Five free boxes fall on a floor beside them
+(contacts, 30 more dofs). -->
+<mujoco model="c3_cross_tree">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default>
+    <joint damping="0.05"/>
+    <geom density="800"/>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="3 3 0.1"/>
+    <body name="a1" pos="0 0 1">
+      <joint name="a1" type="hinge" axis="0 0 1"/>
+      <geom type="capsule" fromto="0 0 0 0.2 0 0" size="0.015" contype="0" conaffinity="0"/>
+      <body name="a2" pos="0.2 0 0">
+        <joint name="a2" type="hinge" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 0.15 0 -0.2" size="0.012" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+    <body name="b1" pos="0.6 0 1">
+      <joint name="b1" type="slide" axis="1 0 0" range="-0.2 0.2"/>
+      <geom type="box" size="0.03 0.03 0.03" contype="0" conaffinity="0"/>
+      <body name="b2" pos="0 0 0">
+        <joint name="b2" type="hinge" axis="0 1 0"/>
+        <geom type="capsule" fromto="0 0 0 -0.25 0 -0.2" size="0.012" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+    <body name="box0" pos="1.2 0 0.2"><freejoint/><geom type="box" size="0.05 0.05 0.05"/></body>
+    <body name="box1" pos="1.4 0 0.3"><freejoint/><geom type="box" size="0.05 0.04 0.05"/></body>
+    <body name="box2" pos="1.2 0.2 0.4"><freejoint/><geom type="box" size="0.04 0.05 0.05"/></body>
+    <body name="box3" pos="1.4 0.2 0.25"><freejoint/><geom type="sphere" size="0.05"/></body>
+    <body name="box4" pos="1.3 0.1 0.6"><freejoint/><geom type="box" size="0.05 0.05 0.04"/></body>
+  </worldbody>
+  <equality>
+    <connect name="bridge" body1="a2" body2="b2" anchor="0.15 0 -0.2" solref="0.005 1" solimp="0.95 0.99 0.001"/>
+  </equality>
+  <actuator>
+    <motor joint="a1" ctrlrange="-1 1"/>
+    <motor joint="b1" ctrlrange="-5 5"/>
+  </actuator>
+</mujoco>

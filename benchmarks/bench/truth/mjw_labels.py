@@ -38,9 +38,9 @@ from benchmarks.bench.truth import common
 
 ITERATIONS = 50
 NCONMAX, NJMAX = 64, 192
-LIMIT_JOINT = 3  # mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT (MuJoCo Warp's ConstraintType.LIMIT_JOINT)
-QUADRATIC = 1  # ConstraintState.QUADRATIC
-PLANE, CAPSULE = 0, 3  # mujoco.mjtGeom
+LIMIT_JOINT = 3
+QUADRATIC = 1
+PLANE, CAPSULE = 0, 3
 
 
 def _version(name):
@@ -51,7 +51,6 @@ def _version(name):
 
 
 def _substep(mjm, d, n, pair_of, plane, capsule):
-    """The per-world contact signature of the substep just stepped (module docstring), numpy."""
     na = min(int(d.nacon.numpy()[0]), d.contact.worldid.shape[0])
     geom = d.contact.geom.numpy()[:na].astype(np.int64)
     wid = d.contact.worldid.numpy()[:na].astype(np.int64)
@@ -81,7 +80,7 @@ def _substep(mjm, d, n, pair_of, plane, capsule):
         a = np.where(use, adr[:, e], 0)
         zone |= np.where(use & (force[wid, a] > 0), 1 << e, 0)
         zone_st |= np.where(use & (state[wid, a] == QUADRATIC), 1 << e, 0)
-    order = np.lexsort((code, wid))  # stable: equal codes keep MuJoCo Warp's order
+    order = np.lexsort((code, wid))
     out = dict(con_code=np.full((n, common.MAXC), -1, np.int64), con_t=np.zeros((n, common.MAXC, 6), np.float32),
                con_dim=np.zeros((n, common.MAXC), np.int32), con_zone=np.zeros((n, common.MAXC), np.int32),
                con_zone_state=np.zeros((n, common.MAXC), np.int32))
@@ -112,7 +111,7 @@ def run(prob, arrays, iterations=ITERATIONS, nconmax=NCONMAX, njmax=NJMAX):
     import mujoco
     import warp as wp
     wp.config.quiet = True
-    if hasattr(wp, "LOG_WARNING"):  # Warp >= 1.18 logs every module load at the default level
+    if hasattr(wp, "LOG_WARNING"):
         wp.config.log_level = wp.LOG_WARNING
     import mujoco_warp as mjw
     if not wp.is_cuda_available():
@@ -141,7 +140,7 @@ def run(prob, arrays, iterations=ITERATIONS, nconmax=NCONMAX, njmax=NJMAX):
             from mujoco_warp._src.types import OverflowType as ot
         m.opt.warn_overflow = int(m.opt.warn_overflow) & ~int(ot.ITERATIONS | ot.LS_ITERATIONS)
         d = mjw.put_data(mjm, mjd, nworld=n, nconmax=nconmax, njmax=njmax, naconmax=nconmax * n)
-        f32 = lambda x: wp.array(np.ascontiguousarray(x, np.float32), dtype=float)  # noqa: E731
+        f32 = lambda x: wp.array(np.ascontiguousarray(x, np.float32), dtype=float)
         for dst, k in ((d.qpos, "qpos"), (d.qvel, "qvel"), (d.qacc_warmstart, "qacc_warmstart"), (d.ctrl, "ctrl")):
             wp.copy(dst, f32(arrays[k]))
         d.overflow.zero_()

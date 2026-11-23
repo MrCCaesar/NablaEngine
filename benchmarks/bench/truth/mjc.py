@@ -3,69 +3,7 @@ solver-truncation floors, the finite-difference gradient truth, the C-only group
 MuJoCo Warp and the fixed seeded sampling. CPU only; numpy, mujoco and truth/fdlib.py, whose MuJoCo C helpers define
 the semantics reused here: _set_dr (per-world DR), _contacts / _limits / _zones (per-substep contact codes, tangent
 frames, zones with efc_force > 0) and fd_job (the central differences of one control step and their column-validity
-bits). Nothing here imports MuJoCo Warp or NablaEngine.
-
-Options of the MuJoCo C runs (on the problem's model, benchmarks/bench/problem.py: sensors off, ctrl held over the
-problem's substeps, qfrc_applied 0, per-world foot-floor friction and torso COM offset on Track A):
-  truth   Newton 2000 iterations, tolerance 1e-13, ls_iterations 100
-  it50    50 iterations, tolerance 1e-8, ls 8: the reference iteration count; the C-only G9 label and a floor row
-  it10    10 iterations, tolerance 1e-8, ls 8: the headline iteration count; a floor row (pure solver truncation)
-  native  Track B only (a problem whose iterations are not set explicitly): the model's own options (Menagerie
-          scene_mjx.xml: 5 iterations, tolerance 1e-8, ls 8); a floor row of the native Track B rows
-
-State labels (MuJoCo C alone, the truth run unless stated; any of the control step's substeps; LABEL_BITS):
-  G1_axis_lt_5mm   a self contact between two sphere / capsule geoms with nu = dist + r1 + r2 (the centre or axis
-                   distance before the radii) below 5 mm; G1_axis_lt_1mm below 1 mm (report only: the contact
-                   normal's derivative grows like 1 / nu)
-  G2_contact_flip  min |dist| < 1e-6 m over the substep's contacts and over every pair within 1e-5 m of touching
-                   (MuJoCo C collision of the substep's input state with pair and geom margins 1e-5): a contact that
-                   appears or disappears within rounding of the state (the float64 half of
-                   nablaengine.reference.adjoint_groups' G2; its MuJoCo Warp reference-set half has no C analogue)
-  G3_kink          a contact or limit row with |J a* - aref| < 1e-4 (|J a*| + |aref|), i.e. near its active / inactive
-                   boundary (a* = the solver's qacc; J a* by mj_mulJacVec); a friction-loss row with
-                   | |J a* - aref| - R f | < 1e-4 R f (its quadratic / linear boundary; R = efc_R, f = frictionloss)
-  G4_clamped       an actuator force (actuator_force) outside the jnt_actfrcrange of its joint (the clamp mask of
-                   fdlib's validity bit), or a force-limited actuator at its forcerange
-  G5_limits        a joint- or tendon-limit row present
-  G6_self_contact  a contact between two geoms whose bodies are not welded to the world
-  G7_basis_switch  a self contact whose normal has ||n_y| - 0.5| < 0.02: mju_makeFrame's choice of the default
-                   tangent axis switches at |n_y| = 0.5 (MuJoCo C and MuJoCo Warp share it). MuJoCo Warp's
-                   plane-capsule fallback (|capsule axis projected on the plane| < 0.5) is a MuJoCo Warp convention,
-                   not a discontinuity of MuJoCo C's dynamics, so it is not a C-only label; those states are caught
-                   by the model check's frame bit instead
-  G9_nonconv       the it50 run reaches its 50 iterations in some substep and island (MuJoCo Warp's labels,
-                   nablaengine.reference.adjoint_groups, count the same at 50 iterations)
-  G0_normal        none of G1_axis_lt_5mm, G2, G3, G7, G9
-  truth_nonconv    the truth run reaches 2000 iterations (every gradient column then carries the solver bit)
-  nonfinite        the truth run's output is not finite, or MuJoCo C warned of a bad qpos / qvel / qacc
-Groups (GROUPS, of the gradient truth and the per-group forward subsets, defined on these labels): G0 = G0_normal & ~G4_clamped, G4 = G0_normal & G4_clamped, G5 = G0_normal & G5_limits &
-~G4_clamped, G6 = G0_normal & G6_self_contact & ~G4_clamped, G1 = G1_axis_lt_5mm (report only).
-
-Model check (model_check, for any substep count): the truth
-run's per-substep contacts (code = pair * 4 + plane-capsule end), their zones (edge by edge, active = efc_force > 0),
-the joint-limit rows and their zones, and the tangent frames of condim-3 contacts whose edges are in mixed zones,
-against native MuJoCo Warp 3.17.0's forward (truth/mjw_labels.py): flags model_contacts 1, model_frame 2 (1 - |cos|
-of t1 against MuJoCo Warp's t1 or t2 above 1e-4), model_zones 4; 0 = model-ok.
-
-Gradient truth (fd_task = fdlib.fd_job, Track A's 4 substeps): for each column j of (qpos tangent (nv,
-perturbed with mj_integratePos, so the quaternion stays normalised), qvel (nv), ctrl (nu)) one control step at x +- h
-e_j for h = 1e-6 and 1e-7; J (2, nq + nv, 2 nv + nu) with qpos' in qpos form; column bits (BAD) step (the two steps
-differ by more than 1e-4 relative + 1e-6 absolute on the qpos' or qvel' rows), contacts (a substep's contact set
-differs), rows (rows (type, id) or zones differ, active = efc_force > 0), clamp (the actuator clamp mask differs),
-ctrlrange (ctrl +- h leaves the ctrlrange), solver (a run hit the iteration limit; fd_job reads island 0's
-solver_niter, the truth run's maximum over the islands is in the labels).
-
-Sampling (sample): per group a fixed random order of all states, numpy.random.default_rng([seed, crc32("corpus"),
-crc32(corpus), crc32(group)]).permutation(S), and the
-first `cap` states of the group in that order; every state of the group is eligible (the model-check flags are kept
-with the truth, so scores are given on all sampled states and on the model-ok ones).
-
-  from benchmarks.bench.truth import mjc
-  pool = mjc.Pool(problem, jobs=24)
-  lab = pool.labels(arrays)               # dict of per-state arrays (out, labels, con_*, out_it10, ...)
-  fd = pool.fd(arrays, worlds)            # {world: {J, bad, out, niter, ...}}
-  pool.close()
-"""
+bits). Nothing here imports MuJoCo Warp or NablaEngine."""
 
 import copy
 import multiprocessing as mp
@@ -81,24 +19,24 @@ from benchmarks.bench.truth import common
 from benchmarks.bench.truth import fdlib
 
 REPO = Path(__file__).resolve().parents[3]
-FDLIB_PATH = Path(fdlib.__file__).resolve()  # the FD helpers (their sha256 goes into the truth's provenance)
+FDLIB_PATH = Path(fdlib.__file__).resolve()
 
 TRUTH = dict(iterations=2000, tolerance=1e-13, ls_iterations=100)
 FLOORS = dict(it10=dict(iterations=10, tolerance=1e-8, ls_iterations=8),
               it50=dict(iterations=50, tolerance=1e-8, ls_iterations=8))
-NATIVE_FLOOR = "native"  # Track B only: the model's own solver options (the trackB part's native rows)
+NATIVE_FLOOR = "native"
 G9_RUN = "it50"
-FD_STEPS = (1e-6, 1e-7)  # the first gives the truth, the second its floor
-FD_STEP_RTOL, FD_STEP_ATOL = 1e-4, 1e-6  # fd_job's step_rtol / step_atol
-MAXC = common.MAXC  # contact slots per substep in the packed arrays (fdlib.MAXC, checked below)
-NEAR_MARGIN = 1e-5  # m: collision margin of the G2 near-contact search
-FLIP_DIST = 1e-6  # m: G2 threshold on |dist|
-KINK_REL = 1e-4  # G3 threshold
-AXIS_5MM, AXIS_1MM = 5e-3, 1e-3  # m: G1
-BASIS_BAND = 0.02  # G7: ||n_y| - 0.5| below this
-FRAME_ROT = 1e-4  # model check: 1 - |cos| of the tangent frames
+FD_STEPS = (1e-6, 1e-7)
+FD_STEP_RTOL, FD_STEP_ATOL = 1e-4, 1e-6
+MAXC = common.MAXC
+NEAR_MARGIN = 1e-5
+FLIP_DIST = 1e-6
+KINK_REL = 1e-4
+AXIS_5MM, AXIS_1MM = 5e-3, 1e-3
+BASIS_BAND = 0.02
+FRAME_ROT = 1e-4
 SAMPLE_CAP, SAMPLE_SEED, SAMPLE_SET = 64, 0, "corpus"
-CHUNK = 32  # states per pool task
+CHUNK = 32
 
 LABEL_BITS = dict(G1_axis_lt_5mm=1, G1_axis_lt_1mm=2, G2_contact_flip=4, G3_kink=8, G4_clamped=16, G5_limits=32,
                   G6_self_contact=64, G7_basis_switch=128, G9_nonconv=256, G0_normal=512, truth_nonconv=1024,
@@ -114,7 +52,7 @@ FD_KEYS = ("J", "bad", "out", "niter", "ncon", "seconds")
 
 
 assert fdlib.MAXC == MAXC, f"fdlib.MAXC {fdlib.MAXC} != {MAXC}"
-BAD = dict(fdlib.BAD)  # column-validity bits: step 1, contacts 2, rows 4, clamp 8, ctrlrange 16, solver 32
+BAD = dict(fdlib.BAD)
 C_EQ = int(mujoco.mjtConstraint.mjCNSTR_EQUALITY)
 C_FRIC = (int(mujoco.mjtConstraint.mjCNSTR_FRICTION_DOF), int(mujoco.mjtConstraint.mjCNSTR_FRICTION_TENDON))
 C_LIMIT = (int(mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT), int(mujoco.mjtConstraint.mjCNSTR_LIMIT_TENDON))
@@ -122,7 +60,6 @@ BAD_WARNINGS = (int(mujoco.mjtWarning.mjWARN_BADQPOS), int(mujoco.mjtWarning.mjW
                 int(mujoco.mjtWarning.mjWARN_BADQACC))
 
 
-# ------------------------------------------------------------------------------------------------- model setup
 
 def set_options(m, opts):
     m.opt.iterations, m.opt.tolerance, m.opt.ls_iterations = (int(opts["iterations"]), float(opts["tolerance"]),
@@ -168,9 +105,8 @@ def fd_tables(m, prob):
                 act_dof=m.jnt_dofadr[jid], act_kv=fdlib.kv0_damping(m))
 
 
-# ------------------------------------------------------------------------------------------------- worker side
 
-_W = {}  # per worker process: the problem, models and data of every run, lookup tables
+_W = {}
 
 
 def init_worker(prob_dict, nsub):
@@ -199,7 +135,6 @@ def init_worker(prob_dict, nsub):
 
 
 def _apply_dr(m, fric, com):
-    """fdlib._set_dr on another model copy (the floor runs)."""
     C = fdlib._C
     m.body_ipos[C["torso"]] = C["ipos0"] + com
     m.pair_friction[:] = C["fric0"]
@@ -207,7 +142,6 @@ def _apply_dr(m, fric, com):
 
 
 def _load(d, q, v, u, warm):
-    """The input state as fdlib._run sets it."""
     d.qpos[:], d.qvel[:], d.ctrl[:], d.qacc_warmstart[:] = q, v, u, warm
     d.time = 0.0
     d.qfrc_applied[:] = 0.0
@@ -218,7 +152,6 @@ def _niter(d):
 
 
 def _near_distance(qin):
-    """min |dist| over the pairs within NEAR_MARGIN of touching at qpos qin (inf if none)."""
     mm, dm = _W["near"]
     dm.qpos[:] = qin
     mujoco.mj_kinematics(mm, dm)
@@ -228,7 +161,6 @@ def _near_distance(qin):
 
 
 def _substep_labels(m, d, lab):
-    """Update the label accumulators lab with the substep just stepped (contacts, rows, actuators)."""
     C = fdlib._C
     n = d.ncon
     if n:
@@ -295,7 +227,6 @@ def pack(con, nsub):
 
 
 def _truth_state(q, v, warm, u, fric, com):
-    """The truth run of one state with its labels and contact signature."""
     C = fdlib._C
     m, d = C["m"], C["d"]
     nsub = _W["nsub"]
@@ -358,13 +289,12 @@ def tables_task(_):
                 options=(m.opt.iterations, m.opt.tolerance, m.opt.ls_iterations, m.opt.disableflags))
 
 
-# ------------------------------------------------------------------------------------------------- driver side
 
 def input_rows(arrays, idx=None):
     """[(qpos, qvel, warm, ctrl, friction, com)] float64 rows of a corpus's arrays (friction 0, com 0 without DR)."""
     n = len(arrays["qpos"])
     idx = np.arange(n) if idx is None else np.asarray(idx)
-    f64 = lambda k: np.asarray(arrays[k], np.float64)  # noqa: E731
+    f64 = lambda k: np.asarray(arrays[k], np.float64)
     q, v, w, u = f64("qpos"), f64("qvel"), f64("qacc_warmstart"), f64("ctrl")
     fr = f64("friction") if "friction" in arrays else np.zeros(n)
     com = f64("com") if "com" in arrays else np.zeros((n, 3))
@@ -412,7 +342,6 @@ class Pool:
             self.pool = None
 
 
-# ------------------------------------------------------------------------------------------------- labels and groups
 
 def label_bits(lab):
     """The LABEL_BITS mask (S,) uint16 of a labels() dict."""
@@ -495,7 +424,7 @@ def vjp(J, cot_qpos, cot_qvel):
     """FD VJPs (S, C, ncol) of Jacobians J (S, nq + nv, ncol) for cotangents (S, C, nq), (S, C, nv)
     (float64, cotangent by cotangent)."""
     nq = cot_qpos.shape[2]
-    cq = lambda c: np.ascontiguousarray(cot_qpos[:, c]).astype(np.float64)  # noqa: E731
-    cv = lambda c: np.ascontiguousarray(cot_qvel[:, c]).astype(np.float64)  # noqa: E731
+    cq = lambda c: np.ascontiguousarray(cot_qpos[:, c]).astype(np.float64)
+    cv = lambda c: np.ascontiguousarray(cot_qvel[:, c]).astype(np.float64)
     return np.stack([np.einsum("wr,wrc->wc", cq(c), J[:, :nq]) + np.einsum("wr,wrc->wc", cv(c), J[:, nq:])
                      for c in range(cot_qpos.shape[1])], 1)

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nablaengine"
 dynamic = ["version"]  # nablaengine.__version__
-description = "Fused CUDA physics with an analytic adjoint for the Unitree G1 (mjlab model), with a JAX FFI"
+description = "Fused CUDA physics with an analytic adjoint for MuJoCo models (legged robots, multi-body scenes), with JAX and PyTorch interfaces"
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
@@ -42,6 +42,12 @@ cuda = [  # JAX on NVIDIA GPUs: the CUDA 12 plugin with the CUDA libraries as wh
 torch = [  # nablaengine.torch_ffi (on a V100, a PyTorch build that targets sm_70: docs/api_torch.md)
     "torch>=2.6",
 ]
+dmc = [  # nablaengine.envs' DeepMind Control Suite tasks: the suite's models (tested: dm_control 1.0.51, mujoco 4.0.0)
+    "dm_control",
+]
+brax = [  # nablaengine.envs' Brax tasks: Brax's assets (tested: brax 0.14.2 with mujoco-mjx 4.0.0)
+    "brax",
+]
 checks = [  # the verification scripts: MJX (the kinematics check) and SciPy (statistical tests)
     "mujoco-mjx==3.17.0",
     "scipy==1.18.1",
@@ -50,10 +56,14 @@ checks = [  # the verification scripts: MJX (the kinematics check) and SciPy (st
 # list (see requirements.txt and README.md).
 
 [project.urls]
-Repository = "https://github.com/OamIcs/NablaEngine"
+Repository = "https://github.com/sailab-ai/NablaEngine"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"nablaengine.sensors" = ["data/*"]  # the MID-360 scan pattern (Livox, MIT) and its license
+"nablaengine.actuators" = ["bam_params/LICENSE", "bam_params/*/*.json"]  # BAM's XL330 M6 parameters (Rhoban, Apache-2.0)
 
 [tool.setuptools.dynamic]
 version = {attr = "nablaengine.__version__"}

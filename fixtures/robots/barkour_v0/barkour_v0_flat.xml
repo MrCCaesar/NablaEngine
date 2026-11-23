@@ -1,0 +1,178 @@
+<mujoco model="barkour v0 scene">
+  <compiler angle="radian" meshdir="assets" texturedir="assets"/>
+
+  <option integrator="implicitfast" iterations="1" ls_iterations="4">
+    <flag eulerdamp="disable"/>
+  </option>
+
+  <size nkey="2"/>
+
+  <statistic meansize="0.183574"/>
+
+  <visual>
+    <global azimuth="120" elevation="-20"/>
+    <headlight ambient="0.3 0.3 0.3" diffuse="0.6 0.6 0.6" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+  </visual>
+
+  <default>
+    <joint range="-1.5708 1.5708" armature="0.0109012" damping="0.5239"/>
+    <geom type="mesh" contype="0" conaffinity="0"/>
+    <default class="abductor">
+      <joint range="-1.0472 1.0472"/>
+    </default>
+    <default class="hip_front">
+      <joint range="-1.22173 3.24631"/>
+    </default>
+    <default class="hip_hind">
+      <joint range="-1.98968 2.46091"/>
+    </default>
+    <default class="knee">
+      <joint range="0 2.5132" axis="0 -0.0775009 0.996992"/>
+    </default>
+    <default class="multi_mode_controlled_actuator">
+      <general ctrlrange="-2 2" forcerange="-18 18" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    </default>
+    <default class="visual">
+      <geom group="1" density="0"/>
+      <default class="visual_upper_right1">
+        <geom rgba="0.768627 0.886275 0.952941 1"/>
+      </default>
+      <default class="visual_upper_right2">
+        <geom rgba="0.972549 0.529412 0.00392157 1"/>
+      </default>
+      <default class="visual_abduction">
+        <geom rgba="0.537255 0.854902 0.827451 1"/>
+      </default>
+      <default class="visual_foot">
+        <geom rgba="0.301961 0.301961 0.301961 1"/>
+      </default>
+    </default>
+    <default class="collision">
+      <geom group="2"/>
+      <default class="upper_right1">
+        <geom rgba="0.768627 0.886275 0.952941 1"/>
+      </default>
+      <default class="upper_right2">
+        <geom rgba="0.972549 0.529412 0.00392157 1"/>
+      </default>
+      <default class="abduction">
+        <geom rgba="0.537255 0.854902 0.827451 1"/>
+      </default>
+      <default class="foot">
+        <geom rgba="0.301961 0.301961 0.301961 1"/>
+      </default>
+    </default>
+    <default class="lowerLegFootLeft">
+      <geom size="0.014 0 0" type="sphere" contype="1" friction="0.8 0.02 0.01" solimp="0.015 1 0.031" rgba="1 0 0 1"/>
+    </default>
+    <default class="lowerLegFootRight">
+      <geom size="0.014 0 0" type="sphere" contype="1" friction="0.8 0.02 0.01" solimp="0.015 1 0.031" rgba="1 0 0 1"/>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" colorspace="auto" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" colorspace="auto" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texrepeat="5 5" texuniform="true" reflectance="0.2"/>
+  </asset>
+
+  <worldbody>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+    <site name="origin"/>
+    <camera name="default" quat="0.791164 0.554139 0.148485 0.211997" pos="0.846 -1.465 0.916"/>
+    <light pos="0 0 1.5" type="directional"/>
+    <body name="chassis">
+      <inertial pos="0.0196226 -0.00015133 0.0611588" quat="0.000990813 0.68703 0.000216603 0.726628" mass="4.48878" diaginertia="0.071033 0.0619567 0.0192519"/>
+      <joint type="free" range="0 0" armature="0" damping="0"/>
+      <camera name="track" quat="0.791164 0.554139 0.148485 0.211997" pos="0.846 -1.465 0.916" mode="trackcom"/>
+      <body name="abduction_1" pos="0.130533 -0.056 0.0508" quat="1.30945e-06 0.161152 -2.13816e-07 0.98693">
+        <inertial pos="-0.0521152 0.00350917 0.0171912" quat="0.387877 0.592262 0.592492 0.384358" mass="0.639437" diaginertia="0.000866008 0.000565866 0.000479767"/>
+        <joint name="abduction_front_right" class="abductor" actuatorfrcrange="-18 18" axis="-0.94806 0 0.318092" actuatorfrclimited="true"/>
+        <body name="upper_right_asm_1" pos="-0.0540394 0.0217 0.0181312" quat="0.284632 0.284629 -0.647292 0.647289">
+          <inertial pos="-0.0253655 -0.0179374 -0.0465027" quat="-0.245689 0.639007 0.153351 0.712594" mass="0.942155" diaginertia="0.00539403 0.00519403 0.000795298"/>
+          <joint name="hip_front_right" class="hip_front" actuatorfrcrange="-18 18" axis="0 0 -1" actuatorfrclimited="true"/>
+          <body name="lower_leg_1to1_front_right" pos="-0.193523 -0.104637 -0.0792" quat="0.312742 -0.0121371 0.0368314 -0.949046">
+            <inertial pos="-0.0577509 -0.0097034 0.0114624" quat="-0.047103 0.705359 -0.0102465 0.70721" mass="0.169623" diaginertia="0.000828741 0.000813964 3.49901e-05"/>
+            <joint name="knee_front_right" class="knee" actuatorfrcrange="-18 18" axis="0 -0.0775009 0.996992" actuatorfrclimited="true"/>
+            <geom name="lower_leg_1to1_front_right_foot" class="lowerLegFootRight" pos="-0.191284 -0.0191638 0.013" contype="0"/>
+            <site name="foot_front_right" class="lowerLegFootRight" pos="-0.191284 -0.0191638 0.013"/>
+          </body>
+        </body>
+      </body>
+      <body name="abduction_2" pos="0.130533 0.056 0.0508" quat="0.161152 1.09564e-06 0.98693 1.09564e-06">
+        <inertial pos="-0.0521152 0.00350917 0.0171912" quat="0.387877 0.592262 0.592492 0.384358" mass="0.639437" diaginertia="0.000866008 0.000565866 0.000479767"/>
+        <joint name="abduction_front_left" class="abductor" actuatorfrcrange="-18 18" axis="0.94806 0 -0.318092" actuatorfrclimited="true"/>
+        <body name="upper_left_asm_1" pos="-0.0540394 0.0217 0.0181312" quat="0.671818 0.671821 0.220587 -0.220588">
+          <inertial pos="0.0306562 0.00629189 -0.0466005" quat="-0.113342 0.751294 0.0555641 0.647784" mass="0.938791" diaginertia="0.00538157 0.00518445 0.000790347"/>
+          <joint name="hip_front_left" class="hip_front" actuatorfrcrange="-18 18" actuatorfrclimited="true"/>
+          <body name="lower_leg_1to1_front_left" pos="0.208835 0.0691954 -0.0792" quat="0.0386264 0.995249 0.0893024 0.0034659">
+            <inertial pos="-0.0577509 -0.00780463 -0.0129639" quat="-0.047103 0.705359 -0.0102465 0.70721" mass="0.169623" diaginertia="0.000828741 0.000813964 3.49901e-05"/>
+            <joint name="knee_front_left" class="knee" actuatorfrcrange="-18 18" axis="0 -0.0775009 0.996992" actuatorfrclimited="true"/>
+            <geom name="lower_leg_1to1_front_left_foot" class="lowerLegFootLeft" pos="-0.191284 -0.0191638 -0.013" contype="0"/>
+            <site name="foot_front_left" class="lowerLegFootLeft" pos="-0.191284 -0.0191638 -0.013"/>
+          </body>
+        </body>
+      </body>
+      <body name="abduction_3" pos="-0.134667 -0.056 0.0508" quat="1.30945e-06 0.98693 2.13816e-07 -0.161152">
+        <inertial pos="-0.0521152 0.00350917 0.0171912" quat="0.387877 0.592262 0.592492 0.384358" mass="0.639437" diaginertia="0.000866008 0.000565866 0.000479767"/>
+        <joint name="abduction_hind_right" class="abductor" actuatorfrcrange="-18 18" axis="0.94806 0 -0.318092" actuatorfrclimited="true"/>
+        <body name="upper_right_asm_2" pos="-0.0540394 0.0217 0.0181312" quat="0.64729 0.647292 0.28463 -0.284631">
+          <inertial pos="-0.0253655 -0.0179374 -0.0465027" quat="-0.245689 0.639007 0.153351 0.712594" mass="0.942155" diaginertia="0.00539403 0.00519403 0.000795298"/>
+          <joint name="hip_hind_right" class="hip_hind" actuatorfrcrange="-18 18" axis="0 0 -1" actuatorfrclimited="true"/>
+          <body name="lower_leg_1to1_hind_right" pos="-0.193523 -0.104637 -0.0792" quat="0.312742 -0.0121371 0.0368314 -0.949046">
+            <inertial pos="-0.0577509 -0.0097034 0.0114624" quat="-0.047103 0.705359 -0.0102465 0.70721" mass="0.169623" diaginertia="0.000828741 0.000813964 3.49901e-05"/>
+            <joint name="knee_hind_right" class="knee" actuatorfrcrange="-18 18" axis="0 -0.0775009 0.996992" actuatorfrclimited="true"/>
+            <geom name="lower_leg_1to1_hind_right_foot" class="lowerLegFootRight" pos="-0.191284 -0.0191638 0.013" contype="0"/>
+            <site name="foot_hind_right" class="lowerLegFootRight" pos="-0.191284 -0.0191638 0.013"/>
+          </body>
+        </body>
+      </body>
+      <body name="abduction_4" pos="-0.134667 0.056 0.0508" quat="0.98693 0 -0.161152 0">
+        <inertial pos="-0.0521152 0.00350917 0.0171912" quat="0.387877 0.592262 0.592492 0.384358" mass="0.639437" diaginertia="0.000866008 0.000565866 0.000479767"/>
+        <joint name="abduction_hind_left" class="abductor" actuatorfrcrange="-18 18" axis="-0.94806 0 0.318092" actuatorfrclimited="true"/>
+        <body name="upper_left_asm_2" pos="-0.0540394 0.0217 0.0181312" quat="-0.220587 -0.220588 0.67182 -0.671818">
+          <inertial pos="0.0306562 0.00629189 -0.0466005" quat="-0.113342 0.751294 0.0555641 0.647784" mass="0.938791" diaginertia="0.00538157 0.00518445 0.000790347"/>
+          <joint name="hip_hind_left" class="hip_hind" actuatorfrcrange="-18 18" actuatorfrclimited="true"/>
+          <body name="lower_leg_1to1_hind_left" pos="0.208835 0.0691954 -0.0792" quat="0.0386264 0.995249 0.0893024 0.0034659">
+            <inertial pos="-0.0577509 -0.00780463 -0.0129639" quat="-0.047103 0.705359 -0.0102465 0.70721" mass="0.169623" diaginertia="0.000828741 0.000813964 3.49901e-05"/>
+            <joint name="knee_hind_left" class="knee" actuatorfrcrange="-18 18" axis="0 -0.0775009 0.996992" actuatorfrclimited="true"/>
+            <geom name="lower_leg_1to1_hind_left_foot" class="lowerLegFootLeft" pos="-0.191284 -0.0191638 -0.013" contype="0"/>
+            <site name="foot_hind_left" class="lowerLegFootLeft" pos="-0.191284 -0.0191638 -0.013"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <pair geom1="floor" geom2="lower_leg_1to1_front_right_foot" name="p0_floor__lower_leg_1to1_front_right_foot" friction="1 1 0.02 0.01 0.01" solimp="0.4575 0.975 0.016"/>
+    <pair geom1="floor" geom2="lower_leg_1to1_front_left_foot" name="p1_floor__lower_leg_1to1_front_left_foot" friction="1 1 0.02 0.01 0.01" solimp="0.4575 0.975 0.016"/>
+    <pair geom1="floor" geom2="lower_leg_1to1_hind_right_foot" name="p2_floor__lower_leg_1to1_hind_right_foot" friction="1 1 0.02 0.01 0.01" solimp="0.4575 0.975 0.016"/>
+    <pair geom1="floor" geom2="lower_leg_1to1_hind_left_foot" name="p3_floor__lower_leg_1to1_hind_left_foot" friction="1 1 0.02 0.01 0.01" solimp="0.4575 0.975 0.016"/>
+  </contact>
+
+  <actuator>
+    <general name="abduction_front_right" joint="abduction_front_right" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="hip_front_right" joint="hip_front_right" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="knee_front_right" joint="knee_front_right" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="abduction_front_left" joint="abduction_front_left" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="hip_front_left" joint="hip_front_left" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="knee_front_left" joint="knee_front_left" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="abduction_hind_right" joint="abduction_hind_right" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="hip_hind_right" joint="hip_hind_right" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="knee_hind_right" joint="knee_hind_right" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="abduction_hind_left" joint="abduction_hind_left" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="hip_hind_left" joint="hip_hind_left" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+    <general name="knee_hind_left" joint="knee_hind_left" ctrlrange="-2 2" forcelimited="false" biastype="affine" gainprm="35" biasprm="0 -35 -0.65"/>
+  </actuator>
+
+  <custom>
+    <numeric name="init_qpos" size="19" data="0 0 0.21 1 0 0 0 0 0.5 1 0 0.5 1 0 0.5 1 0 0.5 1"/>
+  </custom>
+
+  <keyframe>
+    <key name="standing" qpos="0 0 0.21 1 0 0 0 0 0.5 1 0 0.5 1 0 0.5 1 0 0.5 1" ctrl="0 0.5 1 0 0.5 1 0 0.5 1 0 0.5 1"/>
+    <key name="home" qpos="0 0 0.21 1 0 0 0 0 0.5 1 0 0.5 1 0 0.5 1 0 0.5 1" ctrl="0 0.5 1 0 0.5 1 0 0.5 1 0 0.5 1"/>
+  </keyframe>
+</mujoco>

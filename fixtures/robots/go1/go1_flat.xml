@@ -1,0 +1,205 @@
+<mujoco model="mjlab scene">
+  <compiler angle="radian"/>
+
+  <option timestep="0.005" integrator="implicitfast" iterations="10" ls_iterations="20" ccd_iterations="50"/>
+
+  <size nkey="1"/>
+
+  <visual>
+    <global azimuth="135" elevation="-25" offwidth="1920" offheight="1080"/>
+    <quality shadowsize="8192"/>
+    <headlight ambient="0.3 0.3 0.3" diffuse="0.6 0.6 0.6" specular="0 0 0"/>
+    <scale forcewidth="0.25" contactwidth="0.4" contactheight="0.15" framelength="5" framewidth="0.3"/>
+    <rgba haze="0.15 0.25 0.35 1" force="1 0 0 1"/>
+  </visual>
+
+  <statistic meansize="0.03" extent="2"/>
+
+  <default>
+    <default class="robot/main">
+      <default class="robot/go1">
+        <default class="robot/visual">
+          <geom type="mesh" contype="0" conaffinity="0" group="2" material="dark"/>
+        </default>
+        <default class="robot/collision">
+          <geom type="capsule" group="3"/>
+          <default class="robot/thigh1">
+            <geom size="0.015 0 0"/>
+          </default>
+          <default class="robot/thigh2">
+            <geom size="0.015 0 0"/>
+          </default>
+          <default class="robot/thigh3">
+            <geom size="0.015 0 0"/>
+          </default>
+          <default class="robot/calf1">
+            <geom size="0.01 0 0"/>
+          </default>
+          <default class="robot/calf2">
+            <geom size="0.01 0 0"/>
+          </default>
+          <default class="robot/foot">
+            <geom size="0.023 0 0" type="sphere"/>
+          </default>
+        </default>
+      </default>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="2d" colorspace="auto" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="4 4"/>
+    <material name="robot/dark" rgba="0.2 0.2 0.2 1"/>
+  </asset>
+
+  <worldbody>
+    <geom name="terrain" size="0 0 0.01" type="plane" contype="0" conaffinity="0" material="groundplane"/>
+    <site name="env_origin_0" pos="0 0 0" size="0.3" group="4" rgba="0.2 0.6 0.2 0.3"/>
+    <light name="sun" pos="0 0 1.5" dir="0 0 -1" type="directional"/>
+    <body name="robot/trunk" childclass="robot/go1" pos="0 0 0.445">
+      <inertial pos="0.0223 0.002 -0.0005" quat="-0.00342088 0.705204 0.000106698 0.708996" mass="5.204" diaginertia="0.0716565 0.0630105 0.0168101"/>
+      <joint name="robot/floating_base_joint" type="free"/>
+      <geom name="robot/trunk_collision" class="robot/collision" size="0.13 0.09 0.05" type="box" contype="0" conaffinity="0" condim="1"/>
+      <geom name="robot/head_collision" class="robot/collision" size="0.06" pos="0.24 0 0" type="sphere" contype="0" conaffinity="0" condim="1"/>
+      <site name="robot/head" pos="0.3 0 0" size="0.02" group="5" rgba="1 0 0 1"/>
+      <site name="robot/imu" pos="-0.01592 -0.06659 -0.00617" group="5"/>
+      <camera name="robot/tracking" pos="0.846 -1.3 0.316" quat="0.791164 0.554139 0.148485 0.211997" mode="trackcom"/>
+      <camera name="robot/top" pos="-1 0 1" quat="0.653281 0.270598 -0.270598 -0.653281" mode="trackcom"/>
+      <camera name="robot/side" pos="0 -1 0.3" quat="0.850651 0.525731 0 0" mode="trackcom"/>
+      <camera name="robot/back" pos="-1 0 0.3" quat="0.601501 0.371748 -0.371748 -0.601501" mode="trackcom"/>
+      <light pos="0 0 2" dir="0 0 -1" mode="trackcom"/>
+      <body name="robot/FR_hip" pos="0.1881 -0.04675 0">
+        <inertial pos="-0.0049166 0.00762615 -8.865e-05" quat="0.507341 0.514169 0.495027 0.482891" mass="0.68" diaginertia="0.000734064 0.000468438 0.000398719"/>
+        <joint name="robot/FR_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.863 0.863" actuatorfrclimited="true" actuatorfrcrange="-23.7 23.7" armature="0.00402631"/>
+        <geom name="robot/FR_hip_collision" class="robot/collision" size="0.05 0.01" pos="0 -0.03 0" quat="0.707107 -0.707107 0 0" contype="0" conaffinity="0" condim="1"/>
+        <body name="robot/FR_thigh" pos="0 -0.08 0">
+          <inertial pos="-0.00304722 0.019315 -0.0305004" quat="0.65243 -0.0272313 0.0775126 0.753383" mass="1.009" diaginertia="0.00478717 0.00460903 0.000709268"/>
+          <joint name="robot/FR_thigh_joint" pos="0 0 0" axis="0 1 0" range="-0.686 4.501" actuatorfrclimited="true" actuatorfrcrange="-23.7 23.7" armature="0.00402631"/>
+          <geom name="robot/FR_thigh_collision1" class="robot/thigh1" size="0.015 0.08" pos="-0.02 0 -0.08" contype="0" conaffinity="0" condim="1"/>
+          <geom name="robot/FR_thigh_collision2" class="robot/thigh2" size="0.015 0.0509902" pos="-0.01 0 -0.05" quat="0.995133 0 0.0985376 0" contype="0" conaffinity="0" condim="1"/>
+          <geom name="robot/FR_thigh_collision3" class="robot/thigh3" size="0.015 0.0223607" pos="-0.01 0 -0.18" quat="0.973249 0 -0.229753 0" contype="0" conaffinity="0" condim="1"/>
+          <body name="robot/FR_calf" pos="0 0 -0.213">
+            <inertial pos="0.00429862 0.000976676 -0.146197" quat="0.691246 0.00357467 0.00511118 0.722592" mass="0.195862" diaginertia="0.00149767 0.00148468 3.58427e-05"/>
+            <joint name="robot/FR_calf_joint" pos="0 0 0" axis="0 1 0" range="-2.818 -0.888" actuatorfrclimited="true" actuatorfrcrange="-35.55 35.55" armature="0.0090592"/>
+            <geom name="robot/FR_calf_collision1" class="robot/calf1" size="0.01 0.0657647" pos="0.01 0 -0.065" quat="0.997089 0 -0.0762506 0" contype="0" conaffinity="0" condim="1"/>
+            <geom name="robot/FR_calf_collision2" class="robot/calf2" size="0.01 0.0364005" pos="0.01 0 -0.165" quat="0.990334 0 0.138701 0" contype="0" conaffinity="0" condim="1"/>
+            <geom name="robot/FR_foot_collision" class="robot/foot" pos="0 0 -0.213" contype="0" conaffinity="0" priority="1" friction="0.6" solimp="0.9 0.95 0.023"/>
+            <site name="robot/FR" pos="0 0 -0.213" size="0.023" group="5"/>
+          </body>
+        </body>
+      </body>
+      <body name="robot/FL_hip" pos="0.1881 0.04675 0">
+        <inertial pos="-0.0049166 -0.00762615 -8.865e-05" quat="0.482891 0.495027 0.514169 0.507341" mass="0.68" diaginertia="0.000734064 0.000468438 0.000398719"/>
+        <joint name="robot/FL_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.863 0.863" actuatorfrclimited="true" actuatorfrcrange="-23.7 23.7" armature="0.00402631"/>
+        <geom name="robot/FL_hip_collision" class="robot/collision" size="0.05 0.01" pos="0 0.03 0" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" condim="1"/>
+        <body name="robot/FL_thigh" pos="0 0.08 0">
+          <inertial pos="-0.00304722 -0.019315 -0.0305004" quat="0.753383 0.0775126 -0.0272313 0.65243" mass="1.009" diaginertia="0.00478717 0.00460903 0.000709268"/>
+          <joint name="robot/FL_thigh_joint" pos="0 0 0" axis="0 1 0" range="-0.686 4.501" actuatorfrclimited="true" actuatorfrcrange="-23.7 23.7" armature="0.00402631"/>
+          <geom name="robot/FL_thigh_collision1" class="robot/thigh1" size="0.015 0.08" pos="-0.02 0 -0.08" contype="0" conaffinity="0" condim="1"/>
+          <geom name="robot/FL_thigh_collision2" class="robot/thigh2" size="0.015 0.0509902" pos="-0.01 0 -0.05" quat="0.995133 0 0.0985376 0" contype="0" conaffinity="0" condim="1"/>
+          <geom name="robot/FL_thigh_collision3" class="robot/thigh3" size="0.015 0.0223607" pos="-0.01 0 -0.18" quat="0.973249 0 -0.229753 0" contype="0" conaffinity="0" condim="1"/>
+          <body name="robot/FL_calf" pos="0 0 -0.213">
+            <inertial pos="0.00429862 0.000976676 -0.146197" quat="0.691246 0.00357467 0.00511118 0.722592" mass="0.195862" diaginertia="0.00149767 0.00148468 3.58427e-05"/>
+            <joint name="robot/FL_calf_joint" pos="0 0 0" axis="0 1 0" range="-2.818 -0.888" actuatorfrclimited="true" actuatorfrcrange="-35.55 35.55" armature="0.0090592"/>
+            <geom name="robot/FL_calf_collision1" class="robot/calf1" size="0.01 0.0657647" pos="0.01 0 -0.065" quat="0.997089 0 -0.0762506 0" contype="0" conaffinity="0" condim="1"/>
+            <geom name="robot/FL_calf_collision2" class="robot/calf2" size="0.01 0.0364005" pos="0.01 0 -0.165" quat="0.990334 0 0.138701 0" contype="0" conaffinity="0" condim="1"/>
+            <geom name="robot/FL_foot_collision" class="robot/foot" pos="0 0 -0.213" contype="0" conaffinity="0" priority="1" friction="0.6" solimp="0.9 0.95 0.023"/>
+            <site name="robot/FL" pos="0 0 -0.213" size="0.023" group="5"/>
+          </body>
+        </body>
+      </body>
+      <body name="robot/RR_hip" pos="-0.1881 -0.04675 0">
+        <inertial pos="0.0049166 0.00762615 -8.865e-05" quat="0.495027 0.482891 0.507341 0.514169" mass="0.68" diaginertia="0.000734064 0.000468438 0.000398719"/>
+        <joint name="robot/RR_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.863 0.863" actuatorfrclimited="true" actuatorfrcrange="-23.7 23.7" armature="0.00402631"/>
+        <geom name="robot/RR_hip_collision" class="robot/collision" size="0.05 0.01" pos="0 -0.03 0" quat="0.707107 -0.707107 0 0" contype="0" conaffinity="0" condim="1"/>
+        <body name="robot/RR_thigh" pos="0 -0.08 0">
+          <inertial pos="-0.00304722 0.019315 -0.0305004" quat="0.65243 -0.0272313 0.0775126 0.753383" mass="1.009" diaginertia="0.00478717 0.00460903 0.000709268"/>
+          <joint name="robot/RR_thigh_joint" pos="0 0 0" axis="0 1 0" range="-0.686 4.501" actuatorfrclimited="true" actuatorfrcrange="-23.7 23.7" armature="0.00402631"/>
+          <geom name="robot/RR_thigh_collision1" class="robot/thigh1" size="0.015 0.08" pos="-0.02 0 -0.08" contype="0" conaffinity="0" condim="1"/>
+          <geom name="robot/RR_thigh_collision2" class="robot/thigh2" size="0.015 0.0509902" pos="-0.01 0 -0.05" quat="0.995133 0 0.0985376 0" contype="0" conaffinity="0" condim="1"/>
+          <geom name="robot/RR_thigh_collision3" class="robot/thigh3" size="0.015 0.0223607" pos="-0.01 0 -0.18" quat="0.973249 0 -0.229753 0" contype="0" conaffinity="0" condim="1"/>
+          <body name="robot/RR_calf" pos="0 0 -0.213">
+            <inertial pos="0.00429862 0.000976676 -0.146197" quat="0.691246 0.00357467 0.00511118 0.722592" mass="0.195862" diaginertia="0.00149767 0.00148468 3.58427e-05"/>
+            <joint name="robot/RR_calf_joint" pos="0 0 0" axis="0 1 0" range="-2.818 -0.888" actuatorfrclimited="true" actuatorfrcrange="-35.55 35.55" armature="0.0090592"/>
+            <geom name="robot/RR_calf_collision1" class="robot/calf1" size="0.01 0.0657647" pos="0.01 0 -0.065" quat="0.997089 0 -0.0762506 0" contype="0" conaffinity="0" condim="1"/>
+            <geom name="robot/RR_calf_collision2" class="robot/calf2" size="0.01 0.0364005" pos="0.01 0 -0.165" quat="0.990334 0 0.138701 0" contype="0" conaffinity="0" condim="1"/>
+            <geom name="robot/RR_foot_collision" class="robot/foot" pos="0 0 -0.213" contype="0" conaffinity="0" priority="1" friction="0.6" solimp="0.9 0.95 0.023"/>
+            <site name="robot/RR" pos="0 0 -0.213" size="0.023" group="5"/>
+          </body>
+        </body>
+      </body>
+      <body name="robot/RL_hip" pos="-0.1881 0.04675 0">
+        <inertial pos="0.0049166 -0.00762615 -8.865e-05" quat="0.514169 0.507341 0.482891 0.495027" mass="0.68" diaginertia="0.000734064 0.000468438 0.000398719"/>
+        <joint name="robot/RL_hip_joint" pos="0 0 0" axis="1 0 0" range="-0.863 0.863" actuatorfrclimited="true" actuatorfrcrange="-23.7 23.7" armature="0.00402631"/>
+        <geom name="robot/RL_hip_collision" class="robot/collision" size="0.05 0.01" pos="0 0.03 0" quat="0.707107 0.707107 0 0" contype="0" conaffinity="0" condim="1"/>
+        <body name="robot/RL_thigh" pos="0 0.08 0">
+          <inertial pos="-0.00304722 -0.019315 -0.0305004" quat="0.753383 0.0775126 -0.0272313 0.65243" mass="1.009" diaginertia="0.00478717 0.00460903 0.000709268"/>
+          <joint name="robot/RL_thigh_joint" pos="0 0 0" axis="0 1 0" range="-0.686 4.501" actuatorfrclimited="true" actuatorfrcrange="-23.7 23.7" armature="0.00402631"/>
+          <geom name="robot/RL_thigh_collision1" class="robot/thigh1" size="0.015 0.08" pos="-0.02 0 -0.08" contype="0" conaffinity="0" condim="1"/>
+          <geom name="robot/RL_thigh_collision2" class="robot/thigh2" size="0.015 0.0509902" pos="-0.01 0 -0.05" quat="0.995133 0 0.0985376 0" contype="0" conaffinity="0" condim="1"/>
+          <geom name="robot/RL_thigh_collision3" class="robot/thigh3" size="0.015 0.0223607" pos="-0.01 0 -0.18" quat="0.973249 0 -0.229753 0" contype="0" conaffinity="0" condim="1"/>
+          <body name="robot/RL_calf" pos="0 0 -0.213">
+            <inertial pos="0.00429862 0.000976676 -0.146197" quat="0.691246 0.00357467 0.00511118 0.722592" mass="0.195862" diaginertia="0.00149767 0.00148468 3.58427e-05"/>
+            <joint name="robot/RL_calf_joint" pos="0 0 0" axis="0 1 0" range="-2.818 -0.888" actuatorfrclimited="true" actuatorfrcrange="-35.55 35.55" armature="0.0090592"/>
+            <geom name="robot/RL_calf_collision1" class="robot/calf1" size="0.01 0.0657647" pos="0.01 0 -0.065" quat="0.997089 0 -0.0762506 0" contype="0" conaffinity="0" condim="1"/>
+            <geom name="robot/RL_calf_collision2" class="robot/calf2" size="0.01 0.0364005" pos="0.01 0 -0.165" quat="0.990334 0 0.138701 0" contype="0" conaffinity="0" condim="1"/>
+            <geom name="robot/RL_foot_collision" class="robot/foot" pos="0 0 -0.213" contype="0" conaffinity="0" priority="1" friction="0.6" solimp="0.9 0.95 0.023"/>
+            <site name="robot/RL" pos="0 0 -0.213" size="0.023" group="5"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <pair geom1="terrain" geom2="robot/trunk_collision" name="p0_terrain__robot/trunk_collision"/>
+    <pair geom1="terrain" geom2="robot/head_collision" name="p1_terrain__robot/head_collision"/>
+    <pair geom1="terrain" geom2="robot/FR_hip_collision" name="p2_terrain__robot/FR_hip_collision"/>
+    <pair geom1="terrain" geom2="robot/FR_thigh_collision1" name="p3_terrain__robot/FR_thigh_collision1"/>
+    <pair geom1="terrain" geom2="robot/FR_thigh_collision2" name="p4_terrain__robot/FR_thigh_collision2"/>
+    <pair geom1="terrain" geom2="robot/FR_thigh_collision3" name="p5_terrain__robot/FR_thigh_collision3"/>
+    <pair geom1="terrain" geom2="robot/FR_calf_collision1" name="p6_terrain__robot/FR_calf_collision1"/>
+    <pair geom1="terrain" geom2="robot/FR_calf_collision2" name="p7_terrain__robot/FR_calf_collision2"/>
+    <pair geom1="terrain" geom2="robot/FR_foot_collision" name="p8_terrain__robot/FR_foot_collision" solimp="0.9 0.95 0.023" friction="0.6 0.6 0.005 0.0001 0.0001"/>
+    <pair geom1="terrain" geom2="robot/FL_hip_collision" name="p9_terrain__robot/FL_hip_collision"/>
+    <pair geom1="terrain" geom2="robot/FL_thigh_collision1" name="p10_terrain__robot/FL_thigh_collision1"/>
+    <pair geom1="terrain" geom2="robot/FL_thigh_collision2" name="p11_terrain__robot/FL_thigh_collision2"/>
+    <pair geom1="terrain" geom2="robot/FL_thigh_collision3" name="p12_terrain__robot/FL_thigh_collision3"/>
+    <pair geom1="terrain" geom2="robot/FL_calf_collision1" name="p13_terrain__robot/FL_calf_collision1"/>
+    <pair geom1="terrain" geom2="robot/FL_calf_collision2" name="p14_terrain__robot/FL_calf_collision2"/>
+    <pair geom1="terrain" geom2="robot/FL_foot_collision" name="p15_terrain__robot/FL_foot_collision" solimp="0.9 0.95 0.023" friction="0.6 0.6 0.005 0.0001 0.0001"/>
+    <pair geom1="terrain" geom2="robot/RR_hip_collision" name="p16_terrain__robot/RR_hip_collision"/>
+    <pair geom1="terrain" geom2="robot/RR_thigh_collision1" name="p17_terrain__robot/RR_thigh_collision1"/>
+    <pair geom1="terrain" geom2="robot/RR_thigh_collision2" name="p18_terrain__robot/RR_thigh_collision2"/>
+    <pair geom1="terrain" geom2="robot/RR_thigh_collision3" name="p19_terrain__robot/RR_thigh_collision3"/>
+    <pair geom1="terrain" geom2="robot/RR_calf_collision1" name="p20_terrain__robot/RR_calf_collision1"/>
+    <pair geom1="terrain" geom2="robot/RR_calf_collision2" name="p21_terrain__robot/RR_calf_collision2"/>
+    <pair geom1="terrain" geom2="robot/RR_foot_collision" name="p22_terrain__robot/RR_foot_collision" solimp="0.9 0.95 0.023" friction="0.6 0.6 0.005 0.0001 0.0001"/>
+    <pair geom1="terrain" geom2="robot/RL_hip_collision" name="p23_terrain__robot/RL_hip_collision"/>
+    <pair geom1="terrain" geom2="robot/RL_thigh_collision1" name="p24_terrain__robot/RL_thigh_collision1"/>
+    <pair geom1="terrain" geom2="robot/RL_thigh_collision2" name="p25_terrain__robot/RL_thigh_collision2"/>
+    <pair geom1="terrain" geom2="robot/RL_thigh_collision3" name="p26_terrain__robot/RL_thigh_collision3"/>
+    <pair geom1="terrain" geom2="robot/RL_calf_collision1" name="p27_terrain__robot/RL_calf_collision1"/>
+    <pair geom1="terrain" geom2="robot/RL_calf_collision2" name="p28_terrain__robot/RL_calf_collision2"/>
+    <pair geom1="terrain" geom2="robot/RL_foot_collision" name="p29_terrain__robot/RL_foot_collision" solimp="0.9 0.95 0.023" friction="0.6 0.6 0.005 0.0001 0.0001"/>
+  </contact>
+
+  <actuator>
+    <general name="robot/FR_hip_joint" joint="robot/FR_hip_joint" ctrllimited="false" ctrlrange="-2.35401 2.35401" forcelimited="false" biastype="affine" gainprm="15.8952" biasprm="0 -15.8952 -1.01192"/>
+    <general name="robot/FR_thigh_joint" joint="robot/FR_thigh_joint" ctrllimited="false" ctrlrange="-2.17701 5.99201" forcelimited="false" biastype="affine" gainprm="15.8952" biasprm="0 -15.8952 -1.01192"/>
+    <general name="robot/FR_calf_joint" joint="robot/FR_calf_joint" ctrllimited="false" ctrlrange="-3.81201 0.106008" forcelimited="false" biastype="affine" gainprm="35.7643" biasprm="0 -35.7643 -2.27683"/>
+    <general name="robot/FL_hip_joint" joint="robot/FL_hip_joint" ctrllimited="false" ctrlrange="-2.35401 2.35401" forcelimited="false" biastype="affine" gainprm="15.8952" biasprm="0 -15.8952 -1.01192"/>
+    <general name="robot/FL_thigh_joint" joint="robot/FL_thigh_joint" ctrllimited="false" ctrlrange="-2.17701 5.99201" forcelimited="false" biastype="affine" gainprm="15.8952" biasprm="0 -15.8952 -1.01192"/>
+    <general name="robot/FL_calf_joint" joint="robot/FL_calf_joint" ctrllimited="false" ctrlrange="-3.81201 0.106008" forcelimited="false" biastype="affine" gainprm="35.7643" biasprm="0 -35.7643 -2.27683"/>
+    <general name="robot/RR_hip_joint" joint="robot/RR_hip_joint" ctrllimited="false" ctrlrange="-2.35401 2.35401" forcelimited="false" biastype="affine" gainprm="15.8952" biasprm="0 -15.8952 -1.01192"/>
+    <general name="robot/RR_thigh_joint" joint="robot/RR_thigh_joint" ctrllimited="false" ctrlrange="-2.17701 5.99201" forcelimited="false" biastype="affine" gainprm="15.8952" biasprm="0 -15.8952 -1.01192"/>
+    <general name="robot/RR_calf_joint" joint="robot/RR_calf_joint" ctrllimited="false" ctrlrange="-3.81201 0.106008" forcelimited="false" biastype="affine" gainprm="35.7643" biasprm="0 -35.7643 -2.27683"/>
+    <general name="robot/RL_hip_joint" joint="robot/RL_hip_joint" ctrllimited="false" ctrlrange="-2.35401 2.35401" forcelimited="false" biastype="affine" gainprm="15.8952" biasprm="0 -15.8952 -1.01192"/>
+    <general name="robot/RL_thigh_joint" joint="robot/RL_thigh_joint" ctrllimited="false" ctrlrange="-2.17701 5.99201" forcelimited="false" biastype="affine" gainprm="15.8952" biasprm="0 -15.8952 -1.01192"/>
+    <general name="robot/RL_calf_joint" joint="robot/RL_calf_joint" ctrllimited="false" ctrlrange="-3.81201 0.106008" forcelimited="false" biastype="affine" gainprm="35.7643" biasprm="0 -35.7643 -2.27683"/>
+  </actuator>
+
+  <keyframe>
+    <key name="init_state" qpos="0 0 0.278 1 0 0 0 0.1 0.9 -1.8 -0.1 0.9 -1.8 0.1 0.9 -1.8 -0.1 0.9 -1.8"/>
+  </keyframe>
+</mujoco>

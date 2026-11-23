@@ -1,20 +1,11 @@
-"""Markdown summary of a paper timing kit run (scripts/paper_bench/README.md).
-
-  python scripts/paper_bench/summarize.py <out_dir>/paper_bench.json [--out <out_dir>/paper_bench.md]
-
-table(job) is also called by orchestrate.py: the flat headline rows stored in paper_bench.json ("table"). Times are
-ms per control step (4 substeps of 5 ms, 10 Newton iterations; MJX Menagerie: 5 x 4 ms at its own options), median
-over the kept rounds with p10-p90; Jacobian rows also per world. A local_parts.py next to this file (common.LOCAL) may
-add engine labels (ENGINE), rows (table_rows(job, rows, section, helpers)), repeat cells (REPEAT_CELLS) and an
-upgrade(job) of older result files.
-"""
+"""Markdown summary of a paper timing kit run (scripts/paper_bench/README.md)."""
 import argparse
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common as C  # noqa: E402
+import common as C
 
 LOCAL = C.LOCAL
 MODES = {"exact": "exact: clamp_kv=1, normal=0", "interface": "interface defaults: clamp_kv=0, normal=3"}
@@ -66,7 +57,6 @@ def table(job):
     _upgrade(job)
     rows = []
     corpora = job.get("corpora") or []
-    # ours
     o = _res(job, "ours").get("cells") or {}
     for c in corpora:
         cell = o.get(f"{c}/nw4096")
@@ -82,7 +72,6 @@ def table(job):
                 if mm.get(k):
                     _row(rows, "jacobian", "ours", f"{what} ({mode})", c, 4096, mm.get(k), lab,
                          us_per_world=mm[k].get("us_per_world"))
-    # MuJoCo Warp native
     w = _res(job, "mjw_native").get("cells") or {}
     for c in corpora:
         for cap in ("procedure", "matched", "default"):
@@ -104,7 +93,6 @@ def table(job):
         if w.get(f"{c}/matched/nw4096"):
             rows.append(dict(section="gradient", engine="mjw", op="backward", corpus=c, nworld=4096,
                              ms_median=None, note="none in any release (no timing)"))
-    # PR #1535
     for part in ("mjw_pr1535", "mjw_pr1535_fix"):
         cells = _res(job, part).get("cells") or {}
         for c in corpora:
@@ -124,7 +112,6 @@ def table(job):
                                  nworld=4096, ms_median=round(_ms(f)["median"] + _ms(b)["median"], 5),
                                  note="a differentiated rollout: the forward, then the adjoint graph"))
     _local_rows(job, rows, "gradient")
-    # MJX
     x = _res(job, "mjx").get("cells") or {}
     for c in corpora:
         cell = x.get(f"mjlab/{c}/nw4096")
@@ -155,7 +142,6 @@ def table(job):
         rows.append(dict(section="gradient", engine="mjx", op="reverse mode", corpus=None, nworld=rv.get("B"),
                          ms_median=None, note=("supported" if rv.get("supported") else
                                                f"not supported natively: {rv.get('type')}: {rv.get('message')}")))
-    # Genesis
     g = _res(job, "genesis").get("cells") or {}
     for c in corpora:
         cell = g.get(f"{c}/nw4096")
@@ -165,7 +151,6 @@ def table(job):
         cell = g.get(f"{c}/performance/nw4096")
         if cell:
             _row(rows, "forward", "genesis", "forward, gs.init(performance_mode=True)", c, 4096, cell.get("forward"))
-    # MuJoCo C
     mc = _res(job, "mjc")
     for c in corpora:
         cell = (mc.get("cells") or {}).get(f"{c}/nw4096")
@@ -188,7 +173,6 @@ def table(job):
                 _row(rows, "jacobian", "mjc", f"FD Jacobian, chained mjd_transitionFD, {what}, eps {r.get('eps')}", c,
                      r.get("B"), r, note,
                      us_per_world=round(1e3 * r["ms_per_world"], 3) if r.get("ms_per_world") else None)
-    # sweeps
     first = corpora[0] if corpora else None
     for k, cell in o.items():
         if k.startswith("sweep/"):
@@ -220,7 +204,6 @@ def table(job):
                              nworld=int(name.split("_nw")[-1]), ms_median=None,
                              note=f"{part.get('status')}: {part.get('reason', '')}"))
     _local_rows(job, rows, "sweep")
-    # bare kernels
     b = _res(job, "ours_bare").get("cells") or {}
     bc = _res(job, "ours_bare").get("corpus")
     if b.get("step"):
@@ -233,7 +216,7 @@ def table(job):
     return rows
 
 
-REPEAT_CELLS = (  # (part, engine, op label, cell key pattern, path in the cell)
+REPEAT_CELLS = (
     ("ours", "ours", "fwd (no tape)", "{c}/nw4096", ("fwd",)),
     ("ours", "ours", "vjp (exact)", "{c}/nw4096", ("exact", "vjp")),
     ("ours", "ours", "vjp (interface)", "{c}/nw4096", ("interface", "vjp")),

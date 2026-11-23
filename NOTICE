@@ -16,4 +16,8 @@ BSD 3-Clause License (see fixtures/mjlab/LICENSE). Its modifications follow the 
 configuration of mjlab (https://github.com/mujocolab/mjlab), Copyright 2025, The mjlab
 Developers, licensed under the Apache License, Version 2.0.
 
+The file src/nablaengine/actuators/bam_params/xl330/m6.json is copied from BAM (Better Actuator
+Models, https://github.com/Rhoban/bam) by Marc Duclusaud and Grégoire Passault (Rhoban),
+licensed under the Apache License, Version 2.0 (see src/nablaengine/actuators/bam_params/LICENSE).
+
 THIRD_PARTY_NOTICES.md lists the files concerned, their sources and the changes made.

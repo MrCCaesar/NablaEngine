@@ -1,14 +1,4 @@
-"""Shared helpers of the paper timing kit (scripts/paper_bench): the timing protocol, corpus inputs, small provenance.
-
-Standard library + numpy only, so every engine's environment can import it (the native MuJoCo Warp venv has no
-nablaengine). Workers import it from their own directory (scripts/paper_bench is on sys.path when a worker runs).
-
-Timing protocol: compile / capture / build timed separately by the worker; warm-up of at least WARM_CALLS calls and WARM_S seconds; then ROUNDS + 1 rounds of N back-to-back calls and one
-synchronization each, round 0 dropped; per-call time of each round = round time / N; reported: median, p10, p90, min,
-max over the kept rounds (ms), plus a latency mode (median of LAT single synchronized calls) where cheap and where
-the rounds are not single calls already (n > 1).
-PAPER_BENCH_QUICK=1 reduces rounds and calls (kit smoke test; the numbers are then not for publication).
-"""
+"""Shared helpers of the paper timing kit (scripts/paper_bench): the timing protocol, corpus inputs, small provenance."""
 
 import json
 import os
@@ -25,7 +15,7 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "fixtures" / "mjlab"
 MF_DIR = REPO / "benchmarks" / "data"
 QUICK = os.environ.get("PAPER_BENCH_QUICK", "") not in ("", "0")
-ROUNDS = 2 if QUICK else 5  # kept rounds (round 0 is extra and dropped)
+ROUNDS = 2 if QUICK else 5
 WARM_CALLS, WARM_S = (2, 0.2) if QUICK else (5, 1.0)
 STATE_KEYS = ("qpos", "qvel", "qacc_warmstart", "ctrl", "friction", "com")
 
@@ -59,12 +49,10 @@ def scrub_text(text):
     return text
 
 
-HEADLINE = ("mf_s0", "mf_s1")  # the corpora timed by default (benchmarks/data), in this order
+HEADLINE = ("mf_s0", "mf_s1")
 
 
 def _local():
-    """local_parts.py next to this file, when present: additions of a local installation (extra corpora, parts and
-    table rows) that are not part of this kit; None otherwise."""
     try:
         import local_parts
     except ImportError:

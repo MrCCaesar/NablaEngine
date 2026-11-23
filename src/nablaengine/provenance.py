@@ -1,14 +1,6 @@
 """Where a result came from: the NablaEngine source revision, and for the scripts' result JSONs the GPU, driver,
 toolkit, package versions and the reference physics (MuJoCo Warp's version, source tree hash and switches) it ran
-with.
-
-  from nablaengine import provenance
-  res["provenance"] = provenance.provenance()   # before writing a result JSON
-  provenance.keep_sections(res, [(old, kept)])  # --update: the provenance of the sections kept from the old JSON
-
-Paths are recorded relative to the repository (or to ~), never host names, user names or job ids. Every probe is
-best effort: a missing tool or package gives None, never an exception.
-"""
+with."""
 
 import datetime
 import hashlib
@@ -20,12 +12,9 @@ import re
 import subprocess
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]  # the checkout when nablaengine is imported from <checkout>/src
+REPO = Path(__file__).resolve().parents[2]
 PACKAGES = ("numpy", "mujoco", "mujoco-mjx", "jax", "jaxlib", "jax-cuda12-plugin", "warp-lang", "mujoco-warp", "scipy")
-# an environment switch (MJW_<NAME>) that a MuJoCo Warp source tree reads: mujoco_warp() records the ones its sources
-# name (a stock MuJoCo Warp has none)
 MJW_SWITCH = re.compile(r"""["'](MJW_[A-Z0-9_]+)["']""")
-# a checkout may pin a MuJoCo Warp source tree: <checkout>/third_party/<name>/tree.sha256 holding its tree_sha256
 TREE_FILES = "third_party/*/tree.sha256"
 ENV_PREFIXES = ("DK_", "MJW_")
 ENV_NAMES = ("JAX_PLATFORMS", "XLA_FLAGS", "XLA_PYTHON_CLIENT_PREALLOCATE", "CUDA_DEVICE_ORDER")
@@ -45,7 +34,7 @@ def rel(path):
     (.../name: no absolute paths of the machine in results; str, None stays None)."""
     if path is None:
         return None
-    p = Path(path).expanduser().absolute()  # a symlinked runs/ stays runs/
+    p = Path(path).expanduser().absolute()
     try:
         resolved = p.resolve()
     except OSError:
@@ -60,7 +49,6 @@ def rel(path):
 
 
 def _installed_commit():
-    """The commit pip recorded for an install from a git URL (PEP 610 direct_url.json), None otherwise."""
     import json
     from importlib import metadata
     try:
@@ -163,7 +151,7 @@ def environment():
     out = {}
     for k, v in sorted(os.environ.items()):
         if k.startswith(ENV_PREFIXES) or k in ENV_NAMES:
-            if k == "XLA_FLAGS":  # flags such as --xla_dump_to=<path>: each path relative
+            if k == "XLA_FLAGS":
                 out[k] = " ".join(f"{f.split('=', 1)[0]}={rel(f.split('=', 1)[1])}" if "=" in f and "/" in f else f
                                   for f in v.split())
             else:
@@ -200,7 +188,7 @@ def provenance():
     commit, dirty = source_commit()
     try:
         arch = cuda.arch()
-    except Exception:  # noqa: BLE001  (no GPU and no DK_ARCH)
+    except Exception:
         arch = None
     return dict(date=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 nablaengine=dict(version=nablaengine.__version__, commit=commit, dirty=dirty),

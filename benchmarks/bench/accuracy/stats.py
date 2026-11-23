@@ -1,9 +1,4 @@
-"""Summary statistics of per-state errors shared by the accuracy scorers (numpy only).
-
-  summary(e)            {n, median, p90, p99, max, share_gt_1e-3} of the finite values (numpy.quantile, linear),
-                        nonfinite = count of the others; {n: 0, nonfinite} when nothing is finite
-  summary(e, cos)       also cos_min and cos_p1 of the cosines at the same positions
-"""
+"""Summary statistics of per-state errors shared by the accuracy scorers (numpy only)."""
 
 import numpy as np
 

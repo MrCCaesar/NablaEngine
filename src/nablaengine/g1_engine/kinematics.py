@@ -2,52 +2,12 @@
 state (qpos, qvel) with the per-world torso COM offset com, as MuJoCo MJX's mjx.kinematics + smooth.com_pos +
 smooth.com_vel (mujoco 3.17.0, mujoco/mjx/_src/smooth.py) compute them (qpos, xpos, xquat, cvel, subtree_com), and the
 VJP of that map. nablaengine.jax_ffi runs it after the step's last
-substep (step(..., kinematics=True): the output state's) and on its own (jax_ffi.kinematics).
-
-Semantics (MJX source line numbers of mujoco 3.17.0; the mjlab G1: a free root body 1, hinge joints at the body
-origins, no mocap bodies; check_model asserts what is used):
-  qpos_n  qpos with the free joint's quaternion normalized and written back (smooth.py 49, 67-70: "also normalize
-          qpos while we're at it", qpos.at[3:7].set(normalize(qpos[3:7])); math.normalize = x / |x| (math.py 79-108)).
-          Its derivative removes the quaternion cotangent's radial part: g_q = (g - u (u.g)) / |q|, u = q / |q|
-  xpos, xquat  (B, nbody, 3 / 4), the body frames, world body 0 included (smooth.py 47-108, scan.body_tree root to
-          leaves): body 0 = (body_pos[0], body_quat[0]) = (0, (1, 0, 0, 0)); the root = (qpos[0:3], qpos_n[3:7]) (60-70);
-          a hinge body b: pos = xpos[p] + rotate(body_pos[b], xquat[p]), quat = xquat[p] * body_quat[b] (51-54), then
-          quat = quat * axis_angle(jnt_axis, qpos - qpos0) (78-83; jnt_pos = 0 and qpos0 = 0 on the hinges: the
-          anchor is the body origin and the angle qpos). Here the engine's fwd_body (source.DEVICE, the explicit
-          roundings of the forward's substep_pre): the bits of the poses and twists that the next substep computes at
-          its start for this state. The quaternions of the hinge bodies are products, not renormalized (as MJX)
-  subtree_com  (B, nbody, 3) (smooth.py 150-165): xipos = xpos + rotate(body_ipos, xquat) (121, support.py 208-216),
-          body_ipos of the torso plus com (the per-world COM offset: body_ipos.at[torso].add(com); the engine's
-          body_ipos(b, com)), subtree sums of mass * xipos and mass leaf to root, their quotient (mass < mjMINVAL: none
-          in this model, asserted). The world body's subtree is body 1's (scan.body_tree's reverse scan sums body 1
-          into body 0; body 0 has mass 0): subtree_com[0] = subtree_com[1] (bitwise in MJX too)
-  cvel    (B, nbody, 6) = [angular; linear] (smooth.py 415-457 with the cdof of com_pos 182-219): the twist of each body
-          at the reference point subtree_com[body_rootid[b]] = subtree_com[1] for b >= 1 (body 0: zeros): angular
-          W_b = world angular velocity (root: R_1 qvel[3:6]; child: W_parent + xaxis qd), linear V_b + W_b x
-          (subtree_com[1] - xpos[b]) with V_b the velocity of the body origin (root: qvel[0:3]; child: V_parent +
-          W_parent x (xpos[b] - xpos[parent])). MJX sums cdof * qvel down the tree, cdof = [xaxis; xaxis x (root_com -
-          xanchor)] (hinge), the free joint's translations [0; e_k] and rotations [R e_k; R e_k x (root_com -
-          qpos[0:3])]: the same twist; a caller that wants the velocity of the body origin undoes the shift (lin -
-          (xpos - subtree_com[root]) x ang)
-
-VJP (cotangents of qpos_n, xpos, xquat, cvel, subtree_com -> of qpos, qvel; com gets none): one warp per world, lane b =
-body b, with the forward recomputed from (qpos, qvel, com) (no residuals besides the inputs). The pose cotangents are
-kept per body as a world force f bar (position) and torque tau bar (rotation; a quaternion cotangent g_Q gives
-tau bar = 1/2 vec(g_Q Q*)), as the adjoint's pose sweep (adjoint.py adj_tree_up): cvel's -> the twists' and
-the reference point's (the root's subtree COM), subtree_com's -> the subtree sums' (a root-to-leaf sweep of the path
-sums, times the mass: the xipos cotangents -> f bar, tau bar += c x g), the twist recursion reversed leaf to root (V_c =
-V_b + W_b x r_c: W bar_b += r_c x V bar_c, r bar_c = V bar_c x W_b; W_c = W_b + z_c qd: qd bar = z_c . W bar_c, tau bar_c
-+= z_c x qd W bar_c) in the same pass as the pose sweep F_b = f bar_b + sum (F_c - r bar_c), N_b = tau bar_b + sum (N_c
-+ r_c x F_c): hinge qpos bar = z_b . N_b, the root's position F_1, its quaternion through the normalization: a = 2 [0;
-N_1] Q_1 + g_xquat[1] + g_qpos_n[3:7], g_q = (a - u (u.a)) / |q|; qpos_n's other entries pass their cotangent through.
-The step's combined backward adds the incoming cotangents of (qpos', qvel') last (one rounding: bitwise what JAX's sum of
-the two VJPs gives).
-"""
+substep (step(..., kinematics=True): the output state's) and on its own (jax_ffi.kinematics)."""
 
 import mujoco
 import numpy as np
 
-KIN_WPB = 4  # worlds (warps) per block of k_kin / k_kin_vjp
+KIN_WPB = 4
 OUTPUTS = ("qpos_n", "xpos", "xquat", "cvel", "subtree_com")
 
 
@@ -67,7 +27,7 @@ def check_model(m):
     body_jntadr -1 (which would index the last joint): body_jntnum is checked first."""
     from nablaengine.model import capability
     capability.require(m, None, None, "kinematics", "kinematics outputs")
-    assert m.nbody <= 32 and m.nmocap == 0
+    assert m.nbody <= 63 and m.nmocap == 0
     assert not np.any(m.body_pos[0]) and np.array_equal(m.body_quat[0], [1.0, 0.0, 0.0, 0.0]) and m.body_mass[0] == 0
     assert [b for b in range(1, m.nbody) if m.body_parentid[b] == 0] == [1]
     assert all(int(m.body_rootid[b]) == 1 for b in range(1, m.nbody)) and int(m.body_rootid[0]) == 0

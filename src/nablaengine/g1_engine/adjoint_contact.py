@@ -6,52 +6,7 @@
 """CUDA device functions of the contact side of the analytic adjoint: impedance derivatives, the joint-limit row VJP,
 the contact row VJP Psi_c, the per-dof pose cotangents of a contact Jacobian column, and the collision-primitive VJPs
 of the mjlab model (plane-sphere, plane-capsule, sphere-sphere, sphere-capsule, capsule-capsule) with make_frame, the
-normal option DK_ADJ_NORMAL and the near-parallel capsule option DK_ADJ_PARALLEL.
-
-All functions are pure: pointers and scalars in, pointers out (no struct Sim, no struct Adj), meant for one lane per
-contact or row; no warp intrinsics, no shared state. They need source.DEVICE (qrot, cross, dot3, the *_rn helpers) and
-step.STEP_DEVICE (kbimp, imp_raw, efc_D, contact_invw, sphere_sphere, make_frame and the primitives' geometry that
-collide_pair uses: plane_point, plane_capsule_frame, capsule_end, segment_point, capcap_*) before them in the compilation
-unit, and header(m) (which asserts the
-model: no boxes, no frictionloss rows). Unit-test labels: U4-U9 (docs/verification.md).
-
-Conventions:
-- P = grad Psi with MuJoCo Warp's res_* sign (the adjoint kernel subtracts it: qbar = qbar_dir - P). Every "bar"
-  below is a cotangent dL/d(.) of the residual term L = Psi, so dbar, pbar, frbar are MuJoCo Warp's contact_adj_dist
-  (the efc_pos cotangent of the contact's first row), res_contact_pos and res_contact_frame, and W_v, W_a, W_lam the
-  linear parts of contact_V.grad / contact_A.grad / contact_Z.grad.
-- Contact frame fr[9]: rows n (from geom 1 towards geom 2), t1, t2 (step.py make_frame, or the capsule-axis frame of a
-  plane-capsule contact). Pyramid rows e = 0..3 of a condim-3 contact: u_e = n + mu t1, n - mu t1, n + mu t2, n - mu t2
-  (the forward's row order: sign (e & 1), tangent 1 + (e >> 1)); condim 1: u_0 = n.
-- Contact-point motion V (3-vector, world): J_p q' of the contact point moving with body 2 relative to body 1, i.e. the
-  linear part of MuJoCo Warp's spatial contact motion (angular first there); the angular part Omega = sum over the
-  rotational support dofs of s_i z_i q'_i enters only contact_pbar_motion.
-- Pose cotangents (fbar, tbar) of a body or geom: dL = fbar . dX + tbar . dOmega, X the body origin (geom: its centre)
-  in world coordinates, dR = [dOmega]x R (world-frame rotation). A rotation-matrix cotangent Rbar converts to
-  tbar = sum_k R[:, k] x Rbar[:, k] (MuJoCo Warp's adjoint_util._adj_rotation); a body-fixed vector y = R c gives
-  tbar += y x ybar.
-- Geom pose cotangents of a contact, gb[12] = (xbar_1, tbar_1, xbar_2, tbar_2) for the pair's geoms g1, g2 in the
-  engine's order (lower type first, step.pair_constants); the plane (the static floor) gets zeros.
-
-Use in the adjoint kernel (its phases A5 / A6, adjoint.py), per substep with the record's input state replayed
-(body poses Q, X, geom poses gx, gq from geom_poses), h = c_misc[0]:
-- contact c of the tape's table (pair, slot), rows r0 .. r0 + nr - 1 (r0 = nlim + rows of the contacts before c,
-  nr = 4 for condim 3, else 1), zone = its nr zone bits (bit 0 = row r0):
-  1. br = adj_pair_geom(pair, slot, gx, gq, &d, pos, fr, &nu, nullptr, nullptr)   (replay: the forward's d, pos, fr)
-  2. mu = PFOOT(pair) ? fric : PMU(pair); invw = contact_invw(pair, mu) (c_binvw[b1] + c_binvw[b2], for condim 3 the
-     pyramid scaling: substep_pre's, so D is bitwise the forward's);
-     kbimp_d(PSOLREF(pair), PSOLIMP(pair), d, h, &k, &b, &imp, &dimp); efc_D_d(invw, imp, dimp, &D, &dD)
-  3. V_v, V_a, V_lam = sum over the support dofs i of s_i col_i (v_i, a*_i, lam_i) (and, for contact_pbar_motion, the
-     angular Om_* = sum over the rotational ones of s_i z_i (v_i, a*_i, lam_i))
-  4. contact_psi_vjp(V_v, V_a, V_lam, fr, mu, dim, zone, d, D, dD, k, b, imp, dimp, W_v, W_a, W_lam, &dbar, frbar)
-  5. per support dof: P_v,i += contact_dof_vjp(...) (adds the dof body's fbar, tbar and pbar), or the same G formula in
-     a lane-per-dof reduction with pbar from contact_pbar_motion
-  6. cot = (dbar, pbar, frbar); adj_pair_geom(pair, slot, gx, gq, &d, pos, fr, &nu, cot, gb); geom_to_body_vjp of
-     gb + 0 (geom g1, unless its body is the world) and gb + 6 (g2) onto (fbar, tbar) of their bodies
-- joint-limit row of hinge dof i in its zone (pos, sigma as substep_pre): kbimp_d(c_jsolref, c_jsolimp, pos, h, ...),
-  efc_D_d(c_dinvw[i], ...), limit_row_vjp(sigma, pos, a*_i, v_i, lam_i, ...) -> P_phi,i, P_v,i
-All P terms then enter P_q (the pose sweep, A7) and P_v with MuJoCo Warp's res_* sign.
-"""
+normal option DK_ADJ_NORMAL and the near-parallel capsule option DK_ADJ_PARALLEL."""
 
 import mujoco
 
@@ -64,8 +19,15 @@ def check_model(m):
     types = {int(m.geom_type[g]) for g in step.collision_geoms(m)}
     from nablaengine.g1_engine import model_hooks
     has_box, box_ok, _ = model_hooks.box_pairs(m)
-    assert not has_box or box_ok, "the adjoint has box contacts with planes and boxes only (model_hooks)"
-    assert {step.GEOM_TYPE[t] for t in types} <= {0, 1, 2, 3}, "collision geoms other than plane / sphere / capsule / box"
+    assert not has_box or box_ok, "the adjoint has box contacts with planes, spheres, capsules and boxes (model_hooks)"
+    from nablaengine.g1_engine import cylinder
+    has_cyl, cyl_ok = cylinder.pairs(m)
+    assert not has_cyl or cyl_ok, "cylinder contacts with planes, spheres, capsules, cylinders and boxes only"
+    from nablaengine.g1_engine import mesh
+    has_mesh, mesh_ok = mesh.pairs(m)
+    assert not has_mesh or mesh_ok, "mesh contacts with planes, spheres, capsules, cylinders, boxes and meshes only"
+    assert {step.GEOM_TYPE[t] for t in types} <= {0, 1, 2, 3, 5, 6}, ("collision geoms other than plane / sphere / "
+                                                                      "capsule / box / cylinder / mesh")
     planes = [g for g in step.collision_geoms(m) if int(m.geom_type[g]) == int(mujoco.mjtGeom.mjGEOM_PLANE)]
     assert all(int(m.geom_bodyid[g]) == 0 for g in planes), "a plane not on the world body (it gets no cotangent)"
 
@@ -507,7 +469,6 @@ __device__ __forceinline__ void geom_to_body_vjp(const float* xg, const float* X
 
 
 
-# ---- terrain builds (nablaengine.terrain; adjoint.ADJ_TERRAIN_HOOKS inserts it before adj_pair_geom) ----
 TERRAIN_DEVICE = r"""
 // A terrain contact (virtual pair NPAIR + t: geom 1 the static terrain, geom 2 the robot geom of type gt, size sz, pose
 // p2 / q2) with tape slot k | element << 8 (aux: a native heightfield contact's candidate, the tape's taux): the replay (dist, pos, fr: the forward's bits, by the same __noinline__
@@ -523,7 +484,7 @@ __device__ __noinline__ int adj_terrain_geom(int slot, unsigned aux, int gt, con
                                              const float* q2, float* dist, float* pos, float* fr, float* nu,
                                              const float* cot, float* gb) {
   const int k = slot & 255, e = slot >> 8, nbox = g_ter.grid ? int(g_ter.grid[5]) : 0;
-  const bool box = e < nbox;  // a terrain box (ter_box)
+  const bool box = e < nbox || e >= OBJ_E0;  // a terrain box or a per-world object slot (ter_box)
   *nu = __int_as_float(0x7f800000);
   if (cot)
     for (int t = 0; t < 12; t++) gb[t] = 0.f;
@@ -548,13 +509,11 @@ __device__ __noinline__ int adj_terrain_geom(int slot, unsigned aux, int gt, con
     const int k1 = 0;
     const float* hh = g_ter.hfh + 16 * (e - nbox);
     *dist = con[k1].dist;
-    mv3(hh + 3, con[k1].pos, pos);
-    for (int t = 0; t < 3; t++) pos[t] += hh[t];
-    mv3(hh + 3, con[k1].n, n);
+    hf_world_point(hh, con[k1].pos, pos);
+    hf_mv3(hh + 3, con[k1].n, n);
     if (gt == 2) w = 2.f * con[k1].t - 1.f;
     if (con[k1].type == HF_POINT) {  // normal from the fixed prism point q to the core point
-      mv3(hh + 3, con[k1].q, qp);
-      for (int t = 0; t < 3; t++) qp[t] += hh[t];
+      hf_world_point(hh, con[k1].q, qp);
       point_n = true;
     }
 #else

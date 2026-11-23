@@ -60,16 +60,15 @@ from benchmarks.bench.corpus.labels import Labeller
 
 REPO = Path(__file__).resolve().parents[3]
 GENERATOR = "benchmarks/bench/corpus/gen_mf.py"
-VERSION = 1  # bump when a change alters the corpora a seed produces
+VERSION = 1
 
-# reset noise, domain randomization and fall termination of the rollouts (module docstring)
 RESET_POS, RESET_RPY = np.array([0.05, 0.05, 0.01]), np.array([0.1, 0.1, 0.2])
 RESET_VEL, RESET_JOINT = np.array([0.5, 0.5, 0.2, 0.52, 0.52, 0.78]), 0.1
 COM_LIM = np.array([0.025, 0.05, 0.05])
 FRICTION = (0.3, 1.2)
 TERM_HEIGHT, TERM_TILT = 0.25, 0.8
-SOFT = 0.9  # setpoints and joint reset noise stay within this share of the joint range
-CAPACITY = (64, 192)  # contacts / constraint rows per world of NablaEngine (reported, not filtered)
+SOFT = 0.9
+CAPACITY = (64, 192)
 BAD_WARNINGS = (int(mujoco.mjtWarning.mjWARN_BADQPOS), int(mujoco.mjtWarning.mjWARN_BADQVEL),
                 int(mujoco.mjtWarning.mjWARN_BADQACC))
 PICKS = ("prefall", "self_contact", "uniform")
@@ -144,7 +143,7 @@ class Robot:
         effort = np.where(m.jnt_actfrclimited[jid].astype(bool), m.jnt_actfrcrange[jid, 1],
                           np.where(m.actuator_forcelimited.astype(bool), m.actuator_forcerange[:, 1], np.nan))
         half_a = 0.5 * (self.a_hi - self.a_lo)
-        self.scale = np.where(np.isfinite(effort), 0.25 * effort / kp, 0.25 * half_a)  # action_scale
+        self.scale = np.where(np.isfinite(effort), 0.25 * effort / kp, 0.25 * half_a)
         if not np.isfinite(self.scale).all():
             raise ValueError("an actuator without force limits drives an unlimited joint: no setpoint scale")
         names = [m.key(i).name for i in range(m.nkey)]
@@ -161,7 +160,7 @@ class Robot:
         else:
             self.key_names = ["qpos0"]
             self.key_qpos, self.key_qvel = m.qpos0[None].copy(), np.zeros((1, m.nv))
-        self.key_set = self.key_qpos[:, self.a_q]  # setpoint centres per keyframe
+        self.key_set = self.key_qpos[:, self.a_q]
         self.key_z = self.key_qpos[:, self.qa + 2]
         self.key_gz = gravity_z(self.key_qpos[:, self.qa + 3:self.qa + 7])
 
@@ -188,7 +187,6 @@ def resolve(args):
             from benchmarks.bench.models import fetch
             entry = fetch.pin("menagerie_g1")
             path = fetch.scene_path()
-            # where the files are fetched to does not enter the corpus: the pinned repository file names the model
             record.update(repo=entry["repo"], commit=entry["commit"], file=entry["entry"],
                           files_sha256=fetch.files_digest(entry), license=entry["license"]["url"])
             args.model = str(path)
@@ -284,10 +282,9 @@ def main(argv=None):
     qpos_b, qvel_b, ctrl_b, warm_b = b.bind("qpos"), b.bind("qvel"), b.bind("ctrl"), b.bind("qacc_warmstart")
     ncon_b, nefc_b = b.bind("ncon"), b.bind("nefc")
 
-    # per-world episode state
     key = np.zeros(W, int)
     ep = np.zeros(W, int)
-    x = np.zeros((W, nu))  # OU deviation of the setpoints from the keyframe pose
+    x = np.zeros((W, nu))
     kick_cd = np.zeros(W, int)
     fric, com = np.full(W, np.nan), np.zeros((W, 3))
     ou_a = np.exp(-dt / args.ou_tau)
@@ -334,14 +331,12 @@ def main(argv=None):
     reset(np.arange(W))
     for t in range(T):
         r = r_roll
-        # setpoints: OU step, then jumps to a uniform pose
         x = ou_a * x + ou_b * r.standard_normal((W, nu))
         jump = (r.random(W) < p_jump)[:, None] & (r.random((W, nu)) < args.jump_share)
         pose = r.uniform(rob.a_lo, rob.a_hi, (W, nu)) if np.isfinite(rob.a_lo).all() else None
         if pose is not None:
             x = np.where(jump, pose - rob.key_set[key], x)
         u = np.clip(np.clip(rob.key_set[key] + x, rob.a_lo, rob.a_hi), rob.c_lo, rob.c_hi)
-        # pushes
         kick_cd -= 1
         kick = kick_cd <= 0
         dv = r.uniform(-kick_vel, kick_vel, (W, 6))
@@ -382,7 +377,6 @@ def main(argv=None):
           f"{int(bad_at.sum())} bad steps; contacts mean {roll_ncon.mean():.2f} max {roll_ncon.max()}, rows mean "
           f"{roll_nefc.mean():.1f} max {roll_nefc.max()} ({t_roll:.0f} s)", flush=True)
 
-    # pre-fall: the --pre-fall states of an episode up to and including the step into its fall
     pre = np.zeros((T, W), bool)
     for t, i in zip(*np.nonzero(fell_at)):
         k = min(args.pre_fall, ep_step[t, i] + 1)
@@ -428,7 +422,6 @@ def main(argv=None):
     if len(sel) < S:
         raise SystemExit(f"the pool has only {len(sel)} usable states, {S} wanted")
 
-    # the corpus: a fixed permutation, inputs as stored (float32), labels from those inputs
     perm = r_perm.permutation(S)
     sel, how = sel[perm], how[perm]
     tt, ii = np.unravel_index(sel, (T, W))
@@ -462,7 +455,6 @@ def main(argv=None):
                   labelled_for_self_contact=labelled,
                   shares={k: float(arrays[f"label_{k}"].mean()) for k in
                           ("prefall", "self_contact", "clamped", "limit", "nonconv", "over_capacity")})
-    # the options that define the corpus (not where it goes, how fast it is made, or where the model lives)
     opts = {k: v for k, v in vars(args).items()
             if k not in ("out", "force", "threads", "model", "meta", "label_chunk")}
     metadata = dict(

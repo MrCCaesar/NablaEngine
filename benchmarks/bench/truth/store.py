@@ -1,46 +1,6 @@
 """The benchmark truth of a corpus: production (make), the truth file (benchmarks/data/truth/<corpus>.npz) and the
 cached forward truth, as the accuracy scorers read them. MuJoCo C float64 only (truth/mjc.py); the model check
-against native MuJoCo Warp 3.17.0 runs in its own environment (truth/mjw_labels.py, started as a subprocess).
-
-Production per corpus (make):
-  1. forward truth and C-only labels of every state, plus the it10 / it50 floor runs (mjc.label_task), cached in the
-     cache directory (--cache-dir, default runs/bench/truth) as fwd_<corpus>.npz, keyed by the inputs digest, the
-     model's sha256, the options, the MuJoCo version and VERSION;
-  2. native MuJoCo Warp labels (mjw_<corpus>.npz, cached the same way) and the model check (mjc.model_check);
-  3. on corpora with stored cotangents of Track A: the groups, the seeded sample (mjc.sample: up to 64 states per
-     group) and the finite-difference truth of the sampled states (mjc.fd_task = fdlib.fd_job; cached in
-     fd_<corpus>.npz and extended state by state);
-  4. the truth file, written deterministically (fixed zip timestamps) and at most MAX_BYTES.
-
-Truth file keys (S corpus states, N sampled states, Nj of them with the full Jacobian, ncol = 2 nv + nu = 99):
-  meta                  0-d JSON string: format, corpus (name, kind, path, file sha256, inputs and cotangent digests),
-                        problem (model path, sha256, substeps, DR), options of the truth and the floor runs, the FD
-                        construction, label and group definitions with their counts, sampling, model check,
-                        provenance (MuJoCo / numpy versions, harness commit, fdlib.py's sha256, CPU)
-  labels (S,) uint16    mjc.LABEL_BITS of every state;  model_flags (S,) int8  mjc.MODEL_FLAGS, -1 = not checked
-  frame_rotation (S,) float32  the model check's largest tangent-frame rotation (1 - |cos|; nan: not checked)
-  niter, niter_<floor> (S,) int16  most solver iterations of the truth / floor runs (it10, it50, Track B native) in
-                        any substep
-  min_nu, min_abs_dist, min_kink, clamp_margin (S,) float32  the continuous labels (m, m, -, relative; inf: none)
-  check_index (K,) int32, check_out (K, nq + nv) float64  forward truth (qpos' qpos form, qvel') of K = 64 fixed
-                        states: a regenerated forward truth is checked against them
-  gradient truth (Track A corpora with cotangents):
-  index (N,) int32      the sampled states (sorted);  group_<G> (N,) bool  sampled for group G (mjc.GROUPS)
-  fd_vjp (N, 3, ncol) float64        VJPs of the corpus's 3 stored cotangents through J(h = 1e-6): the truth
-  fd_vjp_floor (N, 3, ncol) float64  the same through J(h = 1e-7): |fd_vjp_floor - fd_vjp| is the truth floor
-  bad (N, ncol) uint8                column-validity bits (mjc.BAD); a column is valid when 0
-  out (N, nq + nv) float64           the FD base run's outputs (= the forward truth of those states)
-  jac_index (Nj,) int32              positions into index of the states with the full Jacobian (--jacobian-groups,
-                                     default G0: the size budget)
-  jacobian (Nj, nq + nv, ncol) float32   J(h = 1e-6), rows qpos' (qpos form) then qvel', columns qpos tangent, qvel,
-                                     ctrl (the layout of the harness's op jac)
-  jacobian_dcol (Nj, ncol) float32   per column |J(1e-6) - J(1e-7)| over all rows: the Jacobian's truth floor
-
-  from benchmarks.bench.truth import store
-  tr = store.load("mf_s0")            # Truth of benchmarks/data/truth/mf_s0.npz
-  fw = tr.forward()                   # dict: out (S, nq + nv), out_<floor>, ... (cached or regenerated)
-  tr.groups(), tr.model_ok(), tr.labels()
-"""
+against native MuJoCo Warp 3.17.0 runs in its own environment (truth/mjw_labels.py, started as a subprocess)."""
 
 import datetime
 import io
@@ -59,20 +19,19 @@ from benchmarks.bench import prov
 from benchmarks.bench.truth import common
 
 FORMAT = "dk-bench-truth/1"
-MAX_BYTES = 8 * 2 ** 20  # the size budget of one truth file (as a corpus file's)
+MAX_BYTES = 8 * 2 ** 20
 NCHECK = 64
 CHECK_SEED = 20261029
-CHECK_RTOL = 1e-9  # a regenerated forward truth must match check_out to this (per state, relative to max(|x|, 1))
+CHECK_RTOL = 1e-9
 JACOBIAN_GROUPS = ("G0",)
 _ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
 def _mjc():
-    from benchmarks.bench.truth import mjc  # mujoco + truth/fdlib.py: imported when needed
+    from benchmarks.bench.truth import mjc
     return mjc
 
 
-# ------------------------------------------------------------------------------------------------- deterministic npz
 
 def write_npz(path, arrays, max_bytes=MAX_BYTES):
     """Write arrays (the meta as a 0-d string) as an npz zip with fixed timestamps (same arrays, same bytes for the
@@ -98,7 +57,6 @@ def write_npz(path, arrays, max_bytes=MAX_BYTES):
     return prov.sha256(path)
 
 
-# ------------------------------------------------------------------------------------------------- cached steps
 
 def _base_meta(corpus, prob, desc):
     import mujoco
@@ -194,7 +152,7 @@ def fd_truth(corpus, prob, desc, worlds, cache, pool, recompute=False, log=print
         log(f"[truth] {corpus.name}: FD truth of {len(miss)} states, {time.perf_counter() - t0:.1f} s on {pool.jobs} "
             f"processes ({sum(r['seconds'] for r in rows.values()):.0f} CPU s)")
     allw = sorted(set(have) | set(rows))
-    get = lambda w, k: rows[w][k] if w in rows else old[k][have[w]]  # noqa: E731
+    get = lambda w, k: rows[w][k] if w in rows else old[k][have[w]]
     merged = {k: np.stack([np.asarray(get(w, k)) for w in allw]) for k in mjc.FD_KEYS}
     if rows:
         common.save_cached(path, meta, dict(worlds=np.asarray(allw, np.int64), **merged))
@@ -204,7 +162,6 @@ def fd_truth(corpus, prob, desc, worlds, cache, pool, recompute=False, log=print
                                                         seconds=round(time.perf_counter() - t0, 2))
 
 
-# ------------------------------------------------------------------------------------------------- make
 
 def check_states(S):
     return np.sort(np.random.default_rng(CHECK_SEED).permutation(S)[:min(NCHECK, S)]).astype(np.int32)
@@ -215,7 +172,6 @@ def _counts(mask_dict):
 
 
 def _file_provenance():
-    """What the truth's numbers depend on (stored in the file, so a regenerated file is bitwise the same)."""
     import mujoco
     return dict(mujoco=mujoco.__version__, numpy=np.__version__,
                 fd_helpers=dict(path=prov.rel(_mjc().FDLIB_PATH), sha256=prov.sha256(_mjc().FDLIB_PATH)))
@@ -359,7 +315,6 @@ def make(name, cache=None, jobs=None, pool_cache=None, gradient=True, mjw=True, 
                 p.close()
 
 
-# ------------------------------------------------------------------------------------------------- reading
 
 class Truth:
     """A truth file (module docstring) with lazy access to its corpus and forward truth."""
@@ -375,7 +330,6 @@ class Truth:
         self._corpus = None
         self._forward = None
 
-    # -- corpus and problem
     def corpus(self, check=True):
         """The problem.Corpus, checked against the truth's inputs and cotangent digests."""
         if self._corpus is None:
@@ -396,7 +350,6 @@ class Truth:
     def n(self):
         return int(self.meta["corpus"]["n"])
 
-    # -- labels
     def labels(self):
         return _mjc().unpack_labels(self.arrays["labels"]) if "labels" in self.arrays else {}
 
@@ -415,7 +368,6 @@ class Truth:
         f = self.arrays["model_flags"]
         return None if np.all(f < 0) else f == 0
 
-    # -- gradient truth
     @property
     def has_gradient(self):
         return "fd_vjp" in self.arrays
@@ -435,7 +387,6 @@ class Truth:
                     jacobian=a["jacobian"], jacobian_dcol=a["jacobian_dcol"], blocks=blocks,
                     labels=a["labels"][idx])
 
-    # -- forward truth
     def forward(self, cache=None, jobs=None, recompute=False, log=print):
         """The forward truth of every state and the floor runs: dict out, warm, out_it10, out_it50, niter, ... (cached
         in the cache directory, regenerated with MuJoCo C when missing) after checking it against check_out."""

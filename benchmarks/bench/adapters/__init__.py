@@ -1,13 +1,5 @@
 """The adapter registry: every module benchmarks/bench/adapters/<name>.py (not base, not starting with '_') that
-defines, at top level, a dict literal with string-literal keys ADAPTERS = {"<engine id>": <Adapter subclass>, ...}.
-
-The keys are read from the module's source (ast), so discovering engines imports nothing: the worker then imports only
-the one module of the engine it runs, in that engine's interpreter (base.py documents the interface).
-
-  from benchmarks.bench import adapters
-  adapters.discover()        # {engine id: module name}
-  cls = adapters.load("mjw") # imports adapters/<its module>.py only, checks the class
-"""
+defines, at top level, a dict literal with string-literal keys ADAPTERS = {"<engine id>": <Adapter subclass>, ...}."""
 
 import ast
 import importlib
@@ -18,7 +10,6 @@ SKIP = ("__init__", "base")
 
 
 def _keys(path):
-    """The string keys of the top-level ADAPTERS dict literal of a module's source; None without one."""
     try:
         tree = ast.parse(path.read_text(), filename=str(path))
     except (OSError, SyntaxError) as e:

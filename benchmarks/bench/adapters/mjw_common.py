@@ -3,48 +3,7 @@
 MuJoCo Warp trees subclass MjwBase / MjwAdjointBase the same way. Not an adapter itself (no ADAPTERS dict, so the
 registry skips it);
 standard library + numpy at import, warp / mujoco_warp only inside the classes (imported when setup runs, so a
-subclass can set import-time switches first).
-
-What the MuJoCo Warp family shares (MjwBase):
-- model: problem.load_model (iterations, ls_iterations, tolerance, mjDSBL_SENSOR as the problem sets them), then
-  mjw.put_model(mjm, batch_sizes={"pair_friction": nworld, "body_ipos": nworld}) with the per-world DR written once into
-  the batched arrays (problem.DR.batched in float32: the values of MuJoCo Warp's own float32 DR, as
-  nablaengine.reference.warp_physics._set_dr computes them); Track B has no DR: put_model(mjm);
-- options: opt.warn_overflow without ITERATIONS and LS_ITERATIONS (warn="bench", as upstream's own
-  benchmarks/unitree_g1 overrides it; "all" = put_model's default, "none" = 0), opt.graph_conditional as put_model sets
-  it (True: the solver loop is a conditional graph node while any world is unconverged); MuJoCo Warp raises the
-  tolerance to max(tol, 1e-6) internally, the effective value is read back from the device model and recorded;
-- capacity: capacity() below, recorded with every unit;
-- the states uploaded once as float32 arrays; the forward is the CUDA graph (wp.ScopedCapture, replayed by
-  wp.capture_launch) of [copy the inputs into Data; substeps x mjw.step], so every call starts from the loaded states;
-- outputs() runs one eager forward from the loaded states substep by substep and reads, after every substep, the
-  contacts per world (contact.worldid of the first nacon contacts), the constraint rows (nefc), the solver iterations
-  (solver_niter) and the overflow bits (d.overflow, cleared first); diagnostics() reports them per world as the maximum
-  over the substeps (as the corpora's MuJoCo C labels), mean and maximum over the worlds;
-- provenance: mujoco / mujoco_warp / warp versions and wheel tags, the mujoco_warp package's source hash (the
-  definition of nablaengine.provenance.tree_sha256: sha256 over 'sha256  mujoco_warp/<path>' of its .py files) and the
-  git commit of its tree when it is a checkout, the device model's effective options, the capacity and its source.
-
-Capacity. MuJoCo Warp pools the contacts of all worlds (naconmax) and caps the constraint rows per
-world (njmax). The same pool of naconmax entries also holds the broadphase's candidate pairs (d.ncollision; more than
-naconmax sets the BROADPHASE overflow bit in every world and drops pairs), and for this model there are about twice as
-many candidates as contacts, so "contacts" in the procedure means max(candidate pairs, contacts). Modes (adapter
-option capacity):
-  procedure  (default for mjw, mjw_pr1535, mjw_pr1535_fix) from the measurement of mjw_capacity.py, stored in
-             benchmarks/data/mjw_capacity.json (adapter option capacity_file): with mu the largest mean number of
-             pool entries per world (max of d.ncollision and d.nacon, divided by nworld) over every corpus, iteration
-             count and substep, c_max the most contacts of one world and r_max the most constraint rows of one world
-             (mjw_capacity.py also verifies the result on every state subset the harness runs: no overflow),
-               naconmax = ceil(nworld * mu * (1 + MARGIN)) + c_max   (MARGIN = 0.25)
-               nconmax  = ceil(mu * (1 + MARGIN))                     (per world; MuJoCo Warp's sparse njmax_nnz
-                                                                       estimate and CCD capacity read it)
-               njmax    = the smallest of MuJoCo Warp's own valid sizes (16, 24, 32, 48, 64, 96, 128, 192, ...) >= r_max
-  matched    64 contacts and 192 rows per world (naconmax = 64 nworld, njmax 192): NablaEngine's fixed
-             capacity
-  explicit   the options nconmax (per world) / naconmax (total) and njmax
-Overflow (capacity bits of d.overflow, i.e. every bit except ITERATIONS and LS_ITERATIONS) is counted per world in
-diagnostics()["overflow"]; it is never hidden.
-"""
+subclass can set import-time switches first)."""
 
 import importlib.metadata
 import importlib.util
@@ -65,10 +24,9 @@ CAPACITY_FILE = "benchmarks/data/mjw_capacity.json"
 CAPACITY_MODES = ("procedure", "matched", "explicit")
 MATCHED = dict(nconmax=64, njmax=192)
 MARGIN = 0.25
-# MuJoCo Warp's valid capacity sizes (io._default_nconmax / _default_njmax): 16, 24, 32, 48, ... 8192
 VALID_SIZES = tuple(int(x) for x in (2 + (np.arange(19) % 2)) * (2 ** (np.arange(19) // 2 + 3)))
 WARN_MODES = ("bench", "all", "none")
-ITER_BITS = ("ITERATIONS", "LS_ITERATIONS")  # solver limits, not capacity: never an overflow
+ITER_BITS = ("ITERATIONS", "LS_ITERATIONS")
 NO_BACKWARD = ("no backward in any MuJoCo Warp release: the mujoco-warp 3.17.0 README says 'Differentiability via "
                "Warp is not yet available. See #500 for progress' (https://github.com/google-deepmind/mujoco_warp/"
                "issues/500, open), the documentation FAQ answers 'Is MJWarp differentiable?' with 'No', and its "
@@ -167,7 +125,7 @@ def mujoco_warp_source():
         pass
     top = _git(pkg.parent, "rev-parse", "--show-toplevel")
     commit = _git(pkg.parent, "rev-parse", "HEAD") if top and Path(top).resolve() == pkg.parent else None
-    if commit is not None:  # the tree is a checkout of its own (not a directory inside another repository)
+    if commit is not None:
         st = _git(pkg.parent, "status", "--porcelain", "--untracked-files=no")
         out["git"] = dict(commit=commit, dirty=None if st is None else bool(st))
     return out
@@ -189,19 +147,13 @@ def _versions():
 
 
 class MjwBase(base.Adapter):
-    """The MuJoCo Warp family's common setup, forward graph, outputs, diagnostics and provenance (module docstring).
-
-    Subclass hooks: OPTIONS (setup options and defaults; unknown ones raise TypeError), enable_grad (call
-    mjw.enable_grad() right after the import, before any kernel is built), _pre_import(opts) (e.g. import-time
-    switches), _check_source(src) (raise when mujoco_warp is not the expected tree), _build(opts) (the model / data /
-    extra buffers; the default is the native construction), _ops_extra(), _prepare_extra(op)."""
+    """The MuJoCo Warp family's common setup, forward graph, outputs, diagnostics and provenance (module docstring)."""
 
     device = "gpu"
     tracks = ("A",)
     enable_grad = False
     OPTIONS = dict(capacity="procedure", capacity_file=None, nconmax=None, naconmax=None, njmax=None, warn="bench")
 
-    # ------------------------------------------------------------------ setup
     def _options(self, opts):
         unknown = sorted(set(opts) - set(self.OPTIONS))
         if unknown:
@@ -254,7 +206,7 @@ class MjwBase(base.Adapter):
             wp.synchronize_device(self.dev)
             t["load_s"] = time.perf_counter() - t0
             t0 = time.perf_counter()
-            self._fwd_body()  # builds / loads the forward kernels
+            self._fwd_body()
             wp.synchronize_device(self.dev)
             t["compile_s"] = time.perf_counter() - t0
         return t
@@ -264,7 +216,6 @@ class MjwBase(base.Adapter):
                         o["njmax"], o["capacity_file"])
 
     def _warn_mask(self, m, mode):
-        """opt.warn_overflow of a device model for warn mode bench / all / none."""
         mjw = self.mjw
         ot = getattr(mjw, "OverflowType", None)
         if ot is None:
@@ -276,7 +227,6 @@ class MjwBase(base.Adapter):
             m.opt.warn_overflow = int(m.opt.warn_overflow) & ~int(ot.ITERATIONS | ot.LS_ITERATIONS)
 
     def _model(self, mjm, nworld):
-        """put_model with the per-world DR of the loaded states (module docstring)."""
         mjw = self.mjw
         if self.problem.dr:
             m = mjw.put_model(mjm, batch_sizes={"pair_friction": nworld, "body_ipos": nworld})
@@ -289,9 +239,6 @@ class MjwBase(base.Adapter):
         return m
 
     def _init_data(self):
-        """The MjData put_data copies into every world (overwritten by the loaded states before any step): mj_forward
-        at qpos0 (consistent derived quantities), unless qpos0's contacts / rows exceed the capacity (put_data would
-        refuse), then an MjData without mj_forward (no contacts); recorded as self.init_data."""
         import mujoco
         mjm, c = self.mjm, self.cap
         mjd = mujoco.MjData(mjm)
@@ -317,7 +264,7 @@ class MjwBase(base.Adapter):
 
     def _upload(self):
         wp, s = self.wp, self.states
-        f32 = lambda x: wp.array(np.ascontiguousarray(x, np.float32), dtype=float)  # noqa: E731
+        f32 = lambda x: wp.array(np.ascontiguousarray(x, np.float32), dtype=float)
         self.iq, self.iv, self.iw, self.iu = (f32(x) for x in (s.qpos, s.qvel, s.qacc_warmstart, s.ctrl))
 
     def _load(self, d):
@@ -328,16 +275,11 @@ class MjwBase(base.Adapter):
         wp.copy(d.ctrl, self.iu)
 
     def _fwd_body(self):
-        """One control step from the loaded states into self.d (what the fwd graph holds)."""
         self._load(self.d)
         for _ in range(self.substeps):
             self.mjw.step(self.m, self.d)
 
-    # ------------------------------------------------------------------ graphs and ops
     def _capture(self, name, body, first=None):
-        """Capture body() as the CUDA graph `name` after one eager run (so kernels are built and lazily allocated
-        buffers exist outside the capture); returns {capture_s} and, with first, {first: seconds of the eager run}
-        (e.g. compile_s for a backward whose kernels that run builds)."""
         wp = self.wp
         if name in self.graphs:
             return {}
@@ -379,10 +321,7 @@ class MjwBase(base.Adapter):
     def sync(self):
         self.wp.synchronize_device(self.dev)
 
-    # ------------------------------------------------------------------ outputs and diagnostics
     def _stats_forward(self, m, d, load=None):
-        """One eager forward from the loaded states on (m, d), substep by substep, collecting the per-substep
-        statistics into self.stats; d holds the outputs afterwards."""
         wp = self.wp
         n, ns = self.nworld, self.substeps
         with wp.ScopedDevice(self.dev):
@@ -466,11 +405,10 @@ class MjwBase(base.Adapter):
             out["alloc_peak_bytes"] = int(wp.get_mempool_used_mem_high(self.dev))
             out["alloc_current_bytes"] = int(wp.get_mempool_used_mem_current(self.dev))
             out["allocator"] = "Warp mempool high-water mark"
-        except Exception:  # noqa: BLE001  (mempool disabled or unsupported)
+        except Exception:
             out["allocator"] = None
         return out
 
-    # ------------------------------------------------------------------ provenance
     def _device_options(self, m):
         def get(name):
             v = getattr(m.opt, name, None)
@@ -515,7 +453,7 @@ class MjwBase(base.Adapter):
     @classmethod
     def check_env(cls):
         src = mujoco_warp_source()
-        cls()._check_source(src)  # the expected tree / release, as setup checks it
+        cls()._check_source(src)
         import warp as wp
         quiet_warp(wp)
         if not wp.is_cuda_available():
@@ -537,7 +475,7 @@ class MjwAdjointBase(MjwBase):
         wp, s = self.wp, self.states
         if s.cot_qpos is not None:
             cq, cv = s.cotangent(0, np.float32)
-        else:  # no stored cotangents: ones (timing only; gradient() gets its cotangents as arguments)
+        else:
             cq, cv = np.ones_like(s.qpos, np.float32), np.ones_like(s.qvel, np.float32)
         self.cq = wp.array(cq, dtype=float)
         self.cv = wp.array(cv, dtype=float)
@@ -555,7 +493,7 @@ class MjwAdjointBase(MjwBase):
         wp.synchronize_device(self.dev)
         g = dict(qpos=base.qpos_tangent(self.gq.numpy().astype(np.float64), self.states.qpos.astype(np.float64)),
                  qvel=self.gv.numpy().astype(np.float64), ctrl=self.gu.numpy().astype(np.float64))
-        if self.states.cot_qpos is not None:  # restore the timed cotangent 0
+        if self.states.cot_qpos is not None:
             cq, cv = self.states.cotangent(0, np.float32)
             self.cq.assign(cq)
             self.cv.assign(cv)

@@ -1,0 +1,39 @@
+<mujoco model="margin_prims">
+  <option timestep="0.002" cone="pyramidal"/>
+  <default><geom margin="0.004" condim="3" friction="0.8 0.005 0.0001" contype="0" conaffinity="0"/></default>
+  <worldbody>
+    <geom name="floor" type="plane" size="5 5 0.1" margin="0.002"/>
+    <body name="sph" pos="0 0 0.1045"><freejoint/><geom name="sph" type="sphere" size="0.1"/></body>
+    <body name="cap" pos="0.5 0 0.06"><freejoint/><geom name="cap" type="capsule" size="0.05 0.15" euler="0 90 0"/></body>
+    <body name="box" pos="1.0 0 0.103" euler="1.2 0.6 0"><freejoint/><geom name="box" type="box" size="0.1 0.08 0.1"/></body>
+    <body name="ell" pos="1.5 0 0.083"><freejoint/><geom name="ell" type="ellipsoid" size="0.12 0.1 0.08"/></body>
+    <body name="cyl" pos="2.0 0 0.11" euler="9 0 0"><freejoint/><geom name="cyl" type="cylinder" size="0.08 0.1"/></body>
+    <body name="s2" pos="0 0.5 0.105"><freejoint/><geom name="s2" type="sphere" size="0.1"/></body>
+    <body name="s3" pos="0 0.5 0.31"><freejoint/><geom name="s3" type="sphere" size="0.1"/></body>
+    <body name="c2" pos="0.5 0.5 0.055"><freejoint/><geom name="c2" type="capsule" size="0.05 0.15" euler="0 90 0"/></body>
+    <body name="c3" pos="0.5 0.5 0.162"><freejoint/><geom name="c3" type="capsule" size="0.05 0.15" euler="0 90 0"/></body>
+    <body name="c4" pos="1.0 0.5 0.055"><freejoint/><geom name="c4" type="capsule" size="0.05 0.15" euler="0 90 0"/></body>
+    <body name="c5" pos="1.0 0.5 0.163"><freejoint/><geom name="c5" type="capsule" size="0.05 0.15" euler="0 90 70"/></body>
+    <body name="s4" pos="1.5 0.5 0.105"><freejoint/><geom name="s4" type="sphere" size="0.1"/></body>
+    <body name="cy2" pos="1.5 0.5 0.3045" euler="0 7 0"><freejoint/><geom name="cy2" type="cylinder" size="0.08 0.1"/></body>
+    <body name="s5" pos="2.0 0.5 0.104"><freejoint/><geom name="s5" type="sphere" size="0.1"/></body>
+    <body name="c6" pos="2.0 0.5 0.256"><freejoint/><geom name="c6" type="capsule" size="0.05 0.15" euler="0 90 0"/></body>
+  </worldbody>
+  <contact>
+    <pair geom1="floor" geom2="sph" margin="0.006"/>
+    <pair geom1="floor" geom2="cap" margin="0.006"/>
+    <pair geom1="floor" geom2="box" margin="0.006"/>
+    <pair geom1="floor" geom2="ell" margin="0.006"/>
+    <pair geom1="floor" geom2="cyl" margin="0.006"/>
+    <pair geom1="floor" geom2="s2" margin="0.006"/>
+    <pair geom1="s2" geom2="s3" margin="0.012" gap="0.003"/>
+    <pair geom1="floor" geom2="c2" margin="0.006"/>
+    <pair geom1="c2" geom2="c3" margin="0.01"/>
+    <pair geom1="floor" geom2="c4" margin="0.006"/>
+    <pair geom1="c4" geom2="c5" margin="0.01"/>
+    <pair geom1="floor" geom2="s4" margin="0.006"/>
+    <pair geom1="s4" geom2="cy2" margin="0.01"/>
+    <pair geom1="floor" geom2="s5" margin="0.006"/>
+    <pair geom1="s5" geom2="c6" margin="0.01"/>
+  </contact>
+</mujoco>

@@ -194,7 +194,7 @@ def main(argv=None):
     subsets = tuple(x for x in a.subsets.split(",") if x)
     srcs = []
     for i, r in enumerate(a.raw):
-        pick = lambda lst, d=None: lst[i] if i < len(lst) else d  # noqa: E731
+        pick = lambda lst, d=None: lst[i] if i < len(lst) else d
         srcs.append(source_from_dump(r, engine=pick(a.engine, f"source{i}"), variant=pick(a.variant, "default"),
                                      iterations=pick(a.iterations)))
     if a.floors:

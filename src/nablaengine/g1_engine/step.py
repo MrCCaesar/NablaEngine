@@ -7,31 +7,7 @@
 # roundings where the adjoint replays them, the pairs spread over a warp's lanes, margin 0 only. The constraint rows and
 # the Newton solver implement MuJoCo's / MuJoCo Warp's definitions (constraint.py, solver.py) and are this engine's own
 # code.
-"""CUDA source of one G1 physics substep (block per world): collision, constraints, Newton solver, implicitfast update.
-
-The constraint half of the G1 engine's substep, built on the smooth-dynamics device code of
-nablaengine.g1_engine.source. One warp per world, all state in shared memory (struct Sim). Follows MuJoCo Warp's model
-for this robot: explicit contact pairs only (plane against sphere / capsule / box, sphere-sphere, sphere-capsule,
-capsule-capsule, capsule-box and box-box, translated from MuJoCo Warp's primitives; pairs whose bounding spheres do not
-overlap are skipped, which is exact at zero margin), pyramidal cones for condim 3, frictionless rows for condim 1, dof
-frictionloss and hinge limits, impedance and reference acceleration from solref / solimp with the invweight0
-approximation (refsafe on), and the primal Newton solver on cost(qacc) = 0.5 (qacc - qacc_smooth)' M (qacc -
-qacc_smooth) + sum_rows s(J qacc - aref). The Newton steps use an exact line search (safeguarded 1-D Newton on the
-piecewise-quadratic cost), so a converged solve matches MuJoCo's unique minimizer. implicitfast: qacc' = (M + h kv)^-1
-M qacc, qvel += h qacc', qpos integrated with the new qvel.
-
-pair_constants(m, foot_pairs) packs, next to source.constants, the contact-pair table (PAIR_LAYOUT: one word per pair with
-geom indices, parameter set, condim and foot flag; the parameter sets in c_pset), the collision-geom table (GEOM_LAYOUT: body, type, size, local pose, bounding radius of every geom
-in a pair) and the solver constants (SOLVER_LAYOUT); const_layout(m) gives the symbols and lengths in that order. The
-per-pair geometry lives in the geom table so that the 502 pairs of the mjlab model fit in 64 KB of constant memory.
-
-The forward tape (nablaengine.g1_engine.tape): substep(..., rec) writes one tape record when rec is not null (the
-code needs tape.header(m) for the OFF_* offsets); the forward outputs are bitwise the same with and without it.
-
-The device functions are templates over the state struct: struct Sim (k_substep, everything in shared memory) or the
-split forward's SimP / SimN (host.py k_pre / k_post: each half's own shared state, the rest in struct Hand in global
-memory; same member names, same code, bitwise the same results).
-"""
+"""CUDA source of one G1 physics substep (block per world): collision, constraints, Newton solver, implicitfast update."""
 
 import math
 import os
@@ -40,31 +16,119 @@ import warnings
 import mujoco
 import numpy as np
 
+from nablaengine.model import invweight as _invw
+
 NEFC = 192
+MAX_CONTACTS = 64
+MAX_ROWS = 1023
+WIDE_PAIRS = 512
+
+
+def nefc(max_rows=None):
+    """Constraint row capacity per world: max_rows (1 .. MAX_ROWS), else NEFC."""
+    return NEFC if max_rows is None else int(max_rows)
+
+
+def check_capacity(m, max_contacts=None, max_rows=None, terrain=None):
+    """Raise ValueError unless max_contacts (1 .. MAX_CONTACTS) and max_rows (1 .. MAX_ROWS) fit this engine; with a
+    terrain build ((TerrainConfig, robot geoms)) the model's pairs and the terrain's virtual pairs below 1024 (the
+    tape's 10-bit pair index there)."""
+    if max_contacts is not None and not 1 <= int(max_contacts) <= MAX_CONTACTS:
+        raise ValueError(f"max_contacts={max_contacts}: the G1-class engine holds 1 .. {MAX_CONTACTS} contacts per world")
+    if max_rows is not None and not 1 <= int(max_rows) <= MAX_ROWS:
+        raise ValueError(f"max_rows={max_rows}: the G1-class engine holds 1 .. {MAX_ROWS} constraint rows per world")
+    if terrain is not None and m.npair + len(terrain[1]) >= 1024:
+        raise ValueError(f"{m.npair} contact pairs and {len(terrain[1])} terrain geoms: a terrain build holds fewer "
+                         "than 1024 pairs (the tape's 10-bit pair index)")
+
+
+_WIDE_ROWS_HOOKS = (
+    ("      unsigned hd = (unsigned)ncon | (unsigned)s.nefc << 8 | (unsigned)(s.nefc_dof - NFLOSS) << 16\n",
+     "      unsigned hd = (unsigned)ncon | (unsigned)min(s.nefc, 255) << 8 | (unsigned)(s.nefc_dof - NFLOSS) << 16\n"),
+    ("      __stcs(rec + OFF_RESERVED, 0.f);\n",
+     "      __stcs(rec + OFF_RESERVED, __uint_as_float((unsigned)s.nefc));  // (the header's row count saturates)\n"),
+)
+_WIDE_PAIRS_HOOKS = (
+    ("  if (rec)  // tape: the contact table in contact (= row) order, two 16-bit entries pair | slot << 9 per word\n"
+     "    for (int i = lane; i < (MAXCON + 1) / 2; i += 32) {\n"
+     "      unsigned e0 = 2 * i < ncon ? (unsigned)s.con_pair[2 * i] | (unsigned)s.con_slot[2 * i] << 9 : TAPE_CON_NONE;\n"
+     "      unsigned e1 = 2 * i + 1 < ncon ? (unsigned)s.con_pair[2 * i + 1] | (unsigned)s.con_slot[2 * i + 1] << 9\n"
+     "                                     : TAPE_CON_NONE;\n"
+     "      __stcs(rec + OFF_CON + i, __uint_as_float(e0 | e1 << 16));\n"
+     "    }\n",
+     "  if (rec)  // tape: the contact table in contact (= row) order, one 32-bit entry pair | slot << 16 per contact\n"
+     "    for (int i = lane; i < MAXCON; i += 32)\n"
+     "      __stcs(rec + OFF_CON + i, __uint_as_float(i < ncon ? (unsigned)s.con_pair[i] | (unsigned)s.con_slot[i] << 16\n"
+     "                                                         : TAPE_CON_NONE));\n"),
+    ("  unsigned con[(MAXCON + 1) / 2];  // the record's contact table: pair | slot << 9 per 16 bits\n",
+     "  unsigned con[MAXCON];  // the record's contact table: pair | slot << 16 per contact (step.capacity_hooks)\n"),
+    ("  for (int i = lane; i < (MAXCON + 1) / 2; i += 32) s.con[i] = __float_as_uint(__ldcs(rec + OFF_CON + i));\n",
+     "  for (int i = lane; i < MAXCON; i += 32) s.con[i] = __float_as_uint(__ldcs(rec + OFF_CON + i));\n"),
+    ("    const unsigned e = on ? (s.con[c >> 1] >> (16 * (c & 1))) & 0xFFFFu : 0u;\n"
+     "    const int pair = e & 511u, slot = e >> 9, dim = on ? PDIM(pair) : 0;\n",
+     "    const unsigned e = on ? s.con[c] : 0u;\n"
+     "    const int pair = e & 0xFFFFu, slot = e >> 16, dim = on ? PDIM(pair) : 0;\n"),
+    ("      const int pair = (s.con[c >> 1] >> (16 * (c & 1))) & 511u;\n",
+     "      const int pair = s.con[c] & 0xFFFFu;\n"),
+)
+
+
+_MANY_ROWS_HOOKS = (
+    ("    unsigned zprev = 0u;\n    bool newton = false;\n", "    unsigned long long zprev = 0ull;\n    bool newton = false;\n"),
+    ("      unsigned z = 0u;\n#pragma unroll\n      for (int t = 0; t < RT; t++) {\n        if (32 * t >= nefc) break;\n"
+     "        float ds, dd, jv = rj[t];\n        z |= (unsigned)row_piece(",
+     "      unsigned long long z = 0ull;\n#pragma unroll\n      for (int t = 0; t < RT; t++) {\n        if (32 * t >= nefc) break;\n"
+     "        float ds, dd, jv = rj[t];\n        z |= (unsigned long long)row_piece("),
+)
+
+
+def wide_pairs(m, terrain=None):
+    """The tape records (pair, slot) in 32 bits: WIDE_PAIRS pairs or more, no terrain."""
+    return terrain is None and m.npair >= WIDE_PAIRS
+
+
+def capacity_hooks(m, max_rows=None, terrain=None):
+    """Edits (anchor, replacement) of the forward and adjoint text (adjoint.cuda_source) for capacities beyond the
+    tape's default field widths; none for the default ones (the text unchanged):
+     - more than 255 rows: the record header's row count (8 bits) saturates at 255 and the record's reserved word holds
+       the count (tape.decode reads it there; the adjoint does not read it);
+     - WIDE_PAIRS pairs or more (no terrain): the contact table holds one 32-bit entry pair | slot << 16 per contact
+       instead of two 16-bit entries pair | slot << 9 per word (tape.py);
+     - more than 512 rows (more than 16 per lane): the line search's record of the rows' pieces (2 bits each, its exact
+       stop) in 64 bits."""
+    hooks = ()
+    if nefc(max_rows) > 255:
+        hooks += _WIDE_ROWS_HOOKS
+    if wide_pairs(m, terrain):
+        hooks += _WIDE_PAIRS_HOOKS
+    if nefc(max_rows) > 512:
+        hooks += _MANY_ROWS_HOOKS
+    return hooks
 PROF_PHASES = ("smooth", "qacc_smooth", "collision", "contact_jac", "rows", "newton_init", "newton_grad",
                "newton_hessian", "newton_chol", "newton_linesearch", "newton_update", "integrate", "ls_jv_Mp",
                "count_ls_steps",
-               # sub-phases (SUBPROF(14) ..: cycles since the previous phase or sub-phase mark), parts of the above
-               "sm_kin", "sm_force", "sm_accum", "sm_crb",  # smooth: tree passes, mass matrix
-               "ni_matvec", "ni_rowsjv",  # newton_init (refresh)
-               "ng_rows", "ng_jtf_conf", "ng_jtf_dof", "ng_jtf_scatter",  # newton_grad: forces, J' f
-               "ls_rowsjv", "ls_matvec",  # newton_linesearch: J p, M p
-               "col_geom", "nh_conC", "nh_copy_dof", "col_broad")  # collision, newton_hessian
-PROF_PARTITION = 12  # the first 12 phases partition a substep; then a part of one (cycles) and a count
-PAIR_LAYOUT = (  # (symbol, kind, per-pair width): one packed word per pair, see pair_word()
+               "sm_kin", "sm_force", "sm_accum", "sm_crb",
+               "ni_matvec", "ni_rowsjv",
+               "ng_rows", "ng_jtf_conf", "ng_jtf_dof", "ng_jtf_scatter",
+               "ls_rowsjv", "ls_matvec",
+               "col_geom", "nh_conC", "nh_copy_dof", "col_broad")
+PROF_PARTITION = 12
+PAIR_LAYOUT = (
     ("c_pword", "u", 1),
 )
-PSET_WIDTH = 8  # a contact parameter set in c_pset: friction mu, solref[2], solimp[5]
-GEOM_LAYOUT = (  # (symbol, kind, per-geom width)
+PSET_WIDTH = 8
+GEOM_LAYOUT = (
     ("c_gbody", "i", 1), ("c_gtype", "i", 1), ("c_gsize", "f", 3), ("c_gpos", "f", 3), ("c_gquat", "f", 4),
     ("c_grbound", "f", 1),
 )
-SOLVER_LAYOUT = (  # (symbol, kind, length in units of the body count, "nv", or a number)
+SOLVER_LAYOUT = (
     ("c_binvw", "f", "nb"), ("c_dinvw", "f", "nv"), ("c_floss", "f", "nv"), ("c_jrange", "f", "nv2"),
     ("c_jlim", "f", "nv"), ("c_jsolref", "f", 2), ("c_jsolimp", "f", 5), ("c_dsolref", "f", 2), ("c_dsolimp", "f", 5),
     ("c_sopt", "f", 4))
 GEOM_TYPE = {int(mujoco.mjtGeom.mjGEOM_PLANE): 0, int(mujoco.mjtGeom.mjGEOM_SPHERE): 1,
-             int(mujoco.mjtGeom.mjGEOM_CAPSULE): 2, int(mujoco.mjtGeom.mjGEOM_BOX): 3}
+             int(mujoco.mjtGeom.mjGEOM_CAPSULE): 2, int(mujoco.mjtGeom.mjGEOM_BOX): 3,
+             int(mujoco.mjtGeom.mjGEOM_CYLINDER): 5,
+             int(mujoco.mjtGeom.mjGEOM_MESH): 6}
 
 
 def maxcon(m):
@@ -119,7 +183,8 @@ def const_layout(m, terrain=None):
     npset = len(pair_param_sets(m)[0])
     return ([(s, k, npair * w) for s, k, w in PAIR_LAYOUT] + [("c_pset", "f", npset * PSET_WIDTH)]
             + [(s, k, ng * w) for s, k, w in GEOM_LAYOUT]
-            + [(s, k, sizes[w] if isinstance(w, str) else w) for s, k, w in SOLVER_LAYOUT])
+            + [(s, k, sizes[w] if isinstance(w, str) else w) for s, k, w in SOLVER_LAYOUT]
+            + ([("c_ginvw", "f", ng)] if _invw.table(m, collision_geoms(m)) is not None else []))
 
 
 def pair_constants(m, foot_pairs, terrain=None):
@@ -134,20 +199,20 @@ def pair_constants(m, foot_pairs, terrain=None):
     assert foot <= set(range(m.npair)), f"foot pairs {sorted(foot)}: not all contact pair indices (0..{m.npair - 1})"
     for i in range(m.npair):
         g1, g2 = int(m.pair_geom1[i]), int(m.pair_geom2[i])
-        if GEOM_TYPE[int(m.geom_type[g1])] > GEOM_TYPE[int(m.geom_type[g2])]:
+        if int(m.geom_type[g1]) > int(m.geom_type[g2]):
             g1, g2 = g2, g1
         assert m.pair_margin[i] == 0 and m.pair_gap[i] == 0 and m.pair_friction[i, 0] == m.pair_friction[i, 1]
         words.append(pair_word(gid[g1], gid[g2], sets[1][i], int(m.pair_dim[i]), int(i in foot),
                                int(GEOM_TYPE[int(m.geom_type[g1])] == 0)))
     if terrain:
-        tg = len(geoms)  # the terrain's pseudo geom
+        tg = len(geoms)
         for g, p, ft in terrain[1]:
             words.append(pair_word(tg, gid[g], sets[1][p], int(m.pair_dim[p]), ft, 0))
     words = np.asarray(words, np.int64)
     out = [np.stack([words & 0xFFFF, words >> 16], 1).ravel(), np.asarray(sets[0], np.float64).ravel()]
     gtab = [m.geom_bodyid[geoms], [GEOM_TYPE[int(m.geom_type[g])] for g in geoms], m.geom_size[geoms],
             m.geom_pos[geoms], m.geom_quat[geoms], m.geom_rbound[geoms]]
-    if terrain:  # body 0, type 4 (terrain), at the origin
+    if terrain:
         extra = [[0], [4], [[0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0]], [[1.0, 0.0, 0.0, 0.0]], [0.0]]
         gtab = [np.concatenate([np.asarray(a, np.float64).reshape(len(geoms), -1),
                                 np.asarray(b, np.float64).reshape(1, -1)]) for a, b in zip(gtab, extra)]
@@ -158,10 +223,14 @@ def pair_constants(m, foot_pairs, terrain=None):
         jr[m.jnt_dofadr[j]], jlim[m.jnt_dofadr[j]] = m.jnt_range[j], m.jnt_limited[j]
     assert not m.jnt_margin.any() and (m.jnt_solref[1:] == m.jnt_solref[1]).all()
     assert (m.jnt_solimp[1:] == m.jnt_solimp[1]).all() and (m.dof_solref == m.dof_solref[0]).all()
-    assert (m.dof_solimp == m.dof_solimp[0]).all() and m.opt.cone == mujoco.mjtCone.mjCONE_PYRAMIDAL
+    assert (m.dof_solimp == m.dof_solimp[0]).all() and (m.opt.cone == mujoco.mjtCone.mjCONE_PYRAMIDAL
+                                                         or m.opt.cone == mujoco.mjtCone.mjCONE_ELLIPTIC)
     out += [m.body_invweight0[:, 0], m.dof_invweight0, m.dof_frictionloss, jr, jlim, m.jnt_solref[1], m.jnt_solimp[1],
             m.dof_solref[0], m.dof_solimp[0],
             [m.opt.impratio, m.stat.meaninertia, m.opt.tolerance, m.npair]]
+    tab = _invw.table(m, geoms, 1 if terrain else 0)
+    if tab is not None:
+        out += [tab]
     return np.concatenate([np.asarray(x, np.float64).ravel() for x in out]).astype(np.float32)
 
 
@@ -208,19 +277,130 @@ def dof_body_root6(m):
     return m.nv >= 6 and bool((d[:6] == 1).all() and (d[6:] == np.arange(6, m.nv) - 4).all())
 
 
-def step_header(m, max_contacts=None, terrain=None):
+CLAMP_IMPLICIT_DELTA = 0.2
+
+
+def clamp_implicit():
+    """(mode, delta) of the implicit actuator damping on dofs whose actuator force is clamped at jnt_actfrcrange, from
+    $DK_CLAMP_IMPLICIT and $DK_CLAMP_IMPLICIT_DELTA at source generation (docs/configuration.md):
+      0 (default)  the dof keeps kv in implicitfast's M + h kv (MuJoCo / MuJoCo Warp up to 3.17)
+      1            a clamped dof drops it (MuJoCo / MuJoCo Warp 4.0: mjd_actuatorDerivSkip, _jnt_actfrc_clamped); the
+                   dynamics jump where a force reaches its limit
+      2            it fades: kv w with w = exp(-o / delta), o = (|f| - tau_max) / tau_max >= 0 the relative overshoot
+                   of the unclamped PD force (w = 1 at the limit: continuous; 1's limit deep in saturation); the tape
+                   records w per dof and the adjoint differentiates it
+    delta: $DK_CLAMP_IMPLICIT_DELTA (mode 2 only; default CLAMP_IMPLICIT_DELTA)."""
+    raw = os.environ.get("DK_CLAMP_IMPLICIT", "") or "0"
+    if raw not in ("0", "1", "2"):
+        raise ValueError(f"DK_CLAMP_IMPLICIT={raw!r}: 0, 1 or 2")
+    mode = int(raw)
+    draw = os.environ.get("DK_CLAMP_IMPLICIT_DELTA", "")
+    if draw and mode != 2:
+        raise ValueError("DK_CLAMP_IMPLICIT_DELTA is DK_CLAMP_IMPLICIT=2's width")
+    delta = float(np.float32(draw)) if draw else CLAMP_IMPLICIT_DELTA
+    if not (math.isfinite(delta) and delta > 0.0):
+        raise ValueError(f"DK_CLAMP_IMPLICIT_DELTA={draw!r}: finite and > 0")
+    return mode, delta
+
+
+def clamp_implicit_defines():
+    """The #defines of clamp_implicit() (empty for the default mode 0: the source text unchanged)."""
+    mode, delta = clamp_implicit()
+    if mode == 0:
+        return ""
+    return (f"#define DK_CLAMP_IMPLICIT {mode}  // clamped dofs' implicit kv (step.clamp_implicit)\n"
+            + (f"#define DK_CLAMP_IMPLICIT_DELTA {delta!r}f\n" if mode == 2 else ""))
+
+
+def tree_chol():
+    """The tree-sparse Cholesky mode from $DK_TREE_CHOL at source generation (docs/configuration.md; experimental):
+      0 (default)  the dense factorizations (CHOL_SOLVE): the source text unchanged
+      mass         the mass-matrix factorizations (substep_pre's qacc_smooth: M; implicitfast: M + h diag(kv),
+                   the tape's L_Q) and the adjoint's L_Q solve as A = R' R on the tree pattern (source.tree_tables)
+      1            those, and where tree_hessian(m) holds: the Newton factorization, its re-use
+                   (NEWTON_REUSE: chol_resolve) and the adjoint's L_H solve too (the tape's L_H = R)
+    Not bitwise against the dense path (rounding)."""
+    raw = os.environ.get("DK_TREE_CHOL", "") or "0"
+    if raw not in ("0", "1", "mass"):
+        raise ValueError(f"DK_TREE_CHOL={raw!r}: 0, 1 or mass")
+    return raw
+
+
+def tree_hessian(m):
+    """Whether every contact pair of model m is with the world or between two bodies on one root-to-leaf chain: a
+    contact's Jacobian columns are then one chain's dofs, and the Newton Hessian M + J' D J (with the limit and
+    frictionloss rows, single dofs) keeps the tree pattern of M. False for a model without pairs (nothing to gain).
+    Terrain builds add only pairs with the (static) terrain."""
+    def chain(b):
+        out = set()
+        while b > 0:
+            out.add(b)
+            b = int(m.body_parentid[b])
+        return out
+    for p in range(m.npair):
+        b1, b2 = int(m.geom_bodyid[m.pair_geom1[p]]), int(m.geom_bodyid[m.pair_geom2[p]])
+        if b1 and b2:
+            a1, a2 = chain(b1), chain(b2)
+            if not (a1 <= a2 or a2 <= a1):
+                return False
+    return m.npair > 0
+
+
+def tree_chol_stages(m):
+    """The tree-sparse factorizations a build of model m uses under $DK_TREE_CHOL: None (off), or {"mass": True,
+    "newton": tree_hessian(m) with DK_TREE_CHOL=1} (jax_ffi / torch_ffi info "tree_chol"; tape.factor_forms)."""
+    mode = tree_chol()
+    if mode == "0":
+        return None
+    return {"mass": True, "newton": mode == "1" and tree_hessian(m)}
+
+
+TREE_CHOL_HOOKS = (
+    ("  CHOL_SOLVE(s.M, s.L, s.qacc0, lane, s.cbuf);\n",
+     "  chol_tree_factor(s.M, s.L, 1, lane);  // (DK_TREE_CHOL: M = R' R)\n  chol_tree_solve(s.L, s.qacc0, lane);\n"),
+    ("  CHOL_SOLVE(s.L, s.L, s.tmp, lane, s.cbuf);\n",
+     "  chol_tree_factor(s.L, s.L, 0, lane);  // (DK_TREE_CHOL: the tape's L_Q = R)\n"
+     "  chol_tree_solve(s.L, s.tmp, lane);\n"),
+)
+TREE_CHOL_NEWTON_HOOKS = (
+    ("      chol_resolve(s.L, s.p, lane, s.cbuf);\n",
+     "      chol_tree_solve(s.L, s.p, lane);  // (DK_TREE_CHOL stage 1a)\n"),
+    ("      CHOL_SOLVE(s.L, s.L, s.p, lane, s.cbuf);\n",
+     "      chol_tree_factor(s.L, s.L, 0, lane);  // (DK_TREE_CHOL stage 1a: the tape's L_H = R)\n"
+     "      chol_tree_solve(s.L, s.p, lane);\n"),
+)
+TREE_CHOL_ANCHOR = "// which Cholesky the engine uses: CHOL_SOLVE("
+
+
+def tree_chol_hooks(m):
+    """The forward's DK_TREE_CHOL hooks for model m (() when off): the device code (source.tree_chol_device) before
+    CHOL_SOLVE's definition, the mass-matrix sites, and with the tree-pattern factor the Newton sites (the chol_resolve call is in the
+    text of every build; NEWTON_REUSE decides whether it is compiled)."""
+    st = tree_chol_stages(m)
+    if st is None:
+        return ()
+    from nablaengine.g1_engine import source
+    hooks = ((TREE_CHOL_ANCHOR, source.tree_chol_device(m) + TREE_CHOL_ANCHOR),) + TREE_CHOL_HOOKS
+    return hooks + (TREE_CHOL_NEWTON_HOOKS if st["newton"] else ())
+
+
+def step_header(m, max_contacts=None, terrain=None, max_rows=None):
     p, g, kdof = m.npair, len(collision_geoms(m)), max_support(m)
     hs = hess_columns(kdof)
     hcol = [a | b << 8 | thr << 16 for _, _, tab in hs for row in tab for a, b, thr in row]
     ter, pt = "", p
-    if terrain:  # nablaengine.terrain: NTG virtual pairs after the model's, the pseudo geom as the last geom row
+    if terrain:
         cfg, tg = terrain
         ter = (f"#define HAS_TERRAIN 1\n#define NTG {len(tg)}  // robot geoms that collide with the terrain\n"
                f"#define TERRAIN_FLOOR {int(cfg.floor)}  // keep the model's floor plane pairs\n"
                f"#define TERRAIN_CAP_PTS {int(cfg.cap_points)}  // heightfield samples per capsule\n"
-               f"#define TERRAIN_HF_NATIVE {int(cfg.mode == 'native')}  // heightfield contacts per prism\n")
+               f"#define TERRAIN_HF_NATIVE {int(cfg.mode == 'native')}  // heightfield contacts per prism\n"
+               f"#define TERRAIN_NOBJ {int(cfg.objects)}  // per-world object slots (after the COM offset in com)\n"
+               f"#define COM_WORDS {cfg.com_words()}  // floats per world of the com input\n"
+               f"#define OBJ_E0 {_terrain_mod().OBJ_E0}  // the element index of object slot 0\n"
+               "#ifndef TERRAIN_SORT\n#define TERRAIN_SORT 1  // contacts sorted by (pair, element, slot)\n#endif\n")
         pt, g = p + len(tg), g + 1
-    return ter + f"""
+    return ter + clamp_implicit_defines() + f"""
 #define NPAIR {p}
 #define NGEOMC {g}
 #define MAXCON {max_contacts or maxcon(m)}
@@ -230,7 +410,7 @@ def step_header(m, max_contacts=None, terrain=None):
 __device__ const unsigned c_hcol[{len(hcol)}] = {{{", ".join(map(str, hcol))}}};  // a | b << 8 | thr << 16
 #define HAS_BOX {int(any(m.geom_type[g] == mujoco.mjtGeom.mjGEOM_BOX for g in collision_geoms(m)))}  // compile box code
 #define FLOOR_G {floor_geom(m)}  // the geom table index of the only plane (-1: none or several)
-#define NEFC {NEFC}
+#define NEFC {nefc(max_rows)}
 #define DOF_BODY_ROOT6 {int(dof_body_root6(m))}  // step.dof_body_root6 (support_mask in closed form)
 #define NFLOSS {int((m.dof_frictionloss > 0).sum())}  // dofs with a frictionloss row (the first rows)
 #define SOLIMP_POW2 {int(solimp_pow2(m))}  // every solimp power of the model is 2 (kbimp without the general powers)
@@ -251,7 +431,7 @@ DKC int c_gbody[{g}], c_gtype[{g}];
 DKC float c_gsize[{g * 3}], c_gpos[{g * 3}], c_gquat[{g * 4}], c_grbound[{g}];
 DKC float c_binvw[NB], c_dinvw[NV], c_floss[NV], c_jrange[NV * 2], c_jlim[NV], c_jsolref[2], c_jsolimp[5],
     c_dsolref[2], c_dsolimp[5], c_sopt[4];  // impratio, meaninertia, tolerance, npair
-"""
+{_invw.header(m, collision_geoms(m))}"""
 
 
 STEP_DEVICE = r"""
@@ -261,6 +441,17 @@ STEP_DEVICE = r"""
 // (6.34 / 6.20)
 #ifndef NEWTON_REUSE
 #define NEWTON_REUSE (NV > 32 && NV <= 35)
+#endif
+// DK_CLAMP_IMPLICIT (step.clamp_implicit): the implicit actuator damping of a dof whose actuator force is clamped;
+// 0 keeps c_kv, 1 and 2 use the dof's s.kvi (set with the clamp test in substep_pre)
+#ifndef DK_CLAMP_IMPLICIT
+#define DK_CLAMP_IMPLICIT 0
+#endif
+static_assert(DK_CLAMP_IMPLICIT >= 0 && DK_CLAMP_IMPLICIT <= 2, "DK_CLAMP_IMPLICIT: 0, 1 or 2");
+#if DK_CLAMP_IMPLICIT
+#define KVI(i) s.kvi[i]
+#else
+#define KVI(i) c_kv[i]
 #endif
 struct Sim {
   float Q[NB][4], X[NB][3];  // body poses
@@ -280,6 +471,9 @@ struct Sim {
   };
   float M[NTRI], L[NTRI];  // mass matrix and Cholesky scratch, packed lower triangles TRI(i, j)
   float qpos[NQ], qvel[NV], zero[NV], qsm[NV], qacc0[NV], qacc[NV], Ma[NV], grad[NV], p[NV], Mp[NV], tmp[NV];
+#if DK_CLAMP_IMPLICIT
+  float kvi[NV];  // implicitfast's actuator damping per dof (DK_CLAMP_IMPLICIT)
+#endif
   alignas(16) float cbuf[72];  // CHOL_SOLVE's scratch (chol_solve_bcast)
   float com[3], fric;
   float gx[NGEOMC][3], gq[NGEOMC][4];  // world poses of the collision geoms
@@ -1785,11 +1979,31 @@ __device__ void substep_pre(S& s, const float* ctrl, int lane, float* rec) {
     bool clamp = false;
     if (i < NV) {
       float act = 0.f;
+#if DK_CLAMP_IMPLICIT
+      float kvg = c_kv[i], wv = 1.f;  // the dof's implicit actuator damping; DK_CLAMP_IMPLICIT=2's tape word
+#endif
       if (i >= 6) {
         act = c_kp[i] * (ctrl[i - 6] - s.qpos[i + 1]) - c_kv[i] * s.qvel[i];
+#if DK_CLAMP_IMPLICIT == 2
+        const float ov = fmaxf((fabsf(act) - c_frclim[i]) / c_frclim[i], 0.f);  // the relative overshoot o
+#endif
         act = fminf(fmaxf(act, -c_frclim[i]), c_frclim[i]);
         clamp = act <= -c_frclim[i] || act >= c_frclim[i];  // at the limit: MuJoCo Warp's actuator_lam test
+#if DK_CLAMP_IMPLICIT == 1
+        if (clamp) kvg = 0.f;  // MuJoCo 4.0: a clamped force has no implicit damping
+#elif DK_CLAMP_IMPLICIT == 2
+        if (clamp) {  // w = exp(-o / delta), recorded with the force's sign (adjoint: w = |wv|, dw/df = -wv / (delta tau))
+          wv = copysignf(expf(-ov / DK_CLAMP_IMPLICIT_DELTA), act);
+          kvg *= fabsf(wv);
+        }
+#endif
       }
+#if DK_CLAMP_IMPLICIT
+      s.kvi[i] = kvg;
+#if DK_CLAMP_IMPLICIT == 2
+      if (rec) __stcs(rec + OFF_KVW + i, wv);
+#endif
+#endif
       s.qsm[i] = act - s.qsm[i];
     }
     if (rec) {  // tape: the clamp mask (dof bits), stored rather than recomputed: the adjoint's FMA contraction of the
@@ -2174,13 +2388,18 @@ __device__ void substep_post(S& s, int iterations, int lane, int* niter_out, flo
   // implicitfast: (M + h kv) qacc' = M qacc; then qvel, qpos
   for (int e = lane; e < NTRI; e += 32) s.L[e] = s.M[e];
   __syncwarp();
-  for (int i = lane; i < NV; i += 32) { s.L[TRI(i, i)] += h * c_kv[i]; s.tmp[i] = s.Ma[i]; }
+  for (int i = lane; i < NV; i += 32) { s.L[TRI(i, i)] += h * KVI(i); s.tmp[i] = s.Ma[i]; }
   __syncwarp();
   CHOL_SOLVE(s.L, s.L, s.tmp, lane, s.cbuf);
   if (rec) {  // tape: L_Q = chol(M + h kv), a* and a_adv (qvel' = qvel + h a_adv), header
     tape_put(rec + OFF_LQ, s.L, NTRI, REC_WORDS - OFF_LQ, lane);
     tape_put(rec + OFF_QACC, s.qacc, NV, NV, lane);
+#if DK_CLAMP_IMPLICIT == 2  // (the weights after qacc_adv, written by substep_pre: pad only behind them)
+    tape_put(rec + OFF_QADV, s.tmp, NV, NV, lane);
+    for (int i = OFF_KVW + NV + lane; i < OFF_LH; i += 32) __stcs(rec + i, 0.f);
+#else
     tape_put(rec + OFF_QADV, s.tmp, NV, OFF_LH - OFF_QADV, lane);
+#endif
     if (lane == 0) {
       float nu = __int_as_float(s.min_nu_bits);
       unsigned fl = (unsigned)(s.unsupported & 31) | (zchanged ? TAPE_REFACT : 0u) | (conv ? 0u : TAPE_NONCONV)
@@ -2246,6 +2465,9 @@ struct SimNT {  // substep_post: Newton, implicitfast; capacity NC contacts, NR 
   unsigned char con_dim[NC], con_nrow[NC], con_nd[NC];
   float *qpos, *qvel;  // the kernel's outputs (implicitfast only)
   const float *qsm, *qacc0, *con_mu, *efc_aref;  // in Hand
+#if DK_CLAMP_IMPLICIT
+  const float* kvi;  // in Hand
+#endif
   const int* con_pair;
   const float (*con_J)[3][KDOF];
   const unsigned char (*con_dof)[KDOF];
@@ -2262,6 +2484,9 @@ typedef SimNT<MAXCON, NEFC> SimNfull;  // the worlds beyond it (Hand::big)
 
 struct Hand {
   float M[NTRI], qsm[NV], qacc0[NV];
+#if DK_CLAMP_IMPLICIT
+  float kvi[NV];  // substep_pre's implicit actuator damping (DK_CLAMP_IMPLICIT)
+#endif
   float efc_D[NEFC], efc_aref[NEFC];
   alignas(16) float con_J[MAXCON][3][KDOF];  // (16-byte aligned: con_jv's 128-bit loads)
   float con_mu[MAXCON];
@@ -2285,6 +2510,9 @@ struct SimP {  // substep_pre: smooth dynamics, qacc_smooth, collision, contact 
   };
   float* M;  // in Hand (the stores of the CRB, the loads of qacc_smooth's factorization)
   float qpos[NQ], qvel[NV], zero[NV], qsm[NV], qacc0[NV];
+#if DK_CLAMP_IMPLICIT
+  float kvi[NV];  // implicitfast's actuator damping per dof (DK_CLAMP_IMPLICIT), handed to k_post in Hand
+#endif
   float com[3], fric;
   int ncon, nefc, unsupported, min_nu_bits, nefc_dof;
   int con_pair[MAXCON], con_dim[MAXCON], con_row[MAXCON], con_nrow[MAXCON], con_nd[MAXCON];
@@ -2305,8 +2533,6 @@ struct SimP {  // substep_pre: smooth dynamics, qacc_smooth, collision, contact 
 
 
 
-# ---- terrain builds (nablaengine.terrain; work in progress): terrain_source() inserts TERRAIN_DEVICE and the hooks
-# below into STEP_DEVICE + STEP_KERNEL. A build without terrain compiles the unchanged text (the G1 identity gate).
 TERRAIN_DEVICE = r"""
 // ---- terrain (nablaengine.terrain): static boxes and heightfields in global memory, shared by every world ----
 // set by <unit>_set_terrain (terrain.pack's arrays on the device); grid == nullptr: no terrain uploaded
@@ -2321,8 +2547,11 @@ struct TerrainPtrs {
   const int* ecell;    // (n, 2) each element's first cell
 };
 __device__ TerrainPtrs g_ter;
-// box e of the terrain
-__device__ __forceinline__ const float* ter_box(int e) { return g_ter.box + 15 * e; }
+// the block's world's object slots (TERRAIN_NOBJ x 15 floats in com after the COM offset; one world per block), set
+// by the kernels as they read com
+__shared__ const float* dk_obj;
+// a box of the terrain (e < OBJ_E0) or the world's object slot e - OBJ_E0
+__device__ __forceinline__ const float* ter_box(int e) { return e >= OBJ_E0 ? dk_obj + 15 * (e - OBJ_E0) : g_ter.box + 15 * e; }
 
 // height and upward unit normal of the heightfield triangle below local (x, y) (cells split along MuJoCo's
 // (c, r+1)-(c+1, r) diagonal); false outside the grid
@@ -2349,7 +2578,8 @@ __device__ __forceinline__ bool hfield_surface(const float* hs, const float* hd,
 }
 
 // The terrain contacts' geometry, shared by the forward and the adjoint's replay (adjoint_contact.TERRAIN_DEVICE):
-// one __noinline__ copy of each, so the replay computes the forward's bits. A contact's tape slot is k | element << 8
+// one __noinline__ copy of each, so the replay computes the forward's bits (the native heightfield contacts instead are
+// explicitly rounded and inlined into both: TERRAIN_HF_NATIVE below). A contact's tape slot is k | element << 8
 // (k: capsule_box's candidate, or the heightfield sample point; element: box i, or nbox + heightfield j)
 
 // sphere (centre sp, radius r) against terrain box b (15 words): sphere_box with the normal from the box towards the
@@ -2396,14 +2626,28 @@ __device__ __noinline__ int terrain_capbox_segs(const float* cp, const float* ax
   return 2;
 }
 
-// robot geom g (sphere or capsule, pose gx / gq) against terrain box e
+// robot geom g (sphere or capsule, pose gx / gq) against terrain box e. Broad phase: the geom's bounding sphere
+// against the oriented box (the squared distance from the geom's centre to the box, in the box's frame, against the
+// bounding radius squared, with a relative margin of 2e-4 and 1e-6 m^2: conservative, a contact needs the geom to
+// touch the box); large boxes (stair treads, platforms) no longer send every geom within their bounding sphere through
+// the narrow phase
 template <class S>
 __device__ void terrain_box(S& s, int pair, int g, int e) {
   const float* b = ter_box(e);
+  if (!(b[12] > 0.f)) return;  // an absent object slot
   const float* p = s.gx[g];
   float d[3] = {p[0] - b[0], p[1] - b[1], p[2] - b[2]};
-  float rb = c_grbound[g] + sqrtf(b[12] * b[12] + b[13] * b[13] + b[14] * b[14]);
-  if (dot3(d, d) > rb * rb) return;
+  {
+    const float rg = c_grbound[g];
+    float q2 = 0.f;
+#pragma unroll
+    for (int i = 0; i < 3; i++) {
+      const float l = b[3 + i] * d[0] + b[6 + i] * d[1] + b[9 + i] * d[2];  // (R' d)_i
+      const float o = fmaxf(fabsf(l) - b[12 + i], 0.f);
+      q2 += o * o;
+    }
+    if (q2 > rg * rg * 1.0002f + 1e-6f) return;
+  }
   const float* sz = c_gsize + 3 * g;
   float dist, pos[3], n[3], fr[9];
   if (c_gtype[g] == 1) {
@@ -2462,7 +2706,12 @@ __device__ __noinline__ bool terrain_hfield_point(int j, int gt, const float* sz
 //  - intersecting the prism: the minimum translation by the separating axes (face normals, axis x edge directions),
 //    at the core's deepest point along it (the middle of the core where the core is parallel to the face).
 // On a flat heightfield this gives the plane's contacts (a capsule: its two ends). Contact types for the adjoint:
-// HF_FACE (constant normal), HF_POINT (normal from a fixed prism point q to the core point), HF_DEEP (constant normal)
+// HF_FACE (constant normal), HF_POINT (normal from a fixed prism point q to the core point), HF_DEEP (constant normal).
+// The geom's core, the prisms' vertices, the prism routine (hf_prism) and a chosen contact's geometry are written with
+// the explicit roundings (RMUL, RADD, RFMA: source.py) and inlined into the forward (hfield_native) and the adjoint's
+// replay (hfield_native_one): each copy computes the same bits in any kernel, compilation unit or -fmad setting. Inlined,
+// the prism's arrays (indexed by constants once unrolled) stay in registers; the forward keeps only its candidates in
+// local memory
 #define HF_MAXCAND 24
 #define HF_FACE 0
 #define HF_POINT 1
@@ -2480,129 +2729,201 @@ struct HfCon {  // a chosen contact (hfield frame): pos midway between the prism
   unsigned pid;
 };
 
+__device__ __forceinline__ void hf_mtv3(const float* R, const float* v, float* o) {  // R^T v (R row major)
+#pragma unroll
+  for (int k = 0; k < 3; k++) o[k] = RFMA(R[6 + k], v[2], RFMA(R[k], v[0], RMUL(R[3 + k], v[1])));
+}
+__device__ __forceinline__ void hf_mv3(const float* R, const float* v, float* o) {  // R v
+#pragma unroll
+  for (int k = 0; k < 3; k++) o[k] = dot3_rn(R + 3 * k, v);
+}
+
 // segment p1 + s d1 against segment p2 + t d2 (s, t in [0, 1]; Ericson, Real-Time Collision Detection 5.1.9)
 __device__ __forceinline__ void hf_segseg(const float* p1, const float* d1, const float* p2, const float* d2, float* s,
                                           float* t) {
-  float r[3] = {p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]};
-  float a = dot3(d1, d1), e = dot3(d2, d2), f = dot3(d2, r);
+  const float r[3] = {RSUB(p1[0], p2[0]), RSUB(p1[1], p2[1]), RSUB(p1[2], p2[2])};
+  const float a = dot3_rn(d1, d1), e = dot3_rn(d2, d2), f = dot3_rn(d2, r);
   if (a <= 1e-20f) { *s = 0.f; *t = e > 1e-20f ? fminf(fmaxf(f / e, 0.f), 1.f) : 0.f; return; }
-  float c = dot3(d1, r);
+  const float c = dot3_rn(d1, r);
   if (e <= 1e-20f) { *t = 0.f; *s = fminf(fmaxf(-c / a, 0.f), 1.f); return; }
-  float b = dot3(d1, d2), den = a * e - b * b;
-  *s = den > 0.f ? fminf(fmaxf((b * f - c * e) / den, 0.f), 1.f) : 0.f;
-  *t = (b * (*s) + f) / e;
+  const float b = dot3_rn(d1, d2), den = RFMS(b, b, RMUL(a, e));  // a e - b b
+  *s = den > 0.f ? fminf(fmaxf(RFMS(c, e, RMUL(b, f)) / den, 0.f), 1.f) : 0.f;  // (b f - c e) / den
+  *t = RFMA(b, *s, f) / e;
   if (*t < 0.f) { *t = 0.f; *s = fminf(fmaxf(-c / a, 0.f), 1.f); }
-  else if (*t > 1.f) { *t = 1.f; *s = fminf(fmaxf((b - c) / a, 0.f), 1.f); }
-}
-
-__device__ __forceinline__ void hf_add(HfCand* cand, int* nc, int type, float dist, const float* n, float t,
-                                       int* over, int sub) {
-  if (*nc >= HF_MAXCAND) { *over = 1; return; }
-  HfCand& c = cand[(*nc)++];
-  c.dist = dist; c.t = t; c.type = type; c.pid = (unsigned)sub;
-  for (int k = 0; k < 3; k++) c.n[k] = n[k];
-}
-
-// a candidate's contact position (hfield frame): midway between its prism point and the geom's surface
-__device__ __forceinline__ void hf_pos(const HfCand& c, const float* a, const float* d, float r, float* pos) {
-  for (int k = 0; k < 3; k++) pos[k] = a[k] + c.t * d[k] - (r + 0.5f * c.dist) * c.n[k];
+  else if (*t > 1.f) { *t = 1.f; *s = fminf(fmaxf(RSUB(b, c) / a, 0.f), 1.f); }
 }
 
 // the candidates of the core a + t d (t in [0, 1]; d = 0: a sphere) with radius r against the prism of top vertices
-// v[0..2] (counterclockwise from above) and bottom zb, hfield frame; each with its index in the prism (pid's sub:
-// 2 face + end, 10 the edge / vertex pair, 11 the intersection). One copy (the adjoint's replay calls it as well)
-__device__ __noinline__ void hf_prism(const float (*v)[3], float zb, const float* a, const float* d, float r, HfCand* cand, int* nc,
-                         int* over) {
+// v[0..2] (counterclockwise from above) and bottom zb, hfield frame: emit(type, dist, n, t, sub) for each, sub its index
+// in the prism (2 face + end, 10 the edge / vertex pair, 11 the intersection)
+template <class E>
+__device__ __forceinline__ void hf_prism(const float (*v)[3], float zb, const float* a, const float* d, float r,
+                                         E& emit) {
   float P[6][3];  // 0..2 top, 3..5 bottom
+#pragma unroll
   for (int i = 0; i < 3; i++)
+#pragma unroll
     for (int k = 0; k < 3; k++) { P[i][k] = v[i][k]; P[3 + i][k] = k == 2 ? zb : v[i][k]; }
   // faces: 0 top (P0 P1 P2), 1 bottom (P3 P5 P4), 2..4 sides (Pi Pj P3+j P3+i), outward normals
   const int fv[5][4] = {{0, 1, 2, -1}, {3, 5, 4, -1}, {0, 3, 4, 1}, {1, 4, 5, 2}, {2, 5, 3, 0}};
+  const int ev[9][2] = {{0, 1}, {1, 2}, {2, 0}, {3, 4}, {4, 5}, {5, 3}, {0, 3}, {1, 4}, {2, 5}};
   float fn[5][3], hA[5], hd[5];  // normal; h(t) = hA + t hd
+#pragma unroll
   for (int f = 0; f < 5; f++) {
     const float *p0 = P[fv[f][0]], *p1 = P[fv[f][1]], *p2 = P[fv[f][2]];
-    float e1[3] = {p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]}, e2[3] = {p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]};
-    cross(e1, e2, fn[f]);
-    float il = rsqrtf(dot3(fn[f], fn[f]));
-    for (int k = 0; k < 3; k++) fn[f][k] *= il;
-    float w[3] = {a[0] - p0[0], a[1] - p0[1], a[2] - p0[2]};
-    hA[f] = dot3(fn[f], w); hd[f] = dot3(fn[f], d);
+    float e1[3], e2[3], w[3];
+#pragma unroll
+    for (int k = 0; k < 3; k++) { e1[k] = RSUB(p1[k], p0[k]); e2[k] = RSUB(p2[k], p0[k]); w[k] = RSUB(a[k], p0[k]); }
+    cross_rn(e1, e2, fn[f]);
+    const float il = rsqrtf(dot3_rn(fn[f], fn[f]));
+#pragma unroll
+    for (int k = 0; k < 3; k++) fn[f][k] = RMUL(fn[f][k], il);
+    hA[f] = dot3_rn(fn[f], w); hd[f] = dot3_rn(fn[f], d);
   }
+  // the core at least r outside a face plane at both ends: the prism (on the inner side of all its face planes) is at
+  // least r away, no candidate (most prisms under a geom's bounding box end here)
+#pragma unroll
+  for (int f = 0; f < 5; f++)
+    if (fminf(hA[f], RADD(hA[f], hd[f])) >= r) return;
   // inside test of the core's ends and pierced faces: intersection -> separating axes
   bool inA = true, inB = true;
-  for (int f = 0; f < 5; f++) { inA = inA && hA[f] < 0.f; inB = inB && hA[f] + hd[f] < 0.f; }
+#pragma unroll
+  for (int f = 0; f < 5; f++) { inA = inA && hA[f] < 0.f; inB = inB && RADD(hA[f], hd[f]) < 0.f; }
   bool hit = inA || inB;
   float ti0[5], ti1[5];  // each face's region interval of the core
+#pragma unroll
   for (int f = 0; f < 5; f++) {
-    float t0 = 0.f, t1 = 1.f;
+    float t0 = 0.f, t1 = 1.f;  // (an empty interval stays empty: t0 only grows, t1 only shrinks)
     const int nv = fv[f][3] < 0 ? 3 : 4;
-    for (int k = 0; k < nv && t0 <= t1; k++) {
+#pragma unroll
+    for (int k = 0; k < 4; k++) {
+      if (k >= nv) break;
       const float *q0 = P[fv[f][k]], *q1 = P[fv[f][(k + 1) % nv]];
-      float e[3] = {q1[0] - q0[0], q1[1] - q0[1], q1[2] - q0[2]}, m[3], w[3] = {a[0] - q0[0], a[1] - q0[1], a[2] - q0[2]};
-      cross(e, fn[f], m);  // outward in the face plane
-      float g0 = dot3(m, w), g1 = dot3(m, d);  // inside: g0 + t g1 <= 0
+      float e[3], m[3], w[3];
+#pragma unroll
+      for (int q = 0; q < 3; q++) { e[q] = RSUB(q1[q], q0[q]); w[q] = RSUB(a[q], q0[q]); }
+      cross_rn(e, fn[f], m);  // outward in the face plane
+      const float g0 = dot3_rn(m, w), g1 = dot3_rn(m, d);  // inside: g0 + t g1 <= 0
       if (fabsf(g1) <= 1e-20f) { if (g0 > 0.f) t1 = -1.f; }
       else if (g1 > 0.f) t1 = fminf(t1, -g0 / g1);
       else t0 = fmaxf(t0, -g0 / g1);
     }
     ti0[f] = t0; ti1[f] = t1;
-    if (t0 <= t1 && (hA[f] + t0 * hd[f]) * (hA[f] + t1 * hd[f]) < 0.f) hit = true;  // the core pierces face f
+    if (t0 <= t1 && RMUL(RFMA(t0, hd[f], hA[f]), RFMA(t1, hd[f], hA[f])) < 0.f) hit = true;  // the core pierces f
   }
   if (hit) {  // minimum translation: axes fn (faces) and normalize(d x edge); push the core out along +u
-    const int ev[9][2] = {{0, 1}, {1, 2}, {2, 0}, {3, 4}, {4, 5}, {5, 3}, {0, 3}, {1, 4}, {2, 5}};
+    const float dd = dot3_rn(d, d);
     float best = 3.4e38f, bu[3] = {0.f, 0.f, 1.f};
+#pragma unroll
     for (int ax = 0; ax < 14; ax++) {
       float u[3];
-      if (ax < 5) { for (int k = 0; k < 3; k++) u[k] = fn[ax][k]; }
-      else {
+      if (ax < 5) {
+#pragma unroll
+        for (int k = 0; k < 3; k++) u[k] = fn[ax][k];
+      } else {
         const float *q0 = P[ev[ax - 5][0]], *q1 = P[ev[ax - 5][1]];
-        float e[3] = {q1[0] - q0[0], q1[1] - q0[1], q1[2] - q0[2]};
-        cross(d, e, u);
-        float l2 = dot3(u, u);
-        if (l2 <= 1e-12f * dot3(d, d) * dot3(e, e) || l2 <= 1e-30f) continue;
-        float il = rsqrtf(l2);
-        for (int k = 0; k < 3; k++) u[k] *= il;
+        const float e[3] = {RSUB(q1[0], q0[0]), RSUB(q1[1], q0[1]), RSUB(q1[2], q0[2])};
+        cross_rn(d, e, u);
+        const float l2 = dot3_rn(u, u);
+        if (l2 <= RMUL(RMUL(1e-12f, dd), dot3_rn(e, e)) || l2 <= 1e-30f) continue;
+        const float il = rsqrtf(l2);
+#pragma unroll
+        for (int k = 0; k < 3; k++) u[k] = RMUL(u[k], il);
       }
       float pmax = -3.4e38f, pmin = 3.4e38f;
-      for (int i = 0; i < 6; i++) { float x = dot3(u, P[i]); pmax = fmaxf(pmax, x); pmin = fminf(pmin, x); }
-      float sa = dot3(u, a), sb = sa + dot3(u, d), smin = fminf(sa, sb), smax = fmaxf(sa, sb);
-      float pp = pmax - smin, pm = smax - pmin;  // translation along +u, along -u
+#pragma unroll
+      for (int i = 0; i < 6; i++) { const float x = dot3_rn(u, P[i]); pmax = fmaxf(pmax, x); pmin = fminf(pmin, x); }
+      const float sa = dot3_rn(u, a), sb = RADD(sa, dot3_rn(u, d)), smin = fminf(sa, sb), smax = fmaxf(sa, sb);
+      const float pp = RSUB(pmax, smin), pm = RSUB(smax, pmin);  // translation along +u, along -u
       if (pp < best) { best = pp; for (int k = 0; k < 3; k++) bu[k] = u[k]; }
       if (ax >= 5 && pm < best) { best = pm; for (int k = 0; k < 3; k++) bu[k] = -u[k]; }
     }
-    float ud = dot3(bu, d), t = ud > 1e-7f * sqrtf(dot3(d, d)) ? 0.f : (ud < -1e-7f * sqrtf(dot3(d, d)) ? 1.f : 0.5f);
-    hf_add(cand, nc, HF_DEEP, -best - r, bu, t, over, 11);
+    const float ud = dot3_rn(bu, d), tol = RMUL(1e-7f, sqrtf(dd));
+    emit(HF_DEEP, RSUB(-best, r), bu, ud > tol ? 0.f : (ud < -tol ? 1.f : 0.5f), 11);
     return;
   }
   // disjoint: the face-region ends in front of their face (exact distances), then the closest edge pair if it is closer
   float dmin = 3.4e38f;
+#pragma unroll
   for (int f = 0; f < 5; f++) {
     if (ti0[f] > ti1[f]) continue;
-    float h0 = hA[f] + ti0[f] * hd[f], h1 = hA[f] + ti1[f] * hd[f];
+    const float h0 = RFMA(ti0[f], hd[f], hA[f]), h1 = RFMA(ti1[f], hd[f], hA[f]);
     if (h0 < 0.f) continue;  // behind the face (then the whole region part is: no pierce)
-    for (int e = 0; e < (ti1[f] > ti0[f] ? 2 : 1); e++) {
-      float t = e ? ti1[f] : ti0[f], h = e ? h1 : h0;
+#pragma unroll
+    for (int e = 0; e < 2; e++) {
+      if (e == 1 && !(ti1[f] > ti0[f])) break;
+      const float t = e ? ti1[f] : ti0[f], h = e ? h1 : h0;
       dmin = fminf(dmin, h);
-      if (h - r >= 0.f) continue;
-      hf_add(cand, nc, HF_FACE, h - r, fn[f], t, over, 2 * f + e);
+      if (RSUB(h, r) >= 0.f) continue;
+      emit(HF_FACE, RSUB(h, r), fn[f], t, 2 * f + e);
     }
   }
-  const int ev[9][2] = {{0, 1}, {1, 2}, {2, 0}, {3, 4}, {4, 5}, {5, 3}, {0, 3}, {1, 4}, {2, 5}};
-  float bd = 3.4e38f, bx[3], bq[3], bt = 0.f;
+  float bd = 3.4e38f, bx[3] = {0.f, 0.f, 0.f}, bq[3] = {0.f, 0.f, 0.f}, bt = 0.f;
+#pragma unroll
   for (int i = 0; i < 9; i++) {
     const float *q0 = P[ev[i][0]], *q1 = P[ev[i][1]];
-    float e[3] = {q1[0] - q0[0], q1[1] - q0[1], q1[2] - q0[2]}, s, t;
+    const float e[3] = {RSUB(q1[0], q0[0]), RSUB(q1[1], q0[1]), RSUB(q1[2], q0[2])};
+    float s, t, x[3], q[3], w[3];
     hf_segseg(a, d, q0, e, &s, &t);
-    float x[3], q[3], w[3];
-    for (int k = 0; k < 3; k++) { x[k] = a[k] + s * d[k]; q[k] = q0[k] + t * e[k]; w[k] = x[k] - q[k]; }
-    float dd = dot3(w, w);
+#pragma unroll
+    for (int k = 0; k < 3; k++) { x[k] = RFMA(s, d[k], a[k]); q[k] = RFMA(t, e[k], q0[k]); w[k] = RSUB(x[k], q[k]); }
+    const float dd = dot3_rn(w, w);
     if (dd < bd) { bd = dd; bt = s; for (int k = 0; k < 3; k++) { bx[k] = x[k]; bq[k] = q[k]; } }
   }
   bd = sqrtf(bd);
-  if (bd < dmin && bd - r < 0.f && bd > 0.f) {
-    float n[3] = {(bx[0] - bq[0]) / bd, (bx[1] - bq[1]) / bd, (bx[2] - bq[2]) / bd};
-    hf_add(cand, nc, HF_POINT, bd - r, n, bt, over, 10);
+  if (bd < dmin && RSUB(bd, r) < 0.f && bd > 0.f) {
+    const float n[3] = {RSUB(bx[0], bq[0]) / bd, RSUB(bx[1], bq[1]) / bd, RSUB(bx[2], bq[2]) / bd};
+    emit(HF_POINT, RSUB(bd, r), n, bt, 10);
   }
+}
+
+// the forward's candidate list (local memory): every candidate, tagged with its prism
+struct HfEmitAll {
+  HfCand* cand;
+  int nc, over;
+  unsigned tag;
+  __device__ __forceinline__ void operator()(int type, float dist, const float* n, float t, int sub) {
+    if (nc >= HF_MAXCAND) { over = 1; return; }
+    HfCand& c = cand[nc++];
+    c.dist = dist; c.t = t; c.type = type; c.pid = tag | (unsigned)sub;
+    for (int k = 0; k < 3; k++) c.n[k] = n[k];
+  }
+};
+// the replay's: the candidate with index want in its prism
+struct HfEmitOne {
+  int want;
+  bool found;
+  HfCand c;
+  __device__ __forceinline__ void operator()(int type, float dist, const float* n, float t, int sub) {
+    if (sub != want) return;
+    found = true;
+    c.dist = dist; c.t = t; c.type = type;
+    for (int k = 0; k < 3; k++) c.n[k] = n[k];
+  }
+};
+
+// grid coordinate (x of column c, y of row c) of a heightfield: d c - hs
+__device__ __forceinline__ float hf_grid(float d, int c, float hs) { return RFMA(d, float(c), -hs); }
+
+// the four corners of cell (rr, cc) (columns cc - 1 .. cc, rows rr .. rr + 1): k[0] (cc-1, rr), k[1] (cc, rr),
+// k[2] (cc-1, rr+1), k[3] (cc, rr+1), hfield frame
+__device__ __forceinline__ void hf_cell(const float* hs, const float* hd, int ncol, float dx, float dy, int rr, int cc,
+                                        float (*k)[3]) {
+  const float x0 = hf_grid(dx, cc - 1, hs[0]), x1 = hf_grid(dx, cc, hs[0]);
+  const float y0 = hf_grid(dy, rr, hs[1]), y1 = hf_grid(dy, rr + 1, hs[1]);
+  k[0][0] = x0; k[0][1] = y0; k[0][2] = RMUL(hd[rr * ncol + cc - 1], hs[2]);
+  k[1][0] = x1; k[1][1] = y0; k[1][2] = RMUL(hd[rr * ncol + cc], hs[2]);
+  k[2][0] = x0; k[2][1] = y1; k[2][2] = RMUL(hd[(rr + 1) * ncol + cc - 1], hs[2]);
+  k[3][0] = x1; k[3][1] = y1; k[3][2] = RMUL(hd[(rr + 1) * ncol + cc], hs[2]);
+}
+
+// top vertices of the cell's triangle i, counterclockwise from above (MuJoCo Warp's strip triangles (cc-1, rr)
+// (cc-1, rr+1) (cc, rr) and (cc-1, rr+1) (cc, rr) (cc, rr+1)): 0: k0 k1 k2, 1: k2 k1 k3; false where the prism is below
+// zmin (MuJoCo's prism height test)
+__device__ __forceinline__ bool hf_tri(const float (*k)[3], int i, float zmin, float (*v)[3]) {
+#pragma unroll
+  for (int q = 0; q < 3; q++) { v[0][q] = i ? k[2][q] : k[0][q]; v[1][q] = k[1][q]; v[2][q] = i ? k[3][q] : k[2][q]; }
+  return !(v[0][2] < zmin && v[1][2] < zmin && v[2][2] < zmin);
 }
 
 // distance from p to triangle (a, b, c) (Ericson, Real-Time Collision Detection 5.1.5)
@@ -2619,11 +2940,9 @@ __device__ float hf_surf_dist(const float* p, float reach, int rmin, int rmax, i
   const int r0 = max(rmin, int(floorf((p[1] - pad + hs[1]) / dy))), r1 = min(rmax - 1, int(floorf((p[1] + pad + hs[1]) / dy)));
   for (int rr = r0; rr <= r1; rr++)
     for (int cc = c0; cc <= c1; cc++) {
-      float v00[3] = {dx * float(cc) - hs[0], dy * float(rr) - hs[1], hd[rr * ncol + cc] * hs[2]};
-      float v01[3] = {v00[0], dy * float(rr + 1) - hs[1], hd[(rr + 1) * ncol + cc] * hs[2]};
-      float v10[3] = {dx * float(cc + 1) - hs[0], v00[1], hd[rr * ncol + cc + 1] * hs[2]};
-      float v11[3] = {v10[0], v01[1], hd[(rr + 1) * ncol + cc + 1] * hs[2]};
-      best = fminf(best, fminf(hf_pt_tri(p, v00, v01, v10), hf_pt_tri(p, v01, v10, v11)));
+      float k[4][3];
+      hf_cell(hs, hd, ncol, dx, dy, rr, cc + 1, k);  // (the prisms' own vertices)
+      best = fminf(best, fminf(hf_pt_tri(p, k[0], k[1], k[2]), hf_pt_tri(p, k[2], k[1], k[3])));
     }
   return best;
 }
@@ -2670,48 +2989,44 @@ __device__ __forceinline__ int add_contact_aux(S& s, int pair, int slot, float d
   return c;
 }
 
-// the geom's core in the frame of heightfield j: a + t d (t in [0, 1]), and its bounding box lo .. hi (with the radius)
-__device__ __noinline__ void hf_core(int j, int gt, const float* sz, const float* gp, const float* gq, float* a,
-                                     float* d, float* lo, float* hi) {
-  const float* hh = g_ter.hfh + 16 * j;
-  float dw[3] = {gp[0] - hh[0], gp[1] - hh[1], gp[2] - hh[2]}, c[3], ax[3] = {0.f, 0.f, 0.f};
-  mtv3(hh + 3, dw, c);
+// the geom's core in the frame of heightfield hh (g_ter.hfh + 16 j): a + t d (t in [0, 1]), and its bounding box
+// lo .. hi (with the radius)
+__device__ __forceinline__ void hf_core(const float* hh, int gt, const float* sz, const float* gp, const float* gq,
+                                        float* a, float* d, float* lo, float* hi) {
+  const float dw[3] = {RSUB(gp[0], hh[0]), RSUB(gp[1], hh[1]), RSUB(gp[2], hh[2])};
+  float c[3], ax[3] = {0.f, 0.f, 0.f};
+  hf_mtv3(hh + 3, dw, c);
   const float r = sz[0], hl = gt == 2 ? sz[1] : 0.f;
-  if (gt == 2) { float aw[3]; zaxis_rn(gq, aw); mtv3(hh + 3, aw, ax); }
+  if (gt == 2) { float aw[3]; zaxis_rn(gq, aw); hf_mtv3(hh + 3, aw, ax); }
+#pragma unroll
   for (int k = 0; k < 3; k++) {
-    float e = fabsf(ax[k]) * hl + r;
-    lo[k] = c[k] - e; hi[k] = c[k] + e;
-    a[k] = c[k] - hl * ax[k]; d[k] = 2.f * hl * ax[k];
+    const float e = RFMA(fabsf(ax[k]), hl, r);
+    lo[k] = RSUB(c[k], e); hi[k] = RADD(c[k], e);
+    a[k] = RFMS(hl, ax[k], c[k]); d[k] = RMUL(2.f * hl, ax[k]);
   }
-}
-
-// top vertices of prism (cell rr, cc: columns cc - 1 .. cc; triangle i) of heightfield j, counterclockwise from above
-// (MuJoCo Warp's strip: (cc-1, rr) (cc-1, rr+1) (cc, rr), then (cc-1, rr+1) (cc, rr) (cc, rr+1)); false where the
-// prism is below zmin (MuJoCo's prism height test)
-__device__ __noinline__ bool hf_prism_verts(int j, int rr, int cc, int i, float zmin, float (*v)[3]) {
-  const float* hs = g_ter.hfh + 16 * j + 12;
-  const int* hi = g_ter.hfi + 4 * j;
-  const float* hd = g_ter.hfd + hi[2];
-  const int nrow = hi[0], ncol = hi[1];
-  const float dx = 2.f * hs[0] / float(ncol - 1), dy = 2.f * hs[1] / float(nrow - 1);
-  const int pc[2][3] = {{cc - 1, cc - 1, cc}, {cc - 1, cc, cc}}, pr[2][3] = {{rr, rr + 1, rr}, {rr + 1, rr, rr + 1}};
-  for (int k = 0; k < 3; k++) {
-    v[k][0] = dx * float(pc[i][k]) - hs[0];
-    v[k][1] = dy * float(pr[i][k]) - hs[1];
-    v[k][2] = hd[pr[i][k] * ncol + pc[i][k]] * hs[2];
-  }
-  if (v[0][2] < zmin && v[1][2] < zmin && v[2][2] < zmin) return false;
-  float e1[3] = {v[1][0] - v[0][0], v[1][1] - v[0][1], 0.f}, e2[3] = {v[2][0] - v[0][0], v[2][1] - v[0][1], 0.f};
-  if (e1[0] * e2[1] - e1[1] * e2[0] < 0.f)
-    for (int k = 0; k < 3; k++) { float t = v[1][k]; v[1][k] = v[2][k]; v[2][k] = t; }
-  return true;
 }
 
 // a chosen candidate as a contact (hfield frame)
-__device__ __noinline__ void hf_con_of(const HfCand& c, const float* a, const float* d, float r, HfCon* o) {
+__device__ __forceinline__ void hf_con_of(const HfCand& c, const float* a, const float* d, float r, HfCon* o) {
   o->dist = c.dist; o->t = c.t; o->type = c.type; o->pid = c.pid;
-  hf_pos(c, a, d, r, o->pos);
-  for (int q = 0; q < 3; q++) { o->n[q] = c.n[q]; o->q[q] = a[q] + c.t * d[q] - (c.dist + r) * c.n[q]; }
+  const float s = RFMA(0.5f, c.dist, r), h = RADD(c.dist, r);
+#pragma unroll
+  for (int q = 0; q < 3; q++) {
+    const float x = RFMA(c.t, d[q], a[q]);
+    o->pos[q] = RFMS(s, c.n[q], x); o->n[q] = c.n[q]; o->q[q] = RFMS(h, c.n[q], x);
+  }
+}
+// a candidate's contact position (hfield frame): midway between its prism point and the geom's surface (hf_con_of's)
+__device__ __forceinline__ void hf_pos(const HfCand& c, const float* a, const float* d, float r, float* pos) {
+  const float s = RFMA(0.5f, c.dist, r);
+#pragma unroll
+  for (int q = 0; q < 3; q++) pos[q] = RFMS(s, c.n[q], RFMA(c.t, d[q], a[q]));
+}
+// a contact's point (hfield frame) in the world: R p + pos of heightfield hh
+__device__ __forceinline__ void hf_world_point(const float* hh, const float* p, float* o) {
+  hf_mv3(hh + 3, p, o);
+#pragma unroll
+  for (int k = 0; k < 3; k++) o[k] = RADD(o[k], hh[k]);
 }
 
 // the native contacts of robot geom (type gt, size sz, pose gp / gq) and heightfield j: out[0..n-1] in MuJoCo's order
@@ -2724,7 +3039,7 @@ __device__ __noinline__ int hfield_native(int j, int gt, const float* sz, const 
   const int nrow = hi[0], ncol = hi[1];
   const float r = sz[0];
   float a[3], d[3], lo[3], hi3[3];
-  hf_core(j, gt, sz, gp, gq, a, d, lo, hi3);
+  hf_core(hh, gt, sz, gp, gq, a, d, lo, hi3);
   *over = 0;
   if (lo[0] > hs[0] || hi3[0] < -hs[0] || lo[1] > hs[1] || hi3[1] < -hs[1] || lo[2] > hs[2] || hi3[2] < -hs[3])
     return 0;
@@ -2733,23 +3048,27 @@ __device__ __noinline__ int hfield_native(int j, int gt, const float* sz, const 
   const int rmin = max(0, int(floorf((lo[1] + hs[1]) * ys))), rmax = min(nrow - 1, int(ceilf((hi3[1] + hs[1]) * ys)));
   const float dx = 2.f * hs[0] / float(ncol - 1), dy = 2.f * hs[1] / float(nrow - 1);
   HfCand cand[HF_MAXCAND];
-  int nc = 0;
+  HfEmitAll em{cand, 0, 0, 0u};
   for (int rr = rmin; rr < rmax; rr++)
-    for (int cc = cmin + 1; cc <= cmax; cc++)
+    for (int cc = cmin + 1; cc <= cmax; cc++) {
+      float k[4][3];
+      hf_cell(hs, hd, ncol, dx, dy, rr, cc, k);
+#pragma unroll 1
       for (int i = 0; i < 2; i++) {
         float v[3][3];
-        if (!hf_prism_verts(j, rr, cc, i, lo[2], v)) continue;
-        const int nc0 = nc;
-        hf_prism(v, -hs[3], a, d, r, cand, &nc, over);
-        for (int q = nc0; q < nc; q++) cand[q].pid |= (unsigned)((rr * ncol + cc) << 1 | i) << 4;
+        if (!hf_tri(k, i, lo[2], v)) continue;
+        em.tag = (unsigned)((rr * ncol + cc) << 1 | i) << 4;
+        hf_prism(v, -hs[3], a, d, r, em);
       }
+    }
+  *over = em.over;
+  int nc = em.nc;
   // keep the candidates whose prism point is a closest point of the heightfield surface (the prisms' top triangles):
   // a prism's own edge next to a neighbouring triangle (an edge inside a flat or concave part of the surface) gives a
   // farther point than that triangle and is dropped; convex ridges and peaks stay. A candidate inside the core
   // (0 < t < 1: a face-region end at a triangle boundary, an edge point) stays only where the core's distance to the
-  // surface has a
-  // local minimum: the surface 0.5 mm along the core on either side is not closer (a ridge under the core; on a plane
-  // only the core's ends stay, as the plane's contacts). Penetrating cores (HF_DEEP) stay
+  // surface has a local minimum: the surface 0.5 mm along the core on either side is not closer (a ridge under the
+  // core; on a plane only the core's ends stay, as the plane's contacts). Penetrating cores (HF_DEEP) stay
   const float dl = sqrtf(dot3(d, d));
   int nk = 0;
   for (int i = 0; i < nc; i++) {
@@ -2820,25 +3139,27 @@ __device__ __noinline__ int hfield_native(int j, int gt, const float* sz, const 
 }
 
 // the adjoint's replay of a native contact: the candidate pid of geom (gt, sz, gp, gq) and heightfield j, recomputed
-// from its prism alone (the forward's bits: the same functions)
+// from its prism alone (the forward's bits: the same explicitly rounded functions)
 __device__ __noinline__ bool hfield_native_one(int j, int gt, const float* sz, const float* gp, const float* gq,
                                                unsigned pid, HfCon* o) {
   const float* hh = g_ter.hfh + 16 * j;
-  const int ncol = g_ter.hfi[4 * j + 1];
-  float a[3], d[3], lo[3], hi3[3], v[3][3];
-  hf_core(j, gt, sz, gp, gq, a, d, lo, hi3);
+  const int* hi = g_ter.hfi + 4 * j;
+  const float *hs = hh + 12, *hd = g_ter.hfd + hi[2];
+  const int nrow = hi[0], ncol = hi[1];
+  const float dx = 2.f * hs[0] / float(ncol - 1), dy = 2.f * hs[1] / float(nrow - 1);
+  float a[3], d[3], lo[3], hi3[3], k[4][3], v[3][3];
+  hf_core(hh, gt, sz, gp, gq, a, d, lo, hi3);
   const int cell = (int)(pid >> 5), rr = cell / ncol, cc = cell - rr * ncol, i = (int)((pid >> 4) & 1u);
-  if (!hf_prism_verts(j, rr, cc, i, lo[2], v)) return false;
-  HfCand cand[12];
-  int nc = 0, over = 0;
-  hf_prism(v, -hh[15], a, d, sz[0], cand, &nc, &over);
-  for (int q = 0; q < nc; q++)
-    if (cand[q].pid == (pid & 15u)) {
-      cand[q].pid = pid;
-      hf_con_of(cand[q], a, d, sz[0], o);
-      return true;
-    }
-  return false;
+  hf_cell(hs, hd, ncol, dx, dy, rr, cc, k);
+  if (!hf_tri(k, i, lo[2], v)) return false;
+  HfEmitOne em;
+  em.want = (int)(pid & 15u);
+  em.found = false;
+  hf_prism(v, -hs[3], a, d, sz[0], em);
+  if (!em.found) return false;
+  em.c.pid = pid;
+  hf_con_of(em.c, a, d, sz[0], o);
+  return true;
 }
 #endif  // TERRAIN_HF_NATIVE
 
@@ -2985,28 +3306,57 @@ __device__ float tr_hfield(int j, const float* pnt, const float* vec, float* nrm
 }
 
 // n rays (origins pnt, unit directions vec, world, 3 floats each) against the terrain: dist (the nearest hit; -1 for
-// none or beyond maxd) and nrm (its world normal, 0 for none); the elements in the grid cells under the segment
-// pnt .. pnt + maxd vec
+// none or beyond maxd) and nrm (its world normal, 0 for none); the elements in the grid cells along the segment
+// pnt .. pnt + maxd vec, row by row from the origin's: in each grid row, the columns the segment crosses in that row's
+// band (padded by TR_PAD on every side, so a hit on a cell boundary finds its element), and no further row once the
+// nearest hit is nearer than the row's entry (a long slanted ray visits about its length in cells, not its bounding
+// box's area); a heightfield is measured once per ray (tr_hfield walks the whole ray over it, whatever the cell)
+#define TR_PAD 1e-3f
 __global__ void k_terrain_rays(int n, const float* pnt, const float* vec, float maxd, float* dist, float* nrm) {
   const int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= n) return;
   const float *p = pnt + 3 * i, *v = vec + 3 * i;
   float best = -1.f, bn[3] = {0.f, 0.f, 0.f};
   if (g_ter.grid != nullptr) {
-    const float x0 = g_ter.grid[0], y0 = g_ter.grid[1], ic = g_ter.grid[2];
+    const float x0 = g_ter.grid[0], y0 = g_ter.grid[1], ic = g_ter.grid[2], cell = 1.f / ic;
     const int nx = int(g_ter.grid[3]), ny = int(g_ter.grid[4]), nbox = int(g_ter.grid[5]);
-    const float ex = p[0] + maxd * v[0], ey = p[1] + maxd * v[1];
-    int c0 = max(0, int(floorf((fminf(p[0], ex) - x0) * ic))), c1 = min(nx - 1, int(floorf((fmaxf(p[0], ex) - x0) * ic)));
-    int r0 = max(0, int(floorf((fminf(p[1], ey) - y0) * ic))), r1 = min(ny - 1, int(floorf((fmaxf(p[1], ey) - y0) * ic)));
-    for (int r = r0; r <= r1; r++)
+    const float ey = p[1] + maxd * v[1];
+    const int ra = int(floorf((p[1] - TR_PAD - y0) * ic)), rb = int(floorf((p[1] + TR_PAD - y0) * ic));
+    const int ea = int(floorf((ey - TR_PAD - y0) * ic)), eb = int(floorf((ey + TR_PAD - y0) * ic));
+    unsigned long long hf_seen[2] = {0ull, 0ull};
+    const bool up = v[1] >= 0.f;  // rows in the order the ray passes them
+    const int rlo = max(0, min(ra, ea)), rhi = min(ny - 1, max(rb, eb));
+    for (int j = 0; j <= rhi - rlo; j++) {
+      const int r = up ? rlo + j : rhi - j;
+      // the segment's parameters in the padded band of row r, then its x extent there
+      const float yb0 = y0 + float(r) * cell - TR_PAD, yb1 = y0 + float(r + 1) * cell + TR_PAD;
+      float t0 = 0.f, t1 = maxd;
+      if (fabsf(v[1]) > 1e-12f) {
+        float ta = (yb0 - p[1]) / v[1], tb = (yb1 - p[1]) / v[1];
+        t0 = fmaxf(t0, fminf(ta, tb)); t1 = fminf(t1, fmaxf(ta, tb));
+      } else if (p[1] < yb0 || p[1] > yb1) continue;
+      if (t0 > t1) continue;
+      if (best >= 0.f && best < t0) break;  // every later row is entered beyond the nearest hit
+      const float xa = p[0] + t0 * v[0], xb = p[0] + t1 * v[0];
+      const int c0 = max(0, int(floorf((fminf(xa, xb) - TR_PAD - x0) * ic)));
+      const int c1 = min(nx - 1, int(floorf((fmaxf(xa, xb) + TR_PAD - x0) * ic)));
       for (int c = c0; c <= c1; c++)
         for (int k = g_ter.cstart[r * nx + c]; k < g_ter.cstart[r * nx + c + 1]; k++) {
           const int e = g_ter.citems[k];
           float all[6], nn[3], d;
           if (e < nbox) { const float* b = g_ter.box + 15 * e; d = tr_box(b, b + 3, b + 12, p, v, all, nn); }
-          else d = tr_hfield(e - nbox, p, v, nn);
+          else {  // a heightfield spans many cells: each one is measured once per ray (the first 128 heightfields)
+            const int j = e - nbox;
+            if (j < 128) {
+              const unsigned long long bit = 1ull << (j & 63);
+              if (hf_seen[j >> 6] & bit) continue;
+              hf_seen[j >> 6] |= bit;
+            }
+            d = tr_hfield(j, p, v, nn);
+          }
           if (d >= 0.f && (best < 0.f || d < best)) { best = d; for (int q = 0; q < 3; q++) bn[q] = nn[q]; }
         }
+    }
   }
   if (best > maxd) best = -1.f;
   dist[i] = best;
@@ -3027,9 +3377,8 @@ __device__ void terrain_hfield(S& s, int pair, int g, int j, int nbox) {
   if (over) atomicOr(&s.unsupported, 4);  // candidates dropped (counted as a contact overflow)
   for (int k = 0; k < nn; k++) {
     float pos[3], nw[3], fr[9];
-    mv3(hh + 3, con[k].pos, pos);
-    for (int i = 0; i < 3; i++) pos[i] += hh[i];
-    mv3(hh + 3, con[k].n, nw);
+    hf_world_point(hh, con[k].pos, pos);
+    hf_mv3(hh + 3, con[k].n, nw);
     make_frame(nw, fr);
     const int c = add_contact_aux(s, pair, k | (nbox + j) << 8, con[k].dist, pos, fr);
     if (c >= 0) s.con_aux[c] = con[k].pid;  // the tape's taux: the adjoint replays this prism candidate only
@@ -3045,9 +3394,114 @@ __device__ void terrain_hfield(S& s, int pair, int g, int j, int nbox) {
   }
 }
 
+// permutation of a per-contact array: contact c (lanes c, c - 32) moves to rk[c / 32] (terrain_sort_contacts)
+template <class T>
+__device__ __forceinline__ void con_permute(T* a, int ncon, int lane, const int* rk) {
+  const T v0 = a[min(lane, MAXCON - 1)], v1 = a[min(lane + 32, MAXCON - 1)];
+  __syncwarp();
+  if (lane < ncon) a[rk[0]] = v0;
+  if (lane + 32 < ncon) a[rk[1]] = v1;
+  __syncwarp();
+}
+template <int K, class T>
+__device__ __forceinline__ void con_permute_k(T (*a)[K], int ncon, int lane, const int* rk) {
+  for (int k = 0; k < K; k++) {
+    const T v0 = a[min(lane, MAXCON - 1)][k], v1 = a[min(lane + 32, MAXCON - 1)][k];
+    __syncwarp();
+    if (lane < ncon) a[rk[0]][k] = v0;
+    if (lane + 32 < ncon) a[rk[1]][k] = v1;
+    __syncwarp();
+  }
+}
+
+// A terrain build's contact order: sorted by (pair, element, slot), ties (one lane's contacts of one pair and element)
+// in their order of arrival. add_contact takes its slots with atomicAdd from divergent lanes, so the arrival order
+// depends on the work of the other lanes (e.g. a broad phase that skips more elements): sorted, the order, and hence
+// the constraint rows and the solver's bits, depend only on the contact set. A stable rank per contact (lanes c and
+// c + 32), then each per-contact array permuted; nothing moves when the contacts arrived sorted
+template <class S>
+__device__ void terrain_sort_contacts(S& s, int ncon, int lane) {
+#if TERRAIN_SORT
+  __syncwarp();
+  unsigned long long key[2];
+  int rk[2] = {0, 0};
+#pragma unroll
+  for (int h = 0; h < 2; h++) {
+    const int c = lane + 32 * h;
+    key[h] = c < ncon ? (unsigned long long)s.con_pair[c] << 32 | (unsigned long long)s.con_elem[c] << 8 |
+                            (unsigned long long)s.con_slot[c]
+                      : ~0ull;
+  }
+  for (int j = 0; j < ncon; j++) {
+    const unsigned long long kj = __shfl_sync(0xffffffffu, j < 32 ? key[0] : key[1], j & 31);
+#pragma unroll
+    for (int h = 0; h < 2; h++) rk[h] += kj < key[h] || (kj == key[h] && j < lane + 32 * h);
+  }
+  if (!__any_sync(0xffffffffu, (lane < ncon && rk[0] != lane) || (lane + 32 < ncon && rk[1] != lane + 32))) return;
+  if (ncon <= 32) {  // (warp-uniform) one contact per lane: every word read, then written at its rank
+    int pr = 0, dm = 0;
+    unsigned char sl = 0;
+    unsigned short el = 0;
+    float di = 0.f, mu = 0.f, ps[3] = {0.f, 0.f, 0.f}, fr[9];
+#ifdef PW_TORS
+    float mus = 0.f;
+#endif
+#if TERRAIN_HF_NATIVE
+    unsigned aux = 0u;
+#endif
+    if (lane < ncon) {
+      pr = s.con_pair[lane]; sl = s.con_slot[lane]; el = s.con_elem[lane]; dm = s.con_dim[lane];
+      di = s.con_dist[lane]; mu = s.con_mu[lane];
+      for (int k = 0; k < 3; k++) ps[k] = s.con_pos[lane][k];
+      for (int k = 0; k < 9; k++) fr[k] = s.con_frame[lane][k];
+#ifdef PW_TORS
+      mus = s.con_mus[lane];
+#endif
+#if TERRAIN_HF_NATIVE
+      aux = s.con_aux[lane];
+#endif
+    }
+    __syncwarp();
+    if (lane < ncon) {
+      const int c = rk[0];
+      s.con_pair[c] = pr; s.con_slot[c] = sl; s.con_elem[c] = el; s.con_dim[c] = dm;
+      s.con_dist[c] = di; s.con_mu[c] = mu;
+      for (int k = 0; k < 3; k++) s.con_pos[c][k] = ps[k];
+      for (int k = 0; k < 9; k++) s.con_frame[c][k] = fr[k];
+#ifdef PW_TORS
+      s.con_mus[c] = mus;
+#endif
+#if TERRAIN_HF_NATIVE
+      s.con_aux[c] = aux;
+#endif
+    }
+    __syncwarp();
+    return;
+  }
+  con_permute(s.con_pair, ncon, lane, rk);
+  con_permute(s.con_slot, ncon, lane, rk);
+  con_permute(s.con_elem, ncon, lane, rk);
+  con_permute(s.con_dim, ncon, lane, rk);
+  con_permute(s.con_dist, ncon, lane, rk);
+  con_permute(s.con_mu, ncon, lane, rk);
+#ifdef PW_TORS
+  con_permute(s.con_mus, ncon, lane, rk);  // (world_params: foot_torsional)
+#endif
+#if TERRAIN_HF_NATIVE
+  con_permute(s.con_aux, ncon, lane, rk);
+#endif
+  con_permute_k(s.con_pos, ncon, lane, rk);
+  con_permute_k(s.con_frame, ncon, lane, rk);
+#endif
+}
+
 // the terrain's contacts of the robot geoms (virtual pairs NPAIR .. NPAIR + NTG - 1), one geom per lane
 template <class S>
 __device__ void collide_terrain(S& s, int lane) {
+#if TERRAIN_NOBJ > 0
+  for (int t = lane; t < NTG * TERRAIN_NOBJ; t += 32)  // the world's objects (one geom-object pair per lane)
+    terrain_box(s, NPAIR + t / TERRAIN_NOBJ, PG2(NPAIR + t / TERRAIN_NOBJ), OBJ_E0 + t % TERRAIN_NOBJ);
+#endif
   if (g_ter.grid == nullptr) return;
   const float x0 = g_ter.grid[0], y0 = g_ter.grid[1], ic = g_ter.grid[2];
   const int nx = int(g_ter.grid[3]), ny = int(g_ter.grid[4]), nbox = int(g_ter.grid[5]);
@@ -3071,13 +3525,10 @@ __device__ void collide_terrain(S& s, int lane) {
 }
 """
 
-# (anchor, replacement): each anchor occurs once in STEP_DEVICE + STEP_KERNEL
 TERRAIN_HOOKS = (
-    # the terrain's device code, before collide_pair
     ("""template <class S>
 __device__ DK_INL_COLLIDE void collide_pair(S& s, int pair) {""",
-     None),  # TERRAIN_DEVICE with capbox_segs (terrain_source)
-    # each contact's terrain element (the tape's telem table): add_contact's slot >> 8
+     None),
     ("""  unsigned char con_slot[MAXCON];  // which contact of its pair (tape): plane-capsule end, parallel capsule-capsule candidate
 """,
      """  unsigned char con_slot[MAXCON];  // which contact of its pair (tape): plane-capsule end, parallel capsule-capsule candidate
@@ -3095,7 +3546,6 @@ __device__ DK_INL_COLLIDE void collide_pair(S& s, int pair) {""",
      """  s.con_slot[c] = (unsigned char)slot;
   s.con_elem[c] = (unsigned short)(slot >> 8);
 """),
-    # the tape's contact tables: pair | slot << 10 (the virtual pairs need 10 bits), and the elements
     ("""      unsigned e0 = 2 * i < ncon ? (unsigned)s.con_pair[2 * i] | (unsigned)s.con_slot[2 * i] << 9 : TAPE_CON_NONE;
       unsigned e1 = 2 * i + 1 < ncon ? (unsigned)s.con_pair[2 * i + 1] | (unsigned)s.con_slot[2 * i + 1] << 9
                                      : TAPE_CON_NONE;
@@ -3107,7 +3557,6 @@ __device__ DK_INL_COLLIDE void collide_pair(S& s, int pair) {""",
       unsigned x0 = 2 * i < ncon ? (unsigned)s.con_elem[2 * i] : 0u;
       unsigned x1 = 2 * i + 1 < ncon ? (unsigned)s.con_elem[2 * i + 1] : 0u;
       __stcs(rec + OFF_TELEM + i, __uint_as_float(x0 | x1 << 16));"""),
-    # broad phase: the terrain replaces the floor plane unless TERRAIN_FLOOR
     ("""        if (PPLANE(pr)) {
 #if FLOOR_G >= 0""",
      """        if (PPLANE(pr)) {
@@ -3120,17 +3569,19 @@ __device__ DK_INL_COLLIDE void collide_pair(S& s, int pair) {""",
      """          keep = dot3(dif, n) <= RFMA(c_grbound[g2], 1.f + 1e-5f, 1e-6f);
 #endif
         } else {"""),
-    # narrow phase: the terrain contacts after the model's pairs
     ("""    for (int i = lane; i < ncand; i += 32) collide_pair(s, s.cand[i]);
 """,
      """    for (int i = lane; i < ncand; i += 32) collide_pair(s, s.cand[i]);
     collide_terrain(s, lane);
 """),
+    ("""  int ncon = uniform_int(min(s.ncon, MAXCON), 7);
+  {  // contact Jacobians:""",
+     """  int ncon = uniform_int(min(s.ncon, MAXCON), 7);
+  terrain_sort_contacts(s, ncon, lane);
+  {  // contact Jacobians:"""),
 )
 
 
-# native heightfield builds (TerrainConfig.mode = "native"), after TERRAIN_HOOKS: each contact's candidate id (the
-# tape's taux), so that the adjoint replays one prism
 TERRAIN_NATIVE_HOOKS = (
     ("""  unsigned short con_elem[MAXCON];  // terrain builds: the contact's terrain element (add_contact's slot >> 8)
 """,
@@ -3164,12 +3615,14 @@ TERRAIN_NATIVE_HOOKS = (
 )
 
 
-def capbox_segs_source():
-    """capsule_box's witness search (STEP_DEVICE) as a function of its own: capbox_segs(...) -> the number of candidate
-    spheres (0..2) and their segment parameters segs[] (MuJoCo Warp's capsule_box_witness), for the terrain."""
-    i = STEP_DEVICE.index("// capsule-box (MuJoCo Warp's capsule_box_witness")
-    j = STEP_DEVICE.index("  for (int e = 0; e < 2; e++) {\n    if (e == 1 && !(second > -3.f)) break;", i)
-    src = STEP_DEVICE[i:j]
+def capbox_segs_source(text=None):
+    """capsule_box's witness search (STEP_DEVICE, or text holding the same capsule_box: the forest engine's) as a
+    function of its own: capbox_segs(...) -> the number of candidate spheres (0..2) and their segment parameters segs[]
+    (MuJoCo Warp's capsule_box_witness), for the terrain."""
+    text = STEP_DEVICE if text is None else text
+    i = text.index("// capsule-box (MuJoCo Warp's capsule_box_witness")
+    j = text.index("  for (int e = 0; e < 2; e++) {\n    if (e == 1 && !(second > -3.f)) break;", i)
+    src = text[i:j]
     reps = (("// capsule-box (MuJoCo Warp's capsule_box_witness + capsule_box): up to two sphere-box contacts along the "
              "segment\ntemplate <class S>\n__device__ void capsule_box(S& s, int pair, const float* cp, const float* "
              "axisw, float cr, float hl, const float* bp,\n                            const float* R, const float* bs) {",
@@ -3215,12 +3668,49 @@ def extra_constants(m):
         k = b
         while k > 0:
             mask[b] |= 1 << k
-            k = m.body_parentid[k]
+            k = int(m.body_parentid[k])
     return dofbody, mask
 
 
 EXTRA_HEADER = "DKC int c_dofbody[NV];\nDKC unsigned int c_ancmask[NB];\n"
 
 
+def ancmask_packed(m, mask):
+    """(c_ancmask packed for host.loader's "u" kind as float32, its layout entry): one 32-bit word per body, two (low,
+    high: the device's unsigned long long, model_hooks.ENGINE_NB64) for more than 32 bodies."""
+    mask = np.asarray(mask, np.int64)
+    width = 2 if m.nbody > 32 else 1
+    words = np.stack([mask & 0xFFFFFFFF, mask >> 32], 1).ravel() if width == 2 else mask
+    return np.stack([words & 0xFFFF, words >> 16], 1).ravel().astype(np.float32), ("c_ancmask", "u", "nb", width)
 
 
+def _terrain_mod():
+    from nablaengine import terrain
+    return terrain
+
+
+OBJECT_HOST_HOOKS = (
+    ("  if (lane < 3) s.com[lane] = com[w * 3 + lane];\n",
+     "  if (lane < 3) s.com[lane] = com[(size_t)w * COM_WORDS + lane];\n"
+     "  dk_obj = com + (size_t)w * COM_WORDS + 3;  // the world's object slots (terrain objects)\n", 2),
+)
+OBJECT_ADJ_HOOKS = (
+    ("  if (lane < 3) s.com[lane] = com[w * 3 + lane];\n",
+     "  if (lane < 3) s.com[lane] = com[(size_t)w * COM_WORDS + lane];\n"
+     "  dk_obj = com + (size_t)w * COM_WORDS + 3;  // the world's object slots (terrain objects)\n", 1),
+)
+OBJECT_KIN_HOOKS = (
+    ("  if (lane < 3) s.com[lane] = com[(size_t)w * 3 + lane];\n",
+     "  if (lane < 3) s.com[lane] = com[(size_t)w * COM_WORDS + lane];  // (terrain objects: com's stride)\n", 1),
+)
+
+
+def object_hooks(src, hooks, terrain):
+    """src with hooks ((anchor, replacement, count)) for a terrain build with objects, else unchanged."""
+    if terrain is None or not terrain[0].objects:
+        return src
+    for a, b, n in hooks:
+        if src.count(a) != n:
+            raise RuntimeError(f"object hook anchor found {src.count(a)} times, expected {n}: {a[:70]!r}")
+        src = src.replace(a, b)
+    return src

@@ -1,157 +1,5 @@
 """The G1 engine as a differentiable JAX op: one control step with an analytic VJP, and the kinematics outputs of MJX's
-mjx.kinematics + com_pos + com_vel with their VJP, for differentiable rollouts (BPTT through lax.scan).
-
-  step(qpos, qvel, warm, ctrl, friction, com, *, iterations=10, substeps=4, clamp_kv=0, normal=3, clamp_soft=None,
-       grad_decay=1.0, kinematics=False) -> (qpos', qvel', warm'[, qpos_n, xpos, xquat, cvel, subtree_com])
-  kinematics(qpos, qvel, com) -> (qpos_n, xpos, xquat, cvel, subtree_com)
-
-one control step (substeps engine substeps of h = 5 ms) for B worlds; all float32, shapes (B, nq), (B, nv), (B, nv),
-(B, nu), (B,), (B, 3) (mjlab G1: nq 36, nv 35, nu 29); warm is the Newton warm start (warm' = the last substep's
-acceleration, for the next call); friction is each world's foot-floor friction, com its torso COM offset. B is read
-from the arrays at run time: one library serves every batch size, and JAX traces once per shape. jax.custom_vjp: the
-forward under differentiation (dk_step_fwd) also writes the tape, (B, substeps * REC_WORDS) float32 (5888 B per world
-and substep), kept with friction and com as the residuals; the backward (dk_step_bwd, the analytic adjoint k_adjoint,
-deterministic) returns d/dqpos (36-dimensional qpos form, as MuJoCo Warp), d/dqvel and d/dctrl (summed over the
-substeps), zeros for warm, friction and com; the cotangent of warm' is ignored. Without differentiation step runs
-dk_step, the same forward kernel without the tape (bitwise the same outputs). Static options (Python values; each
-combination is its own custom_vjp function, make_step):
-  iterations  Newton iterations per substep (default 10; the reference corpora use 50)
-  substeps    substeps per control step (4)
-  clamp_kv    DK_ADJ_CLAMP_KV of the adjoint, the derivative on a dof whose actuator force is clamped at its limit:
-              0 (default: as MuJoCo Warp's adjoint, the actuator damping -kv lambda kept in the qvel VJP), 1 (exact:
-              dropped); 2: the soft clamp, a surrogate gradient: on a clamped dof the actuator's three paths (qpos,
-              qvel, ctrl) carry w lam, w = exp(-o / clamp_soft), o = (|f| - tau_max) / tau_max >= 0 the relative
-              overshoot of the unclamped PD force (adjoint.py lam_soft); the custom_vjp then keeps ctrl as a residual
-              too
-  normal      DK_ADJ_NORMAL: 3 (default: the self contacts' normal frozen where nu < 1e-3 m), 0 exact (MuJoCo Warp's),
-              1, 2 (other approximations of the normal derivative; g1_engine.adjoint_contact)
-  clamp_soft  the soft clamp's delta for clamp_kv=2 (None: CLAMP_SOFT = 0.2; rounded to float32; 0 gives exactly
-              clamp_kv=1's gradients, larger values a softer clamp); must stay None for clamp_kv 0 / 1
-  grad_decay  the factor of the physics-only form of the gradient decay (below): the backward multiplies the
-              cotangents it returns for qpos and qvel by it, not the ctrl's. 1.0 (default) leaves the computation as
-              without the option (no multiply). The same gradients bitwise: scale_grad on the physics call's qpos, qvel
-              (below)
-The forward does not depend on clamp_kv, normal, clamp_soft or grad_decay: one tape serves every adjoint variant.
-
-Kinematics outputs (the semantics, with MJX source references, in nablaengine.g1_engine.kinematics): MJX's
-mjx.kinematics + smooth.com_pos + smooth.com_vel on the model with the world's torso COM offset (body_ipos[torso] +=
-com), float32:
-  qpos_n (B, nq)  qpos with the free joint's quaternion normalized and written back (as mjx.kinematics does)
-  xpos (B, nbody, 3), xquat (B, nbody, 4)  body frames, world body 0 included (0 and the identity)
-  cvel (B, nbody, 6)  [angular; linear] twists at the reference point subtree_com[1] (body 0: zeros)
-  subtree_com (B, nbody, 3)  subtree COMs with the torso's COM offset com (subtree_com[0] = subtree_com[1])
-Two entries, the same kernels (k_kin, k_kin_vjp: g1_engine.kinematics.KIN_DEVICE, built into the forward's unit;
-poses and twists by source.DEVICE's fwd_body steps, so their bits are those the engine computes for that state):
-  step(..., kinematics=True) -> (qpos', qvel', warm', qpos_n, xpos, xquat, cvel, subtree_com): the kinematics of the
-      output state (qpos', qvel') with the step's com, k_kin launched inside the step's forward call after the last
-      substep (dk_step_kin / dk_fwd_kin); the outputs' cotangents enter the same VJP: the step's backward call
-      (dk_bwd_kin / dk_bwd_soft_kin) first pulls them back onto (qpos', qvel') (k_kin_vjp from the residual qpos',
-      qvel', added to their own cotangents last), then runs the adjoint, so its gradients are bitwise those of
-      composing step's VJP with kinematics' VJP
-  kinematics(qpos, qvel, com) -> (qpos_n, xpos, xquat, cvel, subtree_com): for states not produced by the engine
-      (e.g. initial or externally supplied states), a custom_vjp (dk_kin, dk_kin_bwd): cotangents of qpos (the
-      quaternion through its normalization: the radial part removed) and qvel, zeros for com; kinematics(q', v', com)
-      of a step's output is bitwise its kinematics outputs
-  kinematics_forward / kinematics_backward: the same without custom_vjp; forward(..., kinematics=True) and
-  backward(..., kinematics=(qpos', qvel', g_qpos_n, g_xpos, g_xquat, g_cvel, g_subtree_com)) the lower-level calls
-Remat: the step's kinematics outputs are named OUT_NAME with its other outputs, kinematics()'s outputs and residual
-state KIN_NAME ("dk_kin"); remat_policy() saves both, so neither kernel reruns in the backward.
-
-Gradient decay with factor decay (a Python float, e.g. 0.98), in two forms with different laws. scale_grad(tree, decay)
-is the identity on a pytree whose cotangent the backward multiplies by decay (a custom_vjp over its inexact leaves;
-ints, bools and PRNG keys pass through untouched); it works on any differentiable function, the engine's step or
-another.
-  Full-state form: scale the whole carried state at the top of each scan body step, before anything reads it. Every
-  derivative that crosses n step boundaries is then multiplied by exactly decay^n, whatever the path (physics,
-  controller, cost; with closed-loop controls too): a cost computed in step k (from that step's output state) reaches
-  the control of step t <= k with decay^(k - t) and the rollout's initial state with decay^(k + 1), and a cost of the
-  end state after a scan of H steps reaches the first control with decay^(H - 1) (0.98^63 ~ 0.28). For example:
-
-    from nablaengine import jax_ffi
-
-    def body(carry, x):
-        state, total = carry
-        state = jax_ffi.scale_grad(state, decay)  # first: everything below sees the scaled state
-        ctrl = controller(params, state, x)
-        qpos, qvel, warm = jax_ffi.step(state.qpos, state.qvel, state.warm, ctrl, friction, com)
-        state = State(qpos, qvel, warm)
-        return (state, total + cost(state, ctrl)), None
-
-  Another carry that is a function of earlier states and enters later costs multiplicatively must be scaled with it
-  for the law to hold on its paths too (state, w = scale_grad((state, w), decay)); the objective's accumulators (total)
-  must not be: they add each cost once, and scaling them would decay a cost by its distance to the rollout's end
-  instead.
-  Physics-only form: scale only the state arguments of the physics call (grad_decay=decay of step / make_step /
-  EnginePhysics, or scale_grad on qpos, qvel at the call; bitwise the same gradients):
-
-    qpos, qvel = jax_ffi.scale_grad((state.qpos, state.qvel), decay)
-    qpos, qvel, warm = jax_ffi.step(qpos, qvel, state.warm, ctrl, friction, com)
-
-  Only the part of the state's cotangent that flows back through the physics' qpos, qvel inputs is scaled; ctrl's and
-  that of everything else the state feeds are not. Per control step the state's cotangent is then propagated by
-  decay F_x + F_u pi_x instead of F_x + F_u pi_x (F_x, F_u: the physics' Jacobians with respect to the state and ctrl,
-  pi_x: the controller's with respect to the state), so the full-state form's law decay^(k - t) for a cost of step k
-  and the control of step t holds here only for controls that do not depend on the state (open loop); through a
-  controller that reads the state the path state -> controller -> ctrl -> physics is not decayed.
-  scripts/jax_ffi_check.py (section options) checks both forms on a rollout with state feedback. Not on
-  qacc_warmstart (no gradient either way).
-
-Remat (differentiable rollouts under jax.checkpoint): the custom_vjp's fwd names its residual tape TAPE_NAME
-("dk_tape") and its outputs OUT_NAME ("dk_out") with jax.ad_checkpoint.checkpoint_name. A plain jax.checkpoint(body)
-saves none of them, so the backward reruns dk_step_fwd for the tape (two forward calls per control step); saving the
-tape alone still reruns it wherever the body's own VJP needs the step's outputs (a loss of qpos', the kinematics of
-the next step's input). Use jax.checkpoint(body, policy=remat_policy()) (= save_only_these_names("dk_tape", "dk_out",
-"dk_kin"); "dk_kin": kinematics()'s), or no remat: one dk_step_fwd per control step. The gradients equal those without
-remat up to XLA's rounding of the recomputed parts of the body (bitwise for jax_ffi_check's rollout body; ~1e-7
-relative for a body with an MLP controller).
-
-Lower-level calls (traceable, no custom_vjp): forward(..., tape=False/True) -> (qpos', qvel', warm', info[, tape]) with
-info (B, 4) int32 = (Newton iterations of the last substep, contacts, constraint rows, unsupported bits: tape.py
-FLAG_UNSUPPORTED) per world; backward(tape, friction, com, g_qpos', g_qvel', ..., ctrl=None, clamp_soft=None) -> (g_qpos,
-g_qvel, g_ctrl, info) (clamp_kv=2 needs the step's ctrl; the gradients are not scaled by any grad_decay) with info (B,)
-int32 = the adjoint's flags (the union of the records' tape flags, adjoint.ADJ_ROWS_SKIPPED /
-ADJ_REPLAY_MISMATCH) | NONFINITE_* << 16 (which of the world's gradients have a NaN / inf, and whether its incoming
-cotangent had one).
-
-Diagnostic counters (device memory of the library, per GPU, integer atomics: exact and order-independent): every
-dk_step / dk_step_fwd / dk_step_bwd call adds to DIAG (names below): forward calls and worlds, worlds with unsupported
-contacts, worlds whose last substep used all Newton iterations, and from the tape (dk_step_fwd only: the forward
-computes REFACT / NONCONV / SINGULAR only where it writes the tape) the records with those flags; backward calls and
-rows, the rows (worlds) of (g_qpos, g_qvel, g_ctrl) with any NaN / inf (and per output), the rows whose incoming
-cotangent was non-finite, the worlds with a replay mismatch. They accumulate across calls, also inside jit and
-lax.scan (the custom_vjp's bwd cannot return them). Read them outside jit with read_diagnostics(reset=True) -> {name:
-int} (it runs on the GPU's stream after the work already dispatched); inside jit, diagnostics(*deps, reset=...) ->
-(NDIAG, 2) uint32 (low, high words; decode_diagnostics) runs after the computation of its deps (e.g. the gradients).
-Besides, every forward call overwrites its record LAST (worlds, contacts summed over the worlds, contacts and constraint
-rows of the most loaded world: the last substep's, as MuJoCo Warp's nacon / nefc) for its batch size and for any batch
-size: last_forward(nworld) reads it without reset, EnginePhysics.stats() reports it as nacon / naconmax / nefc_max /
-njmax. EnginePhysics checks that the caller's model is one the engine supports (the input validation of
-nablaengine.model.capability: physics the packed constants cannot see, such as joint damping, the integrator or
-contype contacts) and the library's (check_model: timestep, foot pairs, torso id, the packed physics constants), so the
-fixtures' constants never silently stand in for another model; init() checks the model it builds for the same way
-(UnsupportedModel, a ValueError and an AssertionError, with the failing codes).
-
-The library: generated from the engine's CUDA source for the model (nablaengine.g1_engine: adjoint.cuda_source and
-host.KERNEL, the same text as the check binaries of nablaengine.checks) and built by nvcc on first use for the GPU's
-architecture ($DK_ARCH, else the first JAX GPU's compute capability), cached in $DK_CACHE_DIR (default
-~/.cache/nablaengine) under a hash of the sources, the model constants, the flags, the nvcc version and XLA's FFI
-headers. One translation unit per adjoint variant (clamp_kv 0 / 1 / 2 x normal 0-3, each wrapped in an anonymous
-namespace and compiled with its -D options, so each is the check binary's code), one with the XLA FFI handlers (typed
-FFI, jaxlib's xla/ffi/api/ffi.h) on XLA's CUDA stream (clamp_kv 2 has its own backward target, dk_step_bwd_soft, which
-also takes ctrl and the float attribute clamp_soft). On sm_120 every unit is built from compute_90 PTX, the NVVM 7
-front end (nablaengine.cuda.arch_flags; $DK_SM120_FRONTEND, default n7). Where the forward / kinematics kernels have
-other architecture flags than the adjoint units ($DK_SM120_FRONTEND=split: the forward NVVM 7, the adjoint native; or
-$DK_TEST_FORWARD_VIRTUAL_ARCH) they are a unit of their own (FWD_UNIT, the text of FWD_VARIANT's unit); native builds
-every unit -arch=sm_120; on every other architecture nothing changes. The unit with the forward kernels gets the
-target's register caps (cuda.unit_defines, bitwise unchanged): on sm_90 -DSPLIT_PRE_MINB=16 -DSPLIT_POST_MAXNREG=128
-(forward about 11% faster on the H100; $DK_SM90_REG_CAPS=0 builds without them), on sm_120 with the NVVM 7 forward
--DSPLIT_PRE_MINB=16 (1.3% on the RTX PRO 6000; $DK_SM120_PRE_CAP=0). The model constants (adjoint.engine_constants of
-the mjlab model: $DK_FIXTURES, else fixtures/mjlab, or init(model=...)) are handed to the library once per process
-(init) and uploaded to each GPU before its first call; the upload also fixes k_adjoint's launch on that GPU
-(adjoint.adj_launch_smem, the check binaries' launch: on V100 more shared memory than sizeof(Adj), at most 4 worlds
-per SM; launch_info()). Every handler checks the rank and dimensions of all its buffers before it reads or writes any
-(InvalidArgument otherwise).
-"""
+mjx.kinematics + com_pos + com_vel with their VJP, for differentiable rollouts (BPTT through lax.scan)."""
 
 import ctypes
 import functools
@@ -176,29 +24,27 @@ from nablaengine.model import capability
 from nablaengine import engines
 from nablaengine.g1_engine import adjoint, kinematics as g1_kin
 
-ITERATIONS, SUBSTEPS, CLAMP_KV, NORMAL = 10, 4, 0, 3  # the interface defaults
-CLAMP_SOFT, GRAD_DECAY = 0.2, 1.0  # clamp_kv=2's default delta; the default gradient decay factor (no decay)
-VARIANTS = tuple((kv, n) for kv in (0, 1, 2) for n in (0, 1, 2, 3))  # adjoint builds (DK_ADJ_CLAMP_KV, DK_ADJ_NORMAL)
-FWD_VARIANT = (0, 3)  # the unit that also holds the forward kernel k_substep (the forward has no adjoint options)
-FWD_UNIT = "dk_fwd"  # the forward / kinematics unit where it has flags of its own (cuda.arch_flags: sm_120 split)
-NONFINITE_QPOS, NONFINITE_QVEL, NONFINITE_CTRL, NONFINITE_COT = 1, 2, 4, 8  # backward info bits >> 16
+ITERATIONS, SUBSTEPS, CLAMP_KV, NORMAL = 10, 4, 0, 3
+CLAMP_SOFT, GRAD_DECAY = 0.2, 1.0
+VARIANTS = tuple((kv, n) for kv in (0, 1, 2) for n in (0, 1, 2, 3))
+FWD_VARIANT = (0, 3)
+FWD_UNIT = "dk_fwd"
+NONFINITE_QPOS, NONFINITE_QVEL, NONFINITE_CTRL, NONFINITE_COT = 1, 2, 4, 8
 NONFINITE_SHIFT = 16
 DIAG = ("fwd_calls", "fwd_worlds", "fwd_unsupported_worlds", "fwd_iteration_limit_worlds", "tape_records",
         "refact_records", "nonconv_records", "singular_records", "bwd_calls", "bwd_rows", "nonfinite_rows",
         "nonfinite_qpos_rows", "nonfinite_qvel_rows", "nonfinite_ctrl_rows", "nonfinite_cotangent_rows",
         "replay_mismatch_worlds", "fwd_contact_overflow_worlds", "fwd_row_overflow_worlds")
-# info[:, 3] bits of a forward (the step kernels' s.unsupported, over the call's substeps): a world had more contacts
-# than MAXCON (64) or more constraint rows than NEFC (192); the ones beyond are dropped (their forces are missing)
 OVERFLOW_CONTACTS, OVERFLOW_ROWS = 4, 16
-_OVERFLOW_WARN = [os.environ.get("DK_OVERFLOW_WARN", "0") not in ("", "0")]  # set_overflow_warnings
-# the last forward call's record (k_last_fwd; EnginePhysics.stats): worlds, contacts summed over the worlds, contacts
-# and constraint rows of the most loaded world (the last substep's counts, as MuJoCo Warp's nacon / nefc)
+_OVERFLOW_WARN = [os.environ.get("DK_OVERFLOW_WARN", "0") not in ("", "0")]
 LAST = ("worlds", "contacts", "contacts_max", "rows_max")
-NSLOT = 16  # last-forward records: slot 0 of any batch size, then one per batch size (the first 15 seen)
+NSLOT = 16
 MAX_DEVICES = 64
-UPLOAD_ERR_SMEM = -1  # a unit's upload: adj_launch_smem() returned 0
-TAPE_NAME, OUT_NAME = "dk_tape", "dk_out"  # checkpoint names of the custom_vjp's residual tape and its outputs (remat)
-KIN_NAME = "dk_kin"  # jax_ffi.kinematics's outputs and residual state (step's kinematics outputs are OUT_NAME)
+UPLOAD_ERR_SMEM = -1
+FOREST_FWD_ATTR = ("  if (cudaFuncSetAttribute(k_substep, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)sizeof(Sim)) != "
+                   "cudaSuccess)\n    (void)cudaGetLastError();  // (the fused forward unavailable: the split one only)")
+TAPE_NAME, OUT_NAME = "dk_tape", "dk_out"
+KIN_NAME = "dk_kin"
 REMAT_NAMES = (TAPE_NAME, OUT_NAME, KIN_NAME)
 
 VARIANT_UNIT = r"""
@@ -797,7 +643,81 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(DkLast, last_impl,
                                   .Ret<ffi::Buffer<ffi::U32>>());
 """
 
-# terrain builds (nablaengine.terrain): the height scan's FFI handler, rays against the terrain (raycast)
+FFI_SURROGATE = r"""
+static ffi::Error sur_check(float cone_mu, float impulse_clip) {
+  if (!(cone_mu >= 0.f && cone_mu < INFINITY)) return bad("cone_mu must be finite and >= 0");
+  if (!(impulse_clip > 0.f)) return bad("impulse_clip must be > 0 (+inf: off)");
+  return ffi::Error::Success();
+}
+static ffi::Error step_bwd_sur_impl(cudaStream_t st, BufF tape, BufF fric, BufF com, BufF ctrl, BufF gq_out,
+                                    BufF gv_out, int32_t substeps, int32_t clamp_kv, int32_t normal, float clamp_soft,
+                                    float cone_mu, float impulse_clip, RetF gq, RetF gv, RetF gu,
+                                    ffi::Result<ffi::Buffer<ffi::S32>> info) {
+  ffi::Error e = sur_check(cone_mu, impulse_clip);
+  if (e.failure()) return e;
+  return bwd_impl(st, tape, fric, com, clamp_kv == 2 ? &ctrl : nullptr, gq_out, gv_out, substeps, clamp_kv, normal,
+                  clamp_soft, gq, gv, gu, info, nullptr, nullptr, cone_mu, impulse_clip);
+}
+static ffi::Error step_bwd_sur_kin_impl(cudaStream_t st, ffi::ScratchAllocator scratch, BufF tape, BufF fric, BufF com,
+                                        BufF ctrl, BufF q1, BufF v1, BufF gq_out, BufF gv_out, BufF gqn, BufF gxp,
+                                        BufF gxq, BufF gcv, BufF gsc, int32_t substeps, int32_t clamp_kv,
+                                        int32_t normal, float clamp_soft, float cone_mu, float impulse_clip, RetF gq,
+                                        RetF gv, RetF gu, ffi::Result<ffi::Buffer<ffi::S32>> info) {
+  ffi::Error e = sur_check(cone_mu, impulse_clip);
+  if (e.failure()) return e;
+  const KinBwd k{&q1, &v1, &gqn, &gxp, &gxq, &gcv, &gsc};
+  return bwd_impl(st, tape, fric, com, clamp_kv == 2 ? &ctrl : nullptr, gq_out, gv_out, substeps, clamp_kv, normal,
+                  clamp_soft, gq, gv, gu, info, &k, &scratch, cone_mu, impulse_clip);
+}
+#define SUR_ATTRS .Attr<int32_t>("substeps").Attr<int32_t>("clamp_kv").Attr<int32_t>("normal") \
+                  .Attr<float>("clamp_soft").Attr<float>("cone_mu").Attr<float>("impulse_clip")
+XLA_FFI_DEFINE_HANDLER_SYMBOL(DkStepBwdSur, step_bwd_sur_impl,
+                              ffi::Ffi::Bind().Ctx<ffi::PlatformStream<cudaStream_t>>()
+                                  F32ARG F32ARG F32ARG F32ARG F32ARG F32ARG SUR_ATTRS
+                                  F32RET F32RET F32RET .Ret<ffi::Buffer<ffi::S32>>());
+XLA_FFI_DEFINE_HANDLER_SYMBOL(DkStepBwdSurKin, step_bwd_sur_kin_impl,
+                              ffi::Ffi::Bind().Ctx<ffi::PlatformStream<cudaStream_t>>().Ctx<ffi::ScratchAllocator>()
+                                  F32ARG F32ARG F32ARG F32ARG F32ARG F32ARG F32ARG F32ARG KIN5(F32ARG) SUR_ATTRS
+                                  F32RET F32RET F32RET .Ret<ffi::Buffer<ffi::S32>>());
+"""
+
+
+def ensure_jax_ffi():
+    """jax.ffi on every supported JAX: jax older than 0.5.0 (e.g. 0.4.38 of JetPack 5's jetson-containers) has the same
+    FFI API (include_dir, pycapsule, register_ffi_target, ffi_call) only as jax.extend.ffi; it is then also exposed as
+    jax.ffi. A no-op on jax 0.5.0 or newer."""
+    import sys
+    import jax
+    if not hasattr(jax, "ffi"):
+        from jax.extend import ffi
+        jax.ffi = sys.modules["jax.ffi"] = ffi
+
+
+def surrogate_units(units, ffi_unit="dk_ffi.cu"):
+    """A contact_surrogate build's edits of the library's units (in place): every variant unit's <unit>_adjoint takes
+    cone_mu, impulse_clip after clamp_soft and passes them to k_adjoint; the FFI unit's declarations, bwd_impl (the
+    existing handlers pass the surrogates off) and the handlers FFI_SURROGATE (absent: the PyTorch library)."""
+    sig = "int* info, const float* ctrl, float clamp_soft) {"
+    for u in list(units):
+        t = units[u]
+        if sig in t:
+            assert t.count(sig) == 1 and t.count("ADJ_SOFT_ARG(clamp_soft));") == 1
+            units[u] = (t.replace(sig, "int* info, const float* ctrl, float clamp_soft, float cone_mu, float impulse_clip) {")
+                        .replace("ADJ_SOFT_ARG(clamp_soft));", "ADJ_SOFT_ARG(clamp_soft), cone_mu, impulse_clip);"))
+    if ffi_unit in units:
+        t = units[ffi_unit]
+        n = t.count("int*, const float*, float);")
+        assert n == 1 + len(VARIANTS), n
+        t = t.replace("int*, const float*, float);", "int*, const float*, float, float, float);")
+        a = "ffi::ScratchAllocator* scratch = nullptr) {"
+        b = "               clamp_soft);\n  if (rc) return cuda_error((cudaError_t)rc, \"k_adjoint launch\");"
+        assert t.count(a) == 1 and t.count(b) == 1
+        t = t.replace(a, "ffi::ScratchAllocator* scratch = nullptr, float cone_mu = 0.f,\n"
+                         "                           float impulse_clip = INFINITY) {  // (the surrogates: off)")
+        t = t.replace(b, b.replace("clamp_soft);", "clamp_soft, cone_mu, impulse_clip);"))
+        units[ffi_unit] = t + FFI_SURROGATE
+
+
 FFI_TERRAIN = r"""
 extern "C" int @FWD@_terrain_rays(cudaStream_t, int, const float*, const float*, float, float*, float*);
 static ffi::Error rays_impl(cudaStream_t st, BufF pnt, BufF vec, float maxd, RetF dist, RetF nrm) {
@@ -818,78 +738,428 @@ XLA_FFI_DEFINE_HANDLER_SYMBOL(DkTerrainRays, rays_impl,
 """
 
 _LOCK = threading.Lock()
-_STATE = {}  # the loaded library (init)
-STATS = dict(builds=0, build_seconds=0.0, loads=0)  # this process: nvcc builds (cache misses) and library loads
+_STATE = {}
+STATS = dict(builds=0, build_seconds=0.0, loads=0)
+
+
+def _com_words():
+    return int(_STATE["info"].get("com_words", 3)) if _STATE else 3
+
+
+def _info_words():
+    return int(_STATE["info"].get("info_words", 4)) if _STATE else 4
 
 
 def _tag(v):
     return f"dk_kv{v[0]}_n{v[1]}"
 
 
+def adj_stage_default(E):
+    """The engine E's (engines.modules) default DK_ADJ_STAGE: its adjoint text's #define."""
+    import inspect
+    hit = re.search(r"#ifndef DK_ADJ_STAGE\n#define DK_ADJ_STAGE (\d)", inspect.getsource(E.adjoint))
+    return int(hit.group(1))
+
+
+def adj_stage(E):
+    """The adjoint stage a build of engine E gets (info["adj_stage"]): $DK_ADJ_STAGE, else the engine's default
+    (adj_stage_default; docs/configuration.md)."""
+    v = os.environ.get("DK_ADJ_STAGE")
+    return int(v) if v else adj_stage_default(E)
+
+
+def com_layout(m, terrain=None, params=None):
+    """{name: (offset, width)} of the com input's words per world (info["com_layout"]; their sum is
+    info["com_words"]): com_offset (0, 3), the COM offset of the COM-offset body (info["com_body"]; none on the forest
+    engine by default, the words are then read and ignored); then the engine's extras: fixtures (the forest engine:
+    7 words per fixture group, translation and quaternion relative to the exported placement) or objects (a terrain
+    build's object slots, nablaengine.terrain); then each per-world parameter field (params.<field>,
+    nablaengine.params)."""
+    out, o = {"com_offset": (0, 3)}, 3
+    if engines.is_forest(m):
+        from nablaengine._optional import FOREST, load
+        fstep = load("nablaengine.forest_engine", FOREST, "step")
+        nfix = fstep.com_words(m) - 3
+        if nfix:
+            out["fixtures"], o = (3, nfix), 3 + nfix
+    if terrain is not None and terrain.com_words() > 3:
+        from nablaengine import terrain as _terrain
+        nobj = _terrain.OBJ_WORDS * int(terrain.objects)
+        out["objects"], o = (o, nobj), o + nobj
+        nvel = terrain.com_words() - 3 - nobj - terrain.material_words()
+        if nvel:
+            out["object_velocity"], o = (o, nvel), o + nvel
+        if terrain.material_words():
+            out["object_material"], o = (o, terrain.material_words()), o + terrain.material_words()
+    if params:
+        for f, (off, w) in params.layout(m.nv).items():
+            out[f"params.{f}"] = (o + off, w)
+    return out
+
+
 def _model(model_dir=None, model=None, foot_pairs=None, com_body=None):
-    """(MjModel, foot_pairs, COM-offset body name): the given model, else the fixtures directory (model_dir, else
-    fixtures.fixtures_dir(): $DK_FIXTURES, else fixtures/mjlab; its meta's torso_body)."""
     if model is not None:
         assert foot_pairs is not None, "init(model=...) needs foot_pairs (the foot-floor pair indices)"
+        if engines.is_forest(model) and not engines.tree_defaults(model):
+            return model, [int(p) for p in foot_pairs], com_body
         return model, [int(p) for p in foot_pairs], com_body or capability.COM_BODY
     d = model_dir or fixtures.fixtures_dir()
-    m, mt = fixtures.load_model(d, check=None)  # init checks the engine scope next
+    m, mt = fixtures.load_model(d, check=None)
     return m, mt["foot_pairs"], com_body or mt.get("torso_body", capability.COM_BODY)
 
 
-def library_sources(m, foot_pairs, forward_unit=False, target=None, terrain=None, com_body=None):
+def con_words(m, contact_forces=False):
+    """Words per contact of the contact table (info["con_words"]): 12 with the forces (the forest engine's table, or
+    the G1 engine's with contact_forces=True: g1_engine.contact_forces), else 8."""
+    from nablaengine.g1_engine import contact_forces as _cf
+    if isinstance(contact_forces, _cf.Spec):
+        return int(contact_forces.con_words)
+    if engines.is_forest(m):
+        from nablaengine._optional import FOREST, load
+        fstep = load("nablaengine.forest_engine", FOREST, "step")
+        return int(fstep.CON_WORDS)
+    if contact_forces:
+        return int(_cf.CON_WORDS)
+    return 8
+
+
+def contact_spec(m, contact_forces=False, foot_wrench=None, contact_frame=False, terrain=None, foot_normal=False):
+    """The G1 engine's contact-force options (g1_engine.contact_forces.Spec; None: the build without them) of init()'s
+    contact_forces ("last" / True, "substeps"), foot_wrench (True: the G1's ankle-roll links, or body names / ids) and
+    contact_frame; terrain: the build's TerrainConfig; foot_normal: the foot contacts' foot and toe-weight words
+    (Spec.foot_split; the forest engine with foot_offset). The forest engine's table always has the forces: there the
+    plain opt-in (True / "last" without foot_wrench / contact_frame) gives None, the default build byte for byte, and
+    the other options a Spec for forest_engine.contact_forces."""
+    from nablaengine.g1_engine import contact_forces as _cf
+    if isinstance(contact_forces, _cf.Spec):
+        return contact_forces
+    if engines.is_forest(m):
+        if (contact_forces in (False, None, True, "last") and foot_wrench in (None, False) and not contact_frame
+                and not foot_normal and not (terrain is not None and contact_forces in (True, "last"))):
+            return None
+        spec = _cf.as_spec(contact_forces, foot_wrench, contact_frame, terrain is not None, m, bool(foot_normal),
+                           bool(foot_normal) and bool(getattr(terrain, "terrain_sand", False)))
+        from nablaengine._optional import FOREST, load
+        load("nablaengine.forest_engine", FOREST, "contact_forces").check(m, spec)
+        return spec
+    return _cf.as_spec(contact_forces, foot_wrench, contact_frame, terrain is not None, m, bool(foot_normal))
+
+
+def contact_info(m, spec):
+    """info["contact_forces"]: None, or dict(mode, feet (body ids), foot_bodies (names), frame, terrain, con_layout;
+    foot_split: True with foot_normal)."""
+    if spec is None:
+        return None
+    out = dict(mode=spec.mode, feet=list(spec.feet),
+               foot_bodies=[mujoco.mj_id2name(m, mujoco.mjtObj.mjOBJ_BODY, b) for b in spec.feet],
+               frame=spec.frame, terrain=spec.terrain, con_layout={k: list(v) for k, v in spec.layout().items()})
+    if spec.foot_split:
+        out["foot_split"] = True
+    if spec.foot_sand:
+        out["foot_sand"] = True
+    return out
+
+
+def con_width(info, substeps):
+    """Words per world of forward / step's contact output (contacts=True) for `substeps` substeps."""
+    cf, mc, cw = info.get("contact_forces"), int(info["maxcon"]), int(info.get("con_words", 8))
+    if not cf:
+        return mc * cw
+    nf = len(cf["feet"])
+    return (int(substeps) if cf["mode"] == "substeps" else 1) * mc * cw + (int(substeps) * nf * 6 + nf if nf else 0)
+
+
+LATENCY_VAR = "DK_FOREST_LATENCY"
+
+
+def latency_mode():
+    """$DK_FOREST_LATENCY: "1" builds the forest engine's latency mode (small batches: k_pre with two warps per world,
+    warp 0 the smooth dynamics, warp 1 the collision; the same bits; forest_engine.host DK_PRE2W), "0" or unset not.
+    Part of the build (the forward unit's -D options), so it keys the library cache."""
+    v = (os.environ.get(LATENCY_VAR) or "0").strip()
+    if v not in ("0", "1"):
+        raise ValueError(f"${LATENCY_VAR}={v!r}: 0 or 1")
+    return v == "1"
+
+
+def capacity(m, terrain=None, max_contacts=None, max_rows=None):
+    """A build's capacities per world: (max_contacts, max_rows) as the engine generators take them (None: their
+    defaults; a terrain build's TerrainConfig.maxcon when max_contacts is None) and the resulting (contacts, rows).
+    Raises ValueError where they do not fit the model's engine (step.check_capacity: G1 class 64 contacts, forest
+    engine 255; both 1023 rows) or contradict TerrainConfig.maxcon."""
+    E = engines.modules(m)
+    tmc = terrain.maxcon if terrain is not None and terrain.maxcon else None
+    if tmc is not None and max_contacts is not None and int(max_contacts) != int(tmc):
+        raise ValueError(f"max_contacts={max_contacts} but the terrain configuration's maxcon={tmc}")
+    mc_in = int(max_contacts) if max_contacts is not None else tmc
+    mr_in = int(max_rows) if max_rows is not None else None
+    if E.forest:
+        E.step.check_capacity(m, mc_in, mr_in)
+        mc = mc_in or E.step.maxcon(m)
+        out = mc_in, mr_in, mc, E.step.nefc(mc, m, mr_in)
+    else:
+        E.step.check_capacity(m, mc_in, mr_in, None)
+        out = mc_in, mr_in, mc_in or E.step.maxcon(m), E.step.nefc(mr_in)
+    _warn_rows(m, *out)
+    return out
+
+
+def _warn_rows(m, mc_in, mr_in, mc, nefc):
+    from nablaengine.forest_engine import step as fstep
+    if mc_in is None and mr_in is None and engines.is_g1_class(m):
+        return
+    need = fstep.rows_needed(mc, m)
+    if nefc < need:
+        import warnings
+        reserve = fstep.rows_needed(0, m)
+        per = (need - reserve) // mc
+        warnings.warn(f"constraint rows {nefc} < {need} that {mc} contacts can take ({per} per contact, {reserve} for "
+                      f"the dofs): with the dof rows all in use the rows fill at {max(0, nefc - reserve) // per} "
+                      "contacts and the rows beyond are dropped (their forces lost; diagnostics: row overflow). "
+                      + (f"Raise max_rows to {need} or lower max_contacts" if need <= fstep.MAX_ROWS else
+                         f"The rows stop at {fstep.MAX_ROWS}: max_contacts <= {(fstep.MAX_ROWS - reserve) // per} "
+                         "keeps every contact's rows"), RuntimeWarning, stacklevel=3)
+
+
+def library_sources(m, foot_pairs, forward_unit=False, target=None, terrain=None, com_body=None, params=None,
+                    max_contacts=None, max_rows=None, motor=None, contact_forces=False, bam=None, surrogate=False,
+                    contact_grad=False, noslip_pairs=None, capacity_diag=False):
     """({file name: CUDA source} of the library's translation units, the packed constants, the per-unit -D options).
     forward_unit: the forward and kinematics kernels in a unit of their own, FWD_UNIT.cu (the text of FWD_VARIANT's unit,
     built with other architecture flags: cuda.arch_flags('forward')), every adjoint variant's unit without them. target:
     the build target (default cuda.arch()), whose forward-unit -D options (cuda.unit_defines: the register caps on
     sm_90) the unit with the forward kernels gets. terrain: a nablaengine.terrain.TerrainConfig (a terrain build: every
-    unit gets <unit>_set_terrain; the PyTorch interface's library only). com_body: the COM-offset body."""
-    E = engines.modules(m)  # the model's engine (g1_engine for the G1 class: the text unchanged)
+    unit gets <unit>_set_terrain; the PyTorch interface's library only). com_body: the COM-offset body. params: a
+    nablaengine.params.PhysicsParams (per-world parameters in the com rows; none: the text unchanged). max_contacts,
+    max_rows: the capacities per world (capacity(); None: the engine's defaults, the text unchanged). motor:
+    actuator torque-speed limits (nablaengine.motor.as_motor's argument; None: the text unchanged). contact_forces:
+    the contact table with the forces, 12 words per contact (con_words(); the G1 engine's opt-in,
+    g1_engine.contact_forces; False: the text unchanged; the forest engine's table always has them). bam: a
+    nablaengine.actuators.Bam, the BAM servo model (the tree engine: g1_engine.bam_hooks; the forward entry and the
+    FFI handlers dk_step_act / dk_step_fwd_act take the state rows; None: the text unchanged). surrogate: the
+    backward-only contact-gradient surrogates (the forest engine: forest_engine.surrogate, surrogate_units; False: the
+    text unchanged). contact_grad: the contact output's VJP (the forest engine: forest_engine.contact_vjp, a Spec in
+    contact_forces; False: the text unchanged). capacity_diag: the forward's per-world capacity counts in info's words
+    4, 5 (the forest engine: forest_engine.capacity_diag, info (B, 6); False: the text unchanged)."""
+    from nablaengine.params import as_params
+    from nablaengine.g1_engine import world_params
+    from nablaengine.motor import as_motor
+    params, motor = as_params(params), as_motor(motor)
+    E = engines.modules(m)
+    if E.forest:
+        from nablaengine._optional import FOREST, load
+        world_params = load("nablaengine.forest_engine", FOREST, "world_params")
+        world_params.check(m, params, foot_pairs, com_body)
+        body_params = load("nablaengine.forest_engine", FOREST, "body_params")
+        body_params.check(m, params, foot_pairs, com_body, terrain, surrogate)
+        params = body_params.resolve(m, params, foot_pairs)
+        foot_offset = load("nablaengine.forest_engine", FOREST, "foot_offset")
+        if foot_offset.active(params):
+            from nablaengine import terrain as _tr
+            foot_offset.check(m, params, foot_pairs, (terrain, _tr.robot_terrain_geoms(m, foot_pairs, terrain.geoms))
+                              if terrain is not None else None, surrogate)
+        params = foot_offset.resolve(m, params)
+        if "object_size" in params.fields:
+            object_size = load("nablaengine.forest_engine", FOREST, "object_size")
+            object_size.check(m, params, com_body, terrain)
+            params = object_size.resolve(m, params, com_body)
+            m = object_size.bound_model(m, params)
+    elif ({"object_size", "gravity", "xfrc", "body_inertial", "sole_thickness", "foot_offset", "dof_frictionloss",
+           "frictionloss_solref", "frictionloss_solimp"} & set(params.fields)
+          or getattr(params, "invweight0", "model") != "model"):
+        bad = [f for f in params.fields if f in ("object_size", "gravity", "xfrc", "body_inertial", "sole_thickness",
+                                                 "foot_offset", "dof_frictionloss", "frictionloss_solref",
+                                                 "frictionloss_solimp")]
+        bad += [f"invweight0={params.invweight0!r}"] if params.invweight0 != "model" else []
+        raise ValueError(f"PhysicsParams {bad}: the forest engine only (this model goes to the G1 engine; route it "
+                         "with nablaengine.engines.prefer_forest)")
     adjoint, host, model_hooks, g1_kin, g1_step, g1_tape = E.adjoint, E.host, E.model_hooks, E.kinematics, E.step, E.tape
     ter = None
+    cspec = contact_spec(m, contact_forces, terrain=terrain)
+    if cspec is not None and cspec.terrain != (terrain is not None):
+        raise ValueError("contact_forces: the Spec's terrain flag must match the build")
     if terrain is not None:
         from nablaengine import terrain as _terrain
+        if getattr(terrain, "object_velocity", False) and bam is not None:
+            raise ValueError("TerrainConfig.object_velocity: not with the BAM servo model")
+        if getattr(terrain, "terrain_material", False) and not E.forest:
+            raise ValueError("TerrainConfig.terrain_material: the forest engine only (this model goes to the G1 engine; "
+                             "engines.prefer_forest or DK_ENGINE=forest)")
+        if getattr(terrain, "terrain_material", False) and bam is not None:
+            raise ValueError("TerrainConfig.terrain_material: not with the BAM servo model")
+        if getattr(terrain, "terrain_sand", False) and not (E.forest and params and "foot_offset" in params.fields):
+            raise ValueError("TerrainConfig.terrain_sand: the forest engine with the foot_offset parameter "
+                             "(PhysicsParams((\"foot_offset\", ...)): the sand elements scale its offsets)")
+        if getattr(terrain, "object_material", False) and not E.forest:
+            raise ValueError("TerrainConfig.object_material: the forest engine only (this model goes to the G1 engine; "
+                             "engines.prefer_forest or DK_ENGINE=forest)")
+        if getattr(terrain, "object_material", False) and bam is not None:
+            raise ValueError("TerrainConfig.object_material: not with the BAM servo model")
+        if getattr(terrain, "object_velocity", False) and not E.forest:
+            raise ValueError("TerrainConfig.object_velocity: the forest engine only (this model goes to the G1 engine; "
+                             "engines.prefer_forest or DK_ENGINE=forest)")
         ter = (terrain, _terrain.robot_terrain_geoms(m, foot_pairs, terrain.geoms))
-    consts, lays, sizes = adjoint.engine_constants(m, foot_pairs, ter, com_body)
+        if terrain.mode == "native" and any(int(m.geom_type[g]) == mujoco.mjtGeom.mjGEOM_BOX for g, _, _ in ter[1]):
+            raise ValueError("box robot geoms against the terrain: the analytic heightfield mode only (TerrainConfig("
+                             "mode='analytic'); the native mode's prisms collide spheres and capsules)")
+    consts, lays, sizes = (adjoint.engine_constants(m, foot_pairs, com_body, **({"terrain": ter} if ter else {}))
+                           if E.forest else adjoint.engine_constants(m, foot_pairs, ter, com_body))
     load = host.loader(lays, sizes)
     load = re.sub(r"cudaMemcpyToSymbol\(([^;]*)\);", r"cudaMemcpyToSymbolAsync(\1, 0, cudaMemcpyHostToDevice, st);", load)
     assert "cudaMemcpyToSymbol(" not in load
-    mc = terrain.maxcon if terrain is not None and terrain.maxcon else g1_step.maxcon(m)
-    engine = adjoint.cuda_source(m, terrain.maxcon if terrain is not None else None, ter)
+    mc_in, mr_in, mc, _ = capacity(m, terrain, max_contacts, max_rows)
+    kw = {"params": params} if params else {}
+    if mr_in is not None:
+        kw["max_rows"] = mr_in
+    if motor is not None:
+        kw["motor"] = motor
+    if bam is not None:
+        kw["bam"] = bam
+    if surrogate:
+        if not E.forest:
+            raise ValueError("contact_surrogate: the forest engine only (this model goes to the G1 engine)")
+        if terrain is not None and getattr(terrain, "object_material", False):
+            raise ValueError("contact_surrogate: not with TerrainConfig.object_material")
+        if terrain is not None and terrain.object_velocity:
+            raise ValueError("contact_surrogate: not with TerrainConfig.object_velocity (the surrogate's contact VJP "
+                             "has no slot velocity)")
+        kw["surrogate"] = True
+    if noslip_pairs is not None:
+        if not E.forest:
+            raise ValueError("noslip_pairs: the forest engine only (this model goes to the G1 engine)")
+        kw["noslip_pairs"] = noslip_pairs
+    if E.forest and params and int(m.opt.noslip_iterations) > 0:
+        from nablaengine._optional import FOREST, load as _ld
+        _ld("nablaengine.forest_engine", FOREST, "noslip").check_foot(m, params, foot_pairs, noslip_pairs)
+    engine = adjoint.cuda_source(m, mc_in, ter, **kw)
+    pw_off = (g1_step.com_words(m) if E.forest else 3) + (terrain.com_words() - 3 if terrain is not None else 0)
     assert engine.count("#include <cuda_runtime.h>\n") == 1 and engine.count("#include") == 1, \
         "the engine source may only include cuda_runtime.h (it is wrapped in a namespace)"
     engine = engine.replace("#include <cuda_runtime.h>\n", "")
+    host_kernel = host.KERNEL
+    if E.forest:
+        from nablaengine._optional import FOREST, load as _load
+        host_kernel = _load("nablaengine.forest_engine", FOREST, "nv128").host(host_kernel, m)
+        host_kernel = _load("nablaengine.forest_engine", FOREST, "margin_convex").host(host_kernel, m)
+    if cspec is not None:
+        from nablaengine.g1_engine import contact_forces as _cf
+        if E.forest:
+            from nablaengine._optional import FOREST, load as _load
+            _fcf = _load("nablaengine.forest_engine", FOREST, "contact_forces")
+            engine, host_kernel = _fcf.engine(engine, cspec), _fcf.host(host_kernel, cspec)
+            if cspec.foot_split:
+                if "foot_offset" not in params.fields:
+                    raise ValueError("foot_normal: needs the foot_offset parameter in the build (PhysicsParams; its "
+                                     "feet, heel / toe line and axis define the split)")
+                host_kernel = foot_offset.host_split(host_kernel, **({"sand": True} if cspec.foot_sand else {}))
+        else:
+            engine, host_kernel = _cf.engine(engine, cspec), _cf.host(host_kernel, cspec)
+    _cvjp = None
+    if contact_grad:
+        if not E.forest:
+            raise ValueError("contact_grad: the forest engine only (this model goes to the G1 engine; "
+                             "engines.prefer_forest or DK_ENGINE=forest)")
+        from nablaengine._optional import FOREST, load as _load
+        _cvjp = _load("nablaengine.forest_engine", FOREST, "contact_vjp")
+        _cvjp.check(m, cspec, ter, surrogate, bam)
+        engine = _cvjp.engine(engine, cspec, m)
+        if cspec.foot_split:
+            engine = foot_offset.engine_split(engine)
+    act_hooks, act_n = None, None
+    if bam is not None:
+        from nablaengine._optional import BAM, load as _load_opt
+        act_hooks = _load_opt("nablaengine.forest_engine" if E.forest else "nablaengine.g1_engine", BAM, "bam_hooks")
+        act_n = m.nv
+        host_kernel = act_hooks.host(host_kernel)
+    elif E.forest and _muscle_build(m):
+        from nablaengine._optional import FOREST, load as _load
+        act_hooks, act_n = _load("nablaengine.forest_engine", FOREST, "muscle"), int(m.na)
+        host_kernel = act_hooks.host(host_kernel)
+    _capd = None
+    if capacity_diag:
+        if not E.forest:
+            raise ValueError("capacity_diag: the forest engine only (this model goes to the G1 engine; "
+                             "engines.prefer_forest or DK_ENGINE=forest)")
+        from nablaengine._optional import FOREST, load as _load
+        _capd = _load("nablaengine.forest_engine", FOREST, "capacity_diag")
+        engine = _capd.engine(engine)
     units, defines = {}, {}
+
+    def osz_host(text):
+        text = object_size.host(text, engine) if "object_size" in params.fields else text
+        return _capd.host(text) if _capd is not None else text
 
     def unit(v, fwd, pfx):
         src = (VARIANT_UNIT.replace("@FWD_SHIM@", FWD_SHIM if fwd else "")
-               .replace("@FWD_ATTR@", "  cudaFuncSetAttribute(k_substep, cudaFuncAttributeMaxDynamicSharedMemorySize, "
-                                      "(int)sizeof(Sim));" if fwd else "")
+               .replace("@FWD_ATTR@", (FOREST_FWD_ATTR if E.forest else
+                                       "  cudaFuncSetAttribute(k_substep, cudaFuncAttributeMaxDynamicSharedMemorySize, "
+                                       "(int)sizeof(Sim));") if fwd else "")
                .replace("@PFX@", pfx).replace("@MAX_DEVICES@", str(MAX_DEVICES))
                .replace("@UPLOAD_ERR_SMEM@", str(UPLOAD_ERR_SMEM)).replace("@LOAD_CONSTS@", load)
-               .replace("@ENGINE@", engine + (host.KERNEL + model_hooks.apply(g1_kin.KIN_DEVICE, m, "kinematics")
-                                              if fwd else "")))  # last: never scanned
-        if ter is not None:  # the terrain's device pointers (nablaengine.terrain; set per device after the upload)
+               .replace("@ENGINE@", engine + (osz_host(world_params.apply(g1_step.object_hooks(
+                                                  host_kernel, g1_step.OBJECT_HOST_HOOKS, ter,
+                                                  **({"m": m} if E.forest else {})), m, params, "host", pw_off))
+                                              + world_params.apply(model_hooks.apply(g1_step.object_hooks(
+                                                  g1_kin.KIN_DEVICE, g1_step.OBJECT_KIN_HOOKS, ter), m, "kinematics"),
+                                                  m, params, "kinematics", pw_off)
+                                              if fwd else "")))
+        if ter is not None:
             src += (f'extern "C" int {pfx}_set_terrain(int dev, const void* p) {{\n'
                     f'  int old = 0;\n  cudaGetDevice(&old);\n  cudaError_t e = cudaSetDevice(dev);\n'
                     f'  if (e == cudaSuccess) e = cudaMemcpyToSymbol(g_ter, p, sizeof(TerrainPtrs));\n'
-                    f'  cudaSetDevice(old);\n  return (int)e;\n}}\n'
+                    + (f'  if (e == cudaSuccess) e = cudaMemcpyToSymbol(g_tmat, (const void* const*)p + 8, '
+                       f'sizeof(const float*));  // (TerrainConfig.terrain_material: the elements\' materials)\n'
+                       if getattr(terrain, "terrain_material", False) or getattr(terrain, "terrain_sand", False)
+                       else '')
+                    + f'  cudaSetDevice(old);\n  return (int)e;\n}}\n'
                     f'extern "C" int {pfx}_terrain_rays(cudaStream_t st, int n, const float* pnt, const float* vec, '
                     f'float maxd, float* dist, float* nrm) {{\n'
                     f'  if (n > 0) k_terrain_rays<<<(n + 127) / 128, 128, 0, st>>>(n, pnt, vec, maxd, dist, nrm);\n'
                     f'  return (int)cudaGetLastError();\n}}\n')
         units[f"{pfx}.cu"] = src
         defines[f"{pfx}.cu"] = [f"-DDK_ADJ_CLAMP_KV={v[0]}", f"-DDK_ADJ_NORMAL={v[1]}"]
+        if os.environ.get("DK_ADJ_STAGE") and (E.forest or adj_stage(E) != adj_stage_default(E)):
+            defines[f"{pfx}.cu"].append(f"-DDK_ADJ_STAGE={int(os.environ['DK_ADJ_STAGE'])}")
 
     for v in VARIANTS:
         unit(v, v == FWD_VARIANT and not forward_unit, _tag(v))
-    if forward_unit:  # FWD_VARIANT's unit text as the forward unit FWD_UNIT (its k_adjoint is not called)
+    if forward_unit:
         unit(FWD_VARIANT, True, FWD_UNIT)
-    fp = FWD_UNIT if forward_unit else _tag(FWD_VARIANT)  # the unit with the forward and kinematics entries
-    defines[f"{fp}.cu"] += cuda.unit_defines("forward", target, defines[f"{fp}.cu"])  # sm_90: the register caps
+    fp = FWD_UNIT if forward_unit else _tag(FWD_VARIANT)
+    if act_hooks is not None:
+        units[f"{fp}.cu"] = act_hooks.fwd_shim(units[f"{fp}.cu"])
+        for u in list(units):
+            units[u] = act_hooks.adj_unit(units[u])
+    defines[f"{fp}.cu"] += cuda.unit_defines("forward", target, defines[f"{fp}.cu"],
+                                             forest=E.forest)
+    if E.forest and latency_mode():
+        if E.step.has_defer(m):
+            raise ValueError(f"${LATENCY_VAR}=1: not for a model with deferred pairs (mesh pairs: forest_engine.step."
+                             "has_defer); unset it")
+        defines[f"{fp}.cu"] += ["-DDK_PRE2W=1"]
+        for u in units:
+            units[u] = units[u].replace("k_adjoint<<<nw, 32,", "k_adjoint<<<nw, 64,").replace(
+                "cudaOccupancyMaxActiveBlocksPerMultiprocessor(&n, k_adjoint, 32,",
+                "cudaOccupancyMaxActiveBlocksPerMultiprocessor(&n, k_adjoint, 64,")
+            defines[u] = defines.get(u, []) + ["-DDK_ADJ_WARPS=2"]
+    from nablaengine.g1_engine.adjoint import with_adj_bounds
+    light = E.forest and cuda.forest_adj_light(m)
+    for v in VARIANTS:
+        u = f"{_tag(v)}.cu"
+        caps = cuda.adjoint_defines(target, defines[u], forest=E.forest, light=light)
+        caps += cuda.tree_adj_cap_defines(target, defines[u] + caps, forest=E.forest, terrain=ter is not None)
+        if caps:
+            units[u] = with_adj_bounds(units[u])
+            defines[u] += caps
+        defines[u] += cuda.capbox_coop_defines(target, units[u], defines[u], forest=E.forest)
+    if E.forest:
+        for u in units:
+            defines.setdefault(u, [])
+            defines[u] += cuda.forest_hold_defines(target, units[u], defines[u])
     defs = [f"#define {k} {val}" for k, val in (
         ("NQ", m.nq), ("NV", m.nv), ("NU", m.nu), ("NB", m.nbody), ("MAXCON", mc),
-        ("REC_WORDS", g1_tape.rec_words(m, mc, g1_tape.kind(ter))),
+        ("REC_WORDS", g1_tape.rec_words(m, mc, g1_tape.kind(ter), mr_in, **({"motor": True} if motor else {}))
+         + (_bam_tape_words(m) if bam is not None else 0)),
         ("OFF_FLAGS", g1_tape.layout(m)["flags"][0]), ("TAPE_REFACT", f"{g1_tape.FLAG_REFACT}u"),
         ("TAPE_NONCONV", f"{g1_tape.FLAG_NONCONV}u"), ("TAPE_SINGULAR", f"{g1_tape.FLAG_SINGULAR}u"),
         ("ADJ_REPLAY_MISMATCH", adjoint.ADJ_REPLAY_MISMATCH), ("NONFINITE_QPOS", NONFINITE_QPOS),
@@ -919,7 +1189,7 @@ def library_sources(m, foot_pairs, forward_unit=False, target=None, terrain=None
     decls.append(f"static const KinFn kKin = {fp}_kinematics;")
     decls.append(f"static const KinVjpFn kKinVjp = {fp}_kinematics_vjp;")
     upload = [f"{_tag(v)}_upload" for v in VARIANTS]
-    if forward_unit:  # the forward unit's constants and attributes with FWD_VARIANT's unit's
+    if forward_unit:
         t = _tag(FWD_VARIANT)
         decls.append(f'extern "C" int {FWD_UNIT}_upload(const float*, cudaStream_t);')
         decls.append(f"static int {t}_upload_fwd(const float* p, cudaStream_t st) {{ const int rc = {t}_upload(p, st); "
@@ -935,27 +1205,101 @@ def library_sources(m, foot_pairs, forward_unit=False, target=None, terrain=None
     decls.append(f"static const ForwardFn kForward = {fp}_forward;")
     decls.append(f"static long long (*const kWorkBytes)(int) = {fp}_work_bytes;")
     units["dk_ffi.cu"] = FFI_UNIT.replace("@DEFINES@", "\n".join(defs)).replace("@DECLS@", "\n".join(decls))
-    if ter is not None:  # the height scan's handler (raycast)
+    if act_hooks is not None:
+        units["dk_ffi.cu"] = act_hooks.ffi(units["dk_ffi.cu"], act_n)
+    if ter is not None:
         units["dk_ffi.cu"] += FFI_TERRAIN.replace("@FWD@", fp)
+    if cspec is not None:
+        units["dk_ffi.cu"] = _cf.ffi(units["dk_ffi.cu"], cspec)
+    elif con_words(m, contact_forces) != 8:
+        u = units["dk_ffi.cu"]
+        assert u.count("MAXCON * 8") >= 2
+        units["dk_ffi.cu"] = u.replace("MAXCON * 8", f"MAXCON * {con_words(m, contact_forces)}")
+    nov = terrain.velocity_words() + terrain.material_words() if terrain is not None else 0
+    if params or nov:
+        u, gw = units["dk_ffi.cu"], m.nu + (params.width(m.nv) + 1 if params else 0) + nov
+        assert u.count("dims_are(*gu, {B, NU})") == 1 and u.count("all_finite(gu + (size_t)w * NU, NU)") == 1
+        units["dk_ffi.cu"] = (u.replace("dims_are(*gu, {B, NU})", f"dims_are(*gu, {{B, {gw}}})")
+                              .replace("all_finite(gu + (size_t)w * NU, NU)", f"all_finite(gu + (size_t)w * {gw}, {gw})"))
+    if (ter is not None and terrain.objects) or params or (E.forest and g1_step.com_words(m) != 3):
+        cw = pw_off + params.width(m.nv)
+        u = units["dk_ffi.cu"]
+        assert u.count("dims_are(com, {B, 3})") == 2 and u.count("dims_are(com, {*B, 3})") == 1
+        u = u.replace("dims_are(com, {B, 3})", f"dims_are(com, {{B, {cw}}})").replace("dims_are(com, {*B, 3})", f"dims_are(com, {{*B, {cw}}})")
+        units["dk_ffi.cu"] = u
+    if surrogate:
+        surrogate_units(units)
+    if _cvjp is not None:
+        _cvjp.units(units, cspec, len(VARIANTS))
+    if _capd is not None:
+        units["dk_ffi.cu"] = _capd.ffi(units["dk_ffi.cu"])
     defines["dk_ffi.cu"] = []
     return units, consts, defines
 
 
-def build_plan(m, foot_pairs, arch, terrain=None, com_body=None):
+def _muscle_build(m):
+    try:
+        from nablaengine.forest_engine import muscle
+    except ImportError:
+        return False
+    return muscle.applies(m)
+
+
+def _act_info(m, bam):
+    if bam is None:
+        if engines.is_forest(m) and _muscle_build(m):
+            return dict(act_words=int(m.na), act_layout="mujoco_act", bam=None)
+        return dict(act_words=0, act_layout=None, bam=None)
+    from nablaengine._optional import BAM, load
+    _bam = load("nablaengine.actuators", BAM, "bam")
+    return dict(act_words=_bam.act_words(m.nv), act_layout=_bam.layout(m.nv),
+                bam=dict(key=bam.key(), **{k: v for k, v in _bam.servo(bam).items()}))
+
+
+def _bam_tape_words(m):
+    from nablaengine._optional import BAM, load
+    _bam = load("nablaengine.actuators", BAM, "bam")
+    return _bam.tape_words(m.nv)
+
+
+def _noslip_pairs(m, foot_pairs, spec):
+    if spec is None:
+        return None
+    from nablaengine._optional import FOREST, load
+    return load("nablaengine.forest_engine", FOREST, "noslip").resolve_pairs(m, spec)
+
+
+def build_plan(m, foot_pairs, arch, terrain=None, com_body=None, params=None, max_contacts=None, max_rows=None,
+               motor=None, contact_forces=False, bam=None, surrogate=False, contact_grad=False, noslip_pairs=None,
+               capacity_diag=False):
     """How init() builds the library for build target arch: dict(units, consts, defines (library_sources), unit_arch
     ({unit: architecture flags} where they are not -arch=<arch>: every unit on sm_120 by default, the forward unit only
     with $DK_SM120_FRONTEND=split; cuda.arch_flags), arch_flags (forward, adjoint), split (the forward / kinematics
     kernels in a unit of their own, FWD_UNIT), forward_unit (the prefix of the forward / kinematics entries),
     forward_defines (the -D options the forward unit gets for the target: cuda.unit_defines)). Also the build plan of
     scripts/identity_gate.py."""
-    fwd_flags = cuda.arch_flags("forward", arch)  # the forward / kinematics unit's (NVVM 7 on sm_120)
-    adj_flags = cuda.arch_flags(None, arch)  # the adjoint units' and the FFI unit's (NVVM 7 on sm_120 with n7)
+    fwd_flags = cuda.arch_flags("forward", arch)
+    adj_flags = cuda.arch_flags(None, arch)
     split = fwd_flags != adj_flags
+    cap = {k: v for k, v in (("max_contacts", max_contacts), ("max_rows", max_rows), ("motor", motor))
+           if v is not None}
+    if contact_forces:
+        cap["contact_forces"] = contact_forces
+    if bam is not None:
+        cap["bam"] = bam
+    if surrogate:
+        cap["surrogate"] = True
+    if contact_grad:
+        cap["contact_grad"] = True
+    if noslip_pairs is not None:
+        cap["noslip_pairs"] = noslip_pairs
+    if capacity_diag:
+        cap["capacity_diag"] = True
     units, consts, defines = library_sources(m, foot_pairs, forward_unit=split, target=arch, terrain=terrain,
-                                              com_body=com_body)
+                                              com_body=com_body, **({"params": params} if params else {}), **cap)
     fu = FWD_UNIT if split else _tag(FWD_VARIANT)
     fwd_defines = [d for d in defines[f"{fu}.cu"]
-                   if not d.startswith(("-DDK_ADJ_CLAMP_KV=", "-DDK_ADJ_NORMAL="))]  # (the register caps)
+                   if not d.startswith(("-DDK_ADJ_CLAMP_KV=", "-DDK_ADJ_NORMAL="))]
     unit_arch = {n: f for n, f in ((n, fwd_flags if split and n == f"{FWD_UNIT}.cu" else adj_flags) for n in units)
                  if f != [f"-arch={arch}"]}
     return dict(units=units, consts=consts, defines=defines, unit_arch=unit_arch,
@@ -980,17 +1324,14 @@ def unit_command(name, arch, defines, unit_arch=None, include=None):
 
 
 def _device_arch():
-    """sm_XY of the first JAX GPU, None without one."""
     try:
         import jax
         return "sm_" + str(jax.devices("gpu")[0].compute_capability).replace(".", "")
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
 def _arch():
-    """$DK_ARCH (nablaengine.cuda.arch(), which warns when it is not the GPU's), else the first JAX GPU's compute
-    capability, else cuda.arch() (nvidia-smi)."""
     if os.environ.get("DK_ARCH"):
         return cuda.arch()
     return _device_arch() or cuda.arch()
@@ -1004,14 +1345,6 @@ def cache_dir():
 
 
 def _build(units, defines, arch, include, consts, unit_arch=None, prefix="libdk_g1"):
-    """The library for these sources: from the cache, or built by nvcc (units in parallel, then linked). The key also
-    covers the model constants (uploaded at run time, not compiled in: a library per model), the flags, the nvcc
-    version and XLA's FFI headers. unit_arch: {unit: architecture flags} in place of -arch=<arch> (every unit on
-    sm_120 by default, the forward unit with split: cuda.arch_flags), recorded in the key, as $DK_SM120_FRONTEND is on
-    sm_120 and the register-cap switch where the target has one (cuda.reg_caps; the caps' -D options are in
-    `defines`). include: XLA's FFI headers for the FFI unit dk_ffi.cu; None for a library without that unit (the
-    PyTorch interface's, nablaengine.torch_ffi), whose key then has no header hash. prefix: the library's file name
-    prefix in the cache. Returns (path, built: bool, the cache key)."""
     nvcc = cuda.nvcc()
     ver = subprocess.run([nvcc, "--version"], check=True, stdout=subprocess.PIPE, universal_newlines=True).stdout
     if include is None:
@@ -1026,10 +1359,14 @@ def _build(units, defines, arch, include, consts, unit_arch=None, prefix="libdk_
               consts=hashlib.sha256(consts.tobytes()).hexdigest())
     if unit_arch:
         kd["unit_arch"] = unit_arch
-    if arch in cuda.N7_VIRTUAL:
+    if arch == "sm_120":
         kd["sm120_frontend"] = cuda.frontend()
+    elif arch in cuda.N7_VIRTUAL:
+        kd[f"{arch}_frontend"] = cuda.frontend_of(arch)
     if arch in cuda.REG_CAPS:
         kd["reg_caps"] = cuda.reg_caps(arch)
+    if arch in cuda.FOREST_ADJ_CAPS and os.environ.get(cuda.FOREST_ADJ_VAR):
+        kd["forest_adj_cap"] = cuda.forest_adj_cap()
     key = hashlib.sha256(json.dumps(kd, sort_keys=True).encode()).hexdigest()[:20]
     out = cache_dir() / f"{prefix}_{arch}_{key}.so"
     if out.exists():
@@ -1044,14 +1381,14 @@ def _build(units, defines, arch, include, consts, unit_arch=None, prefix="libdk_
                                stderr=subprocess.STDOUT, universal_newlines=True)
             if r.returncode:
                 raise RuntimeError(f"nvcc failed on {name}:\n{r.stdout[-4000:]}")
-        with ThreadPoolExecutor(max_workers=max(1, min(len(units), os.cpu_count() or 1))) as ex:
+        with ThreadPoolExecutor(max_workers=max(1, min(len(units), int(os.environ.get("DK_BUILD_JOBS") or 0) or os.cpu_count() or 1))) as ex:
             list(ex.map(compile_unit, sorted(units)))
         r = subprocess.run([nvcc, "-shared", f"-arch={arch}", "-o", str(work / "lib.so"),
                             *(str(work / (n + ".o")) for n in sorted(units))], stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, universal_newlines=True)
         if r.returncode:
             raise RuntimeError(f"nvcc link failed:\n{r.stdout[-4000:]}")
-        os.replace(work / "lib.so", out)  # atomic: concurrent builders leave one complete file
+        os.replace(work / "lib.so", out)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     STATS["builds"] += 1
@@ -1059,40 +1396,121 @@ def _build(units, defines, arch, include, consts, unit_arch=None, prefix="libdk_
     return out, True, key
 
 
-def init(model_dir=None, model=None, foot_pairs=None, terrain=None, com_body=None):
+def init(model_dir=None, model=None, foot_pairs=None, terrain=None, com_body=None, params=None, max_contacts=None,
+         max_rows=None, motor_limits=None, contact_forces=False, actuator=None, contact_surrogate=False,
+         foot_wrench=None, contact_frame=False, contact_grad=False, noslip_pairs=None, foot_normal=False,
+         capacity_diag=False):
     """Load the library for the model (build it on first use), hand it the model constants and register the FFI
     targets; idempotent (later calls return the loaded library; a different model raises). model_dir: a fixtures
     directory (default $DK_FIXTURES, else fixtures/mjlab); model, foot_pairs: an MjModel instead (e.g. the same mjlab
     model when the fixtures are not installed) and its foot-floor pair indices. A model the engine does not support
     raises nablaengine.model.capability.UnsupportedModel (a ValueError and an AssertionError) before anything is
-    built, with the failing checks' codes and values (the input validation capability.check, engine scope: forward
-    and adjoint); $DK_ALLOW_UNSUPPORTED lets named codes through with a warning (experiments only;
-    docs/configuration.md). Returns a dict
-    (path, key, arch, rec_words, sizes per variant, built, arch_flags {forward, adjoint}, forward_defines: the -D options
+    built, with the failing checks' codes and values (the input validation capability.check: the G1 engine's engine
+    scope, forward and adjoint, or the forest engine's scope "forest"; nablaengine.engines picks the engine);
+    $DK_ALLOW_UNSUPPORTED lets named codes through with a warning (experiments only; docs/configuration.md). Returns a
+    dict (engine: "g1" or "forest", the engine the model went to, docs/engines.md; adj_stage: the adjoint's
+    DK_ADJ_STAGE; com_body: the COM-offset body, None for none; com_layout: {name: (offset, width)} of com's words,
+    com_layout(); path, key, arch, rec_words, sizes per variant, built, arch_flags {forward, adjoint}, forward_defines: the -D options
     the forward unit gets for the target, e.g. sm_90's register caps, [] elsewhere; forward_unit: the prefix of the
     library's forward / kinematics entries, <forward_unit>_forward / _kinematics / _kinematics_vjp: dk_fwd where that
     unit has flags of its own, else FWD_VARIANT's unit dk_kv0_n3). terrain: a nablaengine.terrain.TerrainConfig for a
     terrain build (work in progress; set_terrain() uploads the terrain, raycast() measures it). com_body: the body that
-    takes the per-world COM offset (default torso_link, or a fixtures directory's torso_body)."""
+    takes the per-world COM offset (default torso_link, or a fixtures directory's torso_body, for a G1-class model on
+    either engine unless routed with engines.prefer_forest; none for the forest engine's other models). params: per-world
+    physics parameters (nablaengine.params.PhysicsParams or field names): com is then (B, com_words) with each
+    world's values after the COM offset (info["com_words"], info["params"]; PhysicsParams.pack). max_contacts,
+    max_rows: the contact and constraint-row capacity per world (None: the engine's defaults, info["maxcon"] /
+    info["nefc"]: 64 / 192 for the mjlab G1; at most 64 / 1023 for the G1 class, 255 / 1023 for the forest engine;
+    contacts or rows beyond the capacity are dropped and counted, see read_diagnostics). actuator: an actuator
+    model on top of the model's actuators (nablaengine.actuators: torque-speed limits "unitree_g1", a MotorLimits, a
+    {joint regex: MotorCurve} dict or an Actuators, both engines; "bam" / a Bam, the BAM servo model, the tree engine
+    only: the model is prepared for it (actuators.bam.prepare), and forward / step / make_step take and return its
+    per-world state act (B, info["act_words"]), docs/actuators.md; None: off, the text unchanged, info["actuator"]
+    None, info["act_words"] 0). motor_limits: a permanent alias of actuator (giving both raises;
+    info["motor_limits"] the torque-speed limits' key, None without them). contact_forces: the contact table (forward / step contacts=True,
+    contact_table) with the contact forces, info["con_words"] 12, on the G1 engine too (g1_engine.contact_forces: an
+    opt-in, the state and the tape bitwise the default build's; the forest engine's table always has them; False: the
+    G1 engine's 8 words; "last" = True; "substeps": a table per substep; either engine (forest_engine.contact_forces):
+    foot_wrench (True: the G1's ankle-roll links, or body names / ids): per substep and foot the summed contact force and moment about the body
+    origin, and the largest total normal force per control step, after the table(s); contact_frame: the contact
+    frame's tangent t1 in 3 more words; a terrain build adds the terrain element's word; info["contact_forces"]
+    (layout), con_width(), contact_table(); docs/api.md "Contact forces"). contact_surrogate: a forest-engine build whose backward also takes the contact-gradient
+    surrogates (backward / make_step / step cone_mu=, impulse_clip=; forest_engine.surrogate, docs/api.md); the
+    forward, the tape and the exact gradients are those of the build without it; info["contact_surrogate"].
+    contact_grad: a forest-engine build whose contact output is differentiable (forest_engine.contact_vjp): step /
+    make_step with contacts=True take the contact output's cotangent in their VJP, backward(g_contacts=); without
+    contact_forces it is the last substep's table; info["contact_grad"]; docs/api.md "Contact forces".
+    noslip_pairs: a model with noslip (opt.noslip_iterations > 0) on the forest engine: the noslip pass on these
+    contact pairs' rows only (forest_engine.noslip.resolve_pairs: pair indices or names, (body, body) or (geom, geom)
+    name pairs, or "objects"; the frictionless rows stay as MuJoCo's noslip has them; None: MuJoCo's noslip on every
+    contact); info["noslip_pairs"] (the pair indices, None for all). foot_normal: the forest engine with the
+    foot_offset parameter: two more contact-table words (the contact's foot, its toe weight along the foot; contact
+    output on, "last" unless contact_forces says otherwise), and contact_table()'s foot_normal (B, [substeps,] 4): the
+    normal force per foot split linearly into heel and toe as foot_offset's s(x) (left heel, left toe, right heel,
+    right toe); differentiable on a contact_grad build (docs/api.md "Foot offsets"). capacity_diag: the forest engine
+    with two more forward info words per world, info (B, 6) (info["info_words"]): the contacts found and the
+    constraint rows needed before the capacities truncate them, each the largest over the call's substeps
+    (capacity_counts(); forest_engine.capacity_diag; docs/api.md "Capacity diagnostics"); the state, tape, contacts
+    and gradients bitwise those of the build without it."""
     import jax
+    from nablaengine.params import as_params
+    from nablaengine import actuators
+    ensure_jax_ffi()
+    params, act = as_params(params), actuators.resolve(actuator, motor_limits, "jax_ffi.init")
+    motor = act.motor if act is not None else None
     with _LOCK:
-        if _STATE and model_dir is None and model is None and terrain is None:  # every traced call: no model reload
+        if (_STATE and model_dir is None and model is None and terrain is None and not params and max_contacts is None
+                and max_rows is None and act is None and not contact_forces and not contact_surrogate
+                and foot_wrench is None and not contact_frame and not contact_grad
+                and noslip_pairs is None and not foot_normal and not capacity_diag):
             return _STATE["info"]
         m, fp, com = _model(model_dir, model, foot_pairs, com_body)
-        # the model must be one the engine supports (nablaengine.model.capability), checked before anything is built
-        capability.require(m, fp, com, "engine", "jax_ffi.init")
         E = engines.modules(m)
+        actuators.check_engine(act, E.forest, "jax_ffi.init")
+        actuators.check_bam_build(act, "jax_ffi.init", terrain, params,
+                                  contact_forces or foot_wrench not in (None, False) or contact_frame)
+        m = actuators.prepare_model(act, m)
+        bam = act.bam if act is not None else None
         g1_kin, g1_step, g1_tape = E.kinematics, E.step, E.tape
+        engines.require(m, fp, com, "jax_ffi.init")
         arch = _arch()
-        plan = build_plan(m, fp, arch, terrain, com)
+        mc_in, mr_in, mc, nefc = capacity(m, terrain, max_contacts, max_rows)
+        mkey = motor.key(m) if motor is not None else None
+        akey = act.key(m) if act is not None else None
+        cspec = contact_spec(m, contact_forces, foot_wrench, contact_frame, terrain, foot_normal)
+        if cspec is None and contact_grad:
+            from nablaengine.g1_engine import contact_forces as _cf
+            cspec = _cf.as_spec("last", None, False, terrain is not None, m)
+        if cspec is not None:
+            contact_forces = cspec
+        nsp = _noslip_pairs(m, fp, noslip_pairs)
+        plan = build_plan(m, fp, arch, terrain, com, params, mc_in, mr_in, motor, contact_forces,
+                          **({"bam": bam} if bam is not None else {}),
+                          **({"surrogate": True} if contact_surrogate else {}),
+                          **({"contact_grad": True} if contact_grad else {}),
+                          **({"noslip_pairs": nsp} if nsp is not None else {}),
+                          **({"capacity_diag": True} if capacity_diag else {}))
         units, consts, defines, unit_arch = plan["units"], plan["consts"], plan["defines"], plan["unit_arch"]
         fwd_flags, adj_flags, split = plan["arch_flags"]["forward"], plan["arch_flags"]["adjoint"], plan["split"]
         fwd_defines = plan["forward_defines"]
         chash = hashlib.sha256(consts.tobytes()).hexdigest()
         if _STATE:
-            if _STATE["consts_hash"] != chash or _STATE["info"].get("terrain") != (terrain.key() if terrain else None):
-                raise RuntimeError("nablaengine.jax_ffi: already initialised with another model or terrain build "
-                                   "(one per process)")
+            if (_STATE["consts_hash"] != chash or _STATE["info"].get("terrain") != (terrain.key() if terrain else None)
+                    or _STATE["info"].get("params") != (params.key() if params else None)
+                    or _STATE["info"].get("motor_limits") != mkey or _STATE["info"].get("actuator") != akey
+                    or _STATE["info"]["con_words"] != con_words(m, contact_forces)
+                    or _STATE["info"].get("contact_forces") != contact_info(m, cspec)
+                    or bool(_STATE["info"].get("contact_surrogate")) != bool(contact_surrogate)
+                    or bool(_STATE["info"].get("contact_grad")) != bool(contact_grad)
+                    or bool(_STATE["info"].get("capacity_diag")) != bool(capacity_diag)
+                    or _STATE["info"].get("noslip_pairs") != (list(nsp) if nsp is not None else None)
+                    or (_STATE["info"]["maxcon"], _STATE["info"]["nefc"]) != (mc, nefc)
+                    or _STATE["info"].get("clamp_implicit") != (list(g1_step.clamp_implicit())
+                                                                 if hasattr(g1_step, "clamp_implicit") else None)
+                    or _STATE["info"].get("tree_chol") != (None if E.forest else g1_step.tree_chol_stages(m))):
+                raise RuntimeError("nablaengine.jax_ffi: already initialised with another model, terrain build, "
+                                   "capacity, actuator model, contact_forces, DK_CLAMP_IMPLICIT or DK_TREE_CHOL (one "
+                                   "per process)")
             return _STATE["info"]
         path, built, key = _build(units, defines, arch, jax.ffi.include_dir(), consts, unit_arch or None)
         lib = ctypes.cdll.LoadLibrary(str(path))
@@ -1105,8 +1523,9 @@ def init(model_dir=None, model=None, foot_pairs=None, terrain=None, com_body=Non
         sz = np.zeros(9 * len(VARIANTS), np.int64)
         lib.dk_sizes(ctypes.c_void_p(sz.ctypes.data))
         sz = sz.reshape(len(VARIANTS), 9)
-        mc = terrain.maxcon if terrain is not None and terrain.maxcon else g1_step.maxcon(m)
-        rec = g1_tape.rec_words(m, mc, g1_tape.kind(terrain))
+        rec = g1_tape.rec_words(m, mc, g1_tape.kind(terrain), mr_in, **({"motor": True} if motor else {}))
+        if bam is not None:
+            rec += _bam_tape_words(m)
         for v, row in zip(VARIANTS, sz):
             assert tuple(row[2:9]) == (rec, m.nq, m.nv, mc, v[0], v[1], g1_tape.layout(m)["flags"][0]), (v, row)
         lib.dk_launch_info.argtypes = [ctypes.c_int, ctypes.c_void_p]
@@ -1118,42 +1537,67 @@ def init(model_dir=None, model=None, foot_pairs=None, terrain=None, com_body=Non
                           ("kin_bwd", "DkKinBwd")):
             targets[kind] = f"dk_{kind}_{key[:8]}"
             jax.ffi.register_ffi_target(targets[kind], jax.ffi.pycapsule(getattr(lib, sym)), platform="CUDA")
+        if bam is not None or (E.forest and _muscle_build(m)):
+            for kind, sym in (("step_act", "DkStepAct"), ("fwd_act", "DkStepFwdAct"), ("bwd_act", "DkStepBwdAct")):
+                targets[kind] = f"dk_{kind}_{key[:8]}"
+                jax.ffi.register_ffi_target(targets[kind], jax.ffi.pycapsule(getattr(lib, sym)), platform="CUDA")
+        if contact_surrogate:
+            for kind, sym in (("bwd_sur", "DkStepBwdSur"), ("bwd_sur_kin", "DkStepBwdSurKin")):
+                targets[kind] = f"dk_{kind}_{key[:8]}"
+                jax.ffi.register_ffi_target(targets[kind], jax.ffi.pycapsule(getattr(lib, sym)), platform="CUDA")
+        if contact_grad:
+            for kind, sym in (("bwd_con", "DkStepBwdCon"), ("bwd_con_kin", "DkStepBwdConKin")):
+                targets[kind] = f"dk_{kind}_{key[:8]}"
+                jax.ffi.register_ffi_target(targets[kind], jax.ffi.pycapsule(getattr(lib, sym)), platform="CUDA")
         if terrain is not None:
             targets["rays"] = f"dk_rays_{key[:8]}"
             jax.ffi.register_ffi_target(targets["rays"], jax.ffi.pycapsule(lib.DkTerrainRays), platform="CUDA")
             lib_units = [_tag(v) for v in VARIANTS] + ([FWD_UNIT] if split else [])
             for u in lib_units:
                 getattr(lib, f"{u}_set_terrain").argtypes = [ctypes.c_int, ctypes.c_void_p]
-        torso = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, com) if com else -1  # as source.constants
-        try:  # the kinematics outputs' assumptions (kinematics.check_model); the kinematics entries raise without them
+        torso = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, com) if com else -1
+        try:
             g1_kin.check_model(m)
             kin_error = None
         except AssertionError as e:
             kin_error = f"the model does not meet the kinematics outputs' assumptions ({e!r})"
-        # also version (nablaengine.__version__) and commit / dirty (the source checkout's revision, None outside one)
         commit, dirty = provenance.source_commit()
         info = dict(path=str(path), key=key, arch=arch, built=built, version=nablaengine.__version__, commit=commit,
-                    dirty=dirty, rec_words=rec, nq=m.nq, nv=m.nv, nu=m.nu,
-                    nbody=m.nbody, kinematics_error=kin_error, maxcon=mc, nefc=g1_step.NEFC,
+                    dirty=dirty, engine=E.name, adj_stage=adj_stage(E), com_body=com,
+                    com_layout=com_layout(m, terrain, params), rec_words=rec, nq=m.nq, nv=m.nv, nu=m.nu,
+                    nbody=m.nbody, kinematics_error=kin_error, maxcon=mc, nefc=nefc,
                     terrain=terrain.key() if terrain is not None else None,
+                    elliptic=bool(int(m.opt.cone) == int(mujoco.mjtCone.mjCONE_ELLIPTIC)),
+                    com_words=(((g1_step.com_words(m) if E.forest else 3) + (terrain.com_words() - 3 if terrain is not None else 0))
+                               + params.width(m.nv)),
+                    params=params.key() if params else None, param_words=params.width(m.nv) if params else 0,
+                    obj_vel_words=terrain.velocity_words() if terrain is not None else 0,
+                    obj_mat_words=terrain.material_words() if terrain is not None else 0,
+                    motor_limits=mkey, actuator=akey, **_act_info(m, bam),
+                    clamp_implicit=(list(E.step.clamp_implicit()) if hasattr(E.step, "clamp_implicit") else None),
+                    tree_chol=None if E.forest else g1_step.tree_chol_stages(m),
+                    con_words=con_words(m, contact_forces), contact_forces=contact_info(m, cspec),
+                    contact_surrogate=bool(contact_surrogate), contact_grad=bool(contact_grad),
+                    noslip_pairs=list(nsp) if nsp is not None else None,
+                    capacity_diag=bool(capacity_diag), info_words=6 if capacity_diag else 4,
                     terrain_units=lib_units if terrain is not None else None,
                     sizeof_sim=int(sz[0, 0]), sizeof_adj={_tag(v): int(r[1]) for v, r in zip(VARIANTS, sz)},
                     variants=[list(v) for v in VARIANTS], timestep=float(m.opt.timestep), torso_id=int(torso),
                     foot_pairs=[int(p) for p in fp], consts_sha256=chash,
                     arch_flags=dict(forward=fwd_flags, adjoint=adj_flags), forward_defines=fwd_defines,
                     forward_unit=FWD_UNIT if split else _tag(FWD_VARIANT))
-        if unit_arch or arch in cuda.N7_VIRTUAL:  # the front ends (PTX headers) of the forward and the adjoint units
+        if unit_arch or arch in cuda.N7_VIRTUAL:
             info["front_end"] = {k: cuda.nvvm_version(cuda.virtual_arch(u, arch) or "compute_" + arch[3:])
                                  for k, u in (("forward", "forward"), ("adjoint", None))}
-        _STATE.update(lib=lib, targets=targets, info=info, consts_hash=chash, consts=consts, m=m)
+        _STATE.update(lib=lib, targets=targets, info=info, consts_hash=chash, consts=consts, m=m, bam=bam,
+                      params=params)
         import atexit
-        atexit.register(_exit_report)  # with set_overflow_warnings(True): the counts nobody read, reported at exit
+        atexit.register(_exit_report)
         return info
 
 
 
-# ---- terrain (nablaengine.terrain; work in progress) -----------------------------------------------------------------
-_TERRAIN = {}  # device id -> the terrain's device arrays (kept alive)
+_TERRAIN = {}
 
 
 def set_terrain(terrain, devices=None, cell=1.0):
@@ -1165,26 +1609,44 @@ def set_terrain(terrain, devices=None, cell=1.0):
     if not _STATE["info"].get("terrain"):
         raise RuntimeError("nablaengine.jax_ffi: set_terrain needs a terrain build: init(terrain=TerrainConfig(...))")
     packed = terrain.pack(cell)
-    order = ("boxes", "hf_head", "hf_int", "hf_data", "grid", "cell_start", "cell_items", "elem_cell")
+    _terrain_material_check(packed)
+    packed["material"] = terrain.material_upload(_STATE["info"].get("terrain"))
+    _STATE["terrain_sand"] = packed["sand"]
+    order = ("boxes", "hf_head", "hf_int", "hf_data", "grid", "cell_start", "cell_items", "elem_cell", "material")
     for d in devices or [d for d in jax.devices() if d.platform == "gpu"]:
         arrs = []
         for k in order:
             x = np.ascontiguousarray(packed[k]).reshape(-1)
-            if x.size == 0:  # never a null pointer (the kernels check only grid)
+            if x.size == 0:
                 x = np.zeros(1, x.dtype)
             arrs.append(jax.device_put(jnp.asarray(x), d))
         for x in arrs:
             x.block_until_ready()
-        ptrs = (ctypes.c_void_p * 8)(*[x.unsafe_buffer_pointer() for x in arrs])
+        ptrs = (ctypes.c_void_p * 9)(*[x.unsafe_buffer_pointer() for x in arrs])
         for u in _STATE["info"]["terrain_units"]:
             rc = getattr(_STATE["lib"], f"{u}_set_terrain")(int(d.local_hardware_id), ctypes.cast(ptrs, ctypes.c_void_p))
+            if rc:
+                raise RuntimeError(f"nablaengine.jax_ffi: the terrain upload failed ({rc})")
+        for f in _STATE.get("terrain_hooks", ()):
+            rc = f(int(d.local_hardware_id), ctypes.cast(ptrs, ctypes.c_void_p))
             if rc:
                 raise RuntimeError(f"nablaengine.jax_ffi: the terrain upload failed ({rc})")
         _TERRAIN[d.id] = arrs
 
 
+def _terrain_material_check(packed, info=None):
+    info = info if info is not None else _STATE["info"]
+    mat = packed["material"]
+    if mat.size and (mat[:, 7] != 0).any() and not (info.get("terrain") or {}).get("terrain_material"):
+        raise ValueError("Terrain.material sets element materials: the build needs TerrainConfig(terrain_material=True) "
+                         "(the forest engine)")
+    sd = packed.get("sand")
+    if sd is not None and sd.size and (sd[:, 0] != 0).any() and not (info.get("terrain") or {}).get("terrain_sand"):
+        raise ValueError("Terrain.material sets sand fields (k > 0): the build needs TerrainConfig(terrain_sand=True) "
+                         "(the forest engine, with the foot_offset parameter)")
+
+
 def _yaw_rotation(rot):
-    """mjlab RayCastSensor._extract_yaw_rotation (as torch_ffi._yaw_rotation)."""
     import jax.numpy as jnp
     x = rot[:, :, 0].at[:, 2].set(0.0)
     xn = jnp.linalg.norm(x, axis=1)
@@ -1256,8 +1718,21 @@ def _check(name, x, shape):
         raise TypeError(f"nablaengine.jax_ffi: {name} must be float32 {tuple(shape)}, got {x.dtype} {tuple(x.shape)}")
 
 
+def _forest_kin():
+    lib = init()
+    if lib["engine"] != "forest" or not lib["kinematics_error"]:
+        return None
+    from nablaengine import dyn_query
+    lay = lib["com_layout"]
+    if "fixtures" in lay:
+        raise ValueError("nablaengine.jax_ffi: the kinematics outputs of a model with per-world fixture placements "
+                         f"are not available ({lib['kinematics_error']})")
+    dyn_query.init(model=_STATE["m"], foot_pairs=lib["foot_pairs"], com_body=lib["com_body"],
+                   params=_STATE.get("params"), com_layout=lay)
+    return dyn_query
+
+
 def _kin_lib():
-    """init(), raising ValueError if the model does not meet the kinematics outputs' assumptions."""
     lib = init()
     if lib["kinematics_error"]:
         raise ValueError(f"nablaengine.jax_ffi: {lib['kinematics_error']}")
@@ -1265,7 +1740,6 @@ def _kin_lib():
 
 
 def _kin_structs(lib, B):
-    """The five kinematics outputs' ShapeDtypeStructs (g1_engine.kinematics.OUTPUTS order)."""
     import jax
     import jax.numpy as jnp
     return [jax.ShapeDtypeStruct(s, jnp.float32) for s in g1_kin.shapes(_STATE["m"], B).values()]
@@ -1276,31 +1750,88 @@ def _check_kin(lib, B, arrays, what):
         _check(f"{what}{name}", x, shape)
 
 
+def _act_check(lib, act, B):
+    aw = int(lib.get("act_words", 0))
+    if aw and act is None:
+        if lib.get("act_layout") == "mujoco_act":
+            raise ValueError("nablaengine.jax_ffi: this build has actuators with activation: pass their state act= (B, "
+                             f"{aw}) float32 (MuJoCo's act; docs/api.md)")
+        raise ValueError("nablaengine.jax_ffi: this build has the BAM servo model: pass its state act= (B, "
+                         f"{aw}) float32 (nablaengine.actuators.bam.initial_state; docs/actuators.md)")
+    if not aw and act is not None:
+        raise ValueError("nablaengine.jax_ffi: act= is the state of a stateful actuator model (init(actuator='bam'), "
+                         "or a model with activation dynamics); this build has none")
+    if act is not None:
+        _check("act", act, (B, aw))
+
+
 def forward(qpos, qvel, warm, ctrl, friction, com, *, iterations=ITERATIONS, substeps=SUBSTEPS, tape=False,
-            kinematics=False):
-    """One control step without custom_vjp: (qpos', qvel', warm', info (B, 4) int32[, tape (B, substeps * REC_WORDS)
-    float32][, qpos_n, xpos, xquat, cvel, subtree_com]); dk_step, or dk_step_fwd with tape=True; kinematics=True:
-    the output state's kinematics (kinematics_forward(qpos', qvel', com), bitwise) from the same call
-    (dk_step_kin / dk_fwd_kin)."""
+            kinematics=False, contacts=False, act=None):
+    """One control step without custom_vjp: (qpos', qvel', warm', info (B, info["info_words"]) int32[, contacts][, tape (B, substeps *
+    REC_WORDS) float32][, qpos_n, xpos, xquat, cvel, subtree_com]); dk_step, or dk_step_fwd with tape=True;
+    kinematics=True: the output state's kinematics (kinematics_forward(qpos', qvel', com), bitwise) from the same call
+    (dk_step_kin / dk_fwd_kin); contacts=True: the last substep's contact table (B, maxcon * con_words) float32
+    (contact_table() decodes it). act: the actuator state (B, info["act_words"]) of a BAM build (required there,
+    refused elsewhere): the result then has act' after warm', (qpos', qvel', warm', act', info, ...); not with
+    kinematics=True yet."""
     import jax
     import jax.numpy as jnp
+    if kinematics and act is None and _forest_kin() is not None:
+        r = forward(qpos, qvel, warm, ctrl, friction, com, iterations=iterations, substeps=substeps, tape=tape,
+                    contacts=contacts)
+        return tuple(r) + tuple(kinematics_forward(r[0], r[1], com))
     lib = _kin_lib() if kinematics else init()
     B = qpos.shape[0]
     nq, nv, nu = lib["nq"], lib["nv"], lib["nu"]
     for name, x, shape in (("qpos", qpos, (B, nq)), ("qvel", qvel, (B, nv)), ("warm", warm, (B, nv)),
-                           ("ctrl", ctrl, (B, nu)), ("friction", friction, (B,)), ("com", com, (B, 3))):
+                           ("ctrl", ctrl, (B, nu)), ("friction", friction, (B,)), ("com", com, (B, _com_words()))):
         _check(name, x, shape)
+    _act_check(lib, act, B)
     f32 = jnp.float32
+    if act is not None:
+        if kinematics:
+            raise ValueError("nablaengine.jax_ffi: kinematics=True is not available with the BAM servo model yet")
+        outs = [jax.ShapeDtypeStruct((B, nq), f32), jax.ShapeDtypeStruct((B, nv), f32),
+                jax.ShapeDtypeStruct((B, nv), f32), jax.ShapeDtypeStruct((B, _info_words()), jnp.int32),
+                jax.ShapeDtypeStruct((B, con_width(lib, substeps)), f32)]
+        if tape:
+            outs.append(jax.ShapeDtypeStruct((B, substeps * lib["rec_words"]), f32))
+        outs.append(jax.ShapeDtypeStruct(act.shape, f32))
+        call = jax.ffi.ffi_call(_STATE["targets"]["fwd_act" if tape else "step_act"], outs)
+        res = call(qpos, qvel, warm, ctrl, friction, com, act, iterations=np.int32(iterations),
+                   substeps=np.int32(substeps))
+        return (tuple(res[:3]) + (res[-1], res[3]) + ((res[4],) if contacts else ())
+                + ((res[5],) if tape else ()))
     outs = [jax.ShapeDtypeStruct((B, nq), f32), jax.ShapeDtypeStruct((B, nv), f32), jax.ShapeDtypeStruct((B, nv), f32),
-            jax.ShapeDtypeStruct((B, 4), jnp.int32),
-            jax.ShapeDtypeStruct((B, lib["maxcon"] * 8), f32)]  # + contacts
+            jax.ShapeDtypeStruct((B, _info_words()), jnp.int32),
+            jax.ShapeDtypeStruct((B, con_width(lib, substeps)), f32)]
     if tape:
         outs.append(jax.ShapeDtypeStruct((B, substeps * lib["rec_words"]), f32))
     if kinematics:
         outs += _kin_structs(lib, B)
     call = jax.ffi.ffi_call(_STATE["targets"][("fwd" if tape else "step") + ("_kin" if kinematics else "")], outs)
     res = call(qpos, qvel, warm, ctrl, friction, com, iterations=np.int32(iterations), substeps=np.int32(substeps))
-    return tuple(res[:4]) + tuple(res[5:])  # the contact output (k_substep's last-substep contacts) is dropped
+    return tuple(res[:4]) + ((res[4],) if contacts else ()) + tuple(res[5:])
+
+
+def contact_table(con, substeps=None):
+    """The contact output of forward / step (contacts=True), (B, con_width(info, substeps)), as a dict of (B, maxcon)
+    arrays ((B, substeps, maxcon) with contact_forces="substeps"): valid (pair >= 0), pair (the contact pair index,
+    -1 past the world's contacts; a terrain build's virtual pairs from info["npair"] on), dist, pos (world), normal
+    (world, the contact frame's first axis); with the forces also force (world; on the pair's second geom in the
+    engine's geom order, the normal pointing from the first geom to the second) and force_normal (>= 0); with
+    contact_frame tangent1, tangent2 (= normal x tangent1) and force_t1, force_t2 (the force's components along them);
+    in a terrain build element (-1: a model pair; else the terrain element, see docs/api.md); with foot_wrench
+    foot_force, foot_moment (B, substeps, nfoot, 3) and foot_fn_max (B, nfoot); with foot_normal foot_side,
+    toe_weight, foot_normal, and in a TerrainConfig(terrain_sand=True) build also sand_k, foot_normal_split,
+    foot_sand_presence and foot_sand_params (after set_terrain; docs/terrain.md "Sand elements"). substeps: None infers
+    it from the width. As torch_ffi.contact_table (g1_engine.contact_forces.decode)."""
+    import jax.numpy as jnp
+    from nablaengine.g1_engine import contact_forces as _cf
+    out = _cf.decode(con, init(), substeps, _STATE.get("terrain_sand"))
+    out["pair"] = out["pair"].astype(jnp.int32)
+    out["valid"] = out["pair"] >= 0
+    return out
 
 
 def kinematics_forward(qpos, qvel, com):
@@ -1308,10 +1839,13 @@ def kinematics_forward(qpos, qvel, com):
     (qpos_n (B, nq), xpos (B, nbody, 3), xquat (B, nbody, 4), cvel (B, nbody, 6), subtree_com (B, nbody, 3)), MJX's
     mjx.kinematics + com_pos + com_vel (g1_engine.kinematics)."""
     import jax
-    lib = _kin_lib()
+    dq = _forest_kin()
+    lib = init() if dq is not None else _kin_lib()
     B = qpos.shape[0]
-    for name, x, shape in (("qpos", qpos, (B, lib["nq"])), ("qvel", qvel, (B, lib["nv"])), ("com", com, (B, 3))):
+    for name, x, shape in (("qpos", qpos, (B, lib["nq"])), ("qvel", qvel, (B, lib["nv"])), ("com", com, (B, _com_words()))):
         _check(name, x, shape)
+    if dq is not None:
+        return dq.kinematics_forward(qpos, qvel, com)
     return tuple(jax.ffi.ffi_call(_STATE["targets"]["kin"], _kin_structs(lib, B))(qpos, qvel, com))
 
 
@@ -1320,13 +1854,16 @@ def kinematics_backward(qpos, qvel, com, g_qpos_n, g_xpos, g_xquat, g_cvel, g_su
     g_qvel (B, nv)) (dk_kin_bwd; com has none)."""
     import jax
     import jax.numpy as jnp
-    lib = _kin_lib()
+    dq = _forest_kin()
+    lib = init() if dq is not None else _kin_lib()
     B = qpos.shape[0]
     nq, nv = lib["nq"], lib["nv"]
-    for name, x, shape in (("qpos", qpos, (B, nq)), ("qvel", qvel, (B, nv)), ("com", com, (B, 3))):
+    for name, x, shape in (("qpos", qpos, (B, nq)), ("qvel", qvel, (B, nv)), ("com", com, (B, _com_words()))):
         _check(name, x, shape)
     gk = (g_qpos_n, g_xpos, g_xquat, g_cvel, g_subtree_com)
     _check_kin(lib, B, gk, "g_")
+    if dq is not None:
+        return dq.kinematics_backward(qpos, qvel, com, *gk)
     outs = [jax.ShapeDtypeStruct((B, nq), jnp.float32), jax.ShapeDtypeStruct((B, nv), jnp.float32)]
     return tuple(jax.ffi.ffi_call(_STATE["targets"]["kin_bwd"], outs)(qpos, qvel, com, *gk))
 
@@ -1342,8 +1879,6 @@ def _kinematics_fn():
         return kinematics_forward(qpos, qvel, com)
 
     def kin_fwd(qpos, qvel, com):
-        # named for remat_policy (KIN_NAME): the outputs (the caller's VJP needs them) and the state the backward
-        # recomputes the kinematics from; identities without remat
         out = tuple(checkpoint_name(x, KIN_NAME) for x in kinematics_forward(qpos, qvel, com))
         return out, (checkpoint_name(qpos, KIN_NAME), checkpoint_name(qvel, KIN_NAME), com)
 
@@ -1367,8 +1902,6 @@ def kinematics(qpos, qvel, com):
 
 
 def _soft(clamp_kv, clamp_soft):
-    """The soft clamp's delta as a float32 value for clamp_kv 2 (None: CLAMP_SOFT), None for 0 / 1 (where it must be
-    None); ValueError for an unknown variant or a delta that is negative or not finite."""
     if int(clamp_kv) != 2:
         if clamp_soft is not None:
             raise ValueError(f"nablaengine.jax_ffi: clamp_soft is the soft clamp's (clamp_kv=2), not clamp_kv={clamp_kv}")
@@ -1379,25 +1912,71 @@ def _soft(clamp_kv, clamp_soft):
     return d
 
 
+def _sur(cone_mu, impulse_clip):
+    mu = float(np.float32(cone_mu or 0.0))
+    if not (np.isfinite(mu) and mu >= 0.0):
+        raise ValueError(f"nablaengine.jax_ffi: cone_mu must be finite and >= 0, got {cone_mu}")
+    clip = np.inf if impulse_clip is None else float(np.float32(impulse_clip))
+    if not clip > 0.0:
+        raise ValueError(f"nablaengine.jax_ffi: impulse_clip must be > 0 (None: off), got {impulse_clip}")
+    if mu == 0.0 and clip == np.inf:
+        return None
+    return mu, clip
+
+
+def _sur_lib(lib, sur):
+    if sur is not None and not lib.get("contact_surrogate"):
+        raise ValueError("nablaengine.jax_ffi: cone_mu / impulse_clip need a library built with "
+                         "init(contact_surrogate=True) (the forest engine)")
+
+
 def backward(tape, friction, com, g_qpos, g_qvel, *, substeps=SUBSTEPS, clamp_kv=CLAMP_KV, normal=NORMAL, ctrl=None,
-             clamp_soft=None, kinematics=None):
+             clamp_soft=None, kinematics=None, act=None, g_act=None, cone_mu=0.0, impulse_clip=None,
+             g_contacts=None):
     """The adjoint of one control step from its tape and the cotangents of (qpos', qvel'): (g_qpos (B, nq), g_qvel (B,
     nv), g_ctrl (B, nu), info (B,) int32: the adjoint's flags | NONFINITE_* << NONFINITE_SHIFT). clamp_kv 2 (the soft
     clamp, delta clamp_soft: None for CLAMP_SOFT) needs the step's ctrl (B, nu); 0 and 1 ignore ctrl. kinematics:
     None, or (qpos', qvel', g_qpos_n, g_xpos, g_xquat, g_cvel, g_subtree_com) of a step with kinematics outputs: their
     cotangents are pulled back onto (qpos', qvel') (kinematics_backward) and added to g_qpos, g_qvel in the same call,
-    before the adjoint (dk_bwd_kin / dk_bwd_soft_kin); the non-finite cotangent bit then refers to those sums."""
+    before the adjoint (dk_bwd_kin / dk_bwd_soft_kin); the non-finite cotangent bit then refers to those sums. A build
+    with per-world parameters (init(params=)) also returns g_params (B, param_words) and g_friction (B,): the
+    parameters' cotangents and the foot friction input's. A terrain build with TerrainConfig.object_velocity returns
+    g_object_velocity (B, 18 K) last: the cotangents of the slots' motion words (com's object_velocity words). A BAM
+    build (init(actuator="bam")) takes the step's input
+    state act (B, act_words) and the cotangent g_act of its output state act' (None: zeros) and returns (g_qpos,
+    g_qvel, g_ctrl, g_act, info), g_act the gradient of the input state (the torques' and the supply's); clamp_kv 0
+    and 1 are the same there (the servo force has no kv), 2 and kinematics are refused. cone_mu, impulse_clip: the
+    backward-only contact-gradient surrogates of a contact_surrogate build (init; forest_engine.surrogate): the
+    central-path relaxation of the pyramidal cone rows' slope with barrier cone_mu ((m/s^2)^2; 0: off) and the clip of
+    each contact's partials to the impulse impulse_clip (N s per substep; None: off); both off: the exact adjoint.
+    g_contacts: a contact_grad build's (init(contact_grad=True)) cotangent of the step's contact output (B,
+    con_width(info, substeps)), added to the gradients (forest_engine.contact_vjp; None: none)."""
     import jax
     import jax.numpy as jnp
+    if kinematics is not None and act is None and _forest_kin() is not None:
+        kin = tuple(kinematics)
+        if len(kin) != 7:
+            raise ValueError("nablaengine.jax_ffi: kinematics = (qpos', qvel', g_qpos_n, g_xpos, g_xquat, g_cvel, "
+                             "g_subtree_com)")
+        gq, gv = kinematics_backward(kin[0], kin[1], com, *kin[2:])
+        return backward(tape, friction, com, g_qpos + gq, g_qvel + gv, substeps=substeps, clamp_kv=clamp_kv,
+                        normal=normal, ctrl=ctrl, clamp_soft=clamp_soft, cone_mu=cone_mu, impulse_clip=impulse_clip)
     lib = _kin_lib() if kinematics is not None else init()
+    if lib.get("act_words"):
+        return _backward_act(lib, tape, friction, com, g_qpos, g_qvel, substeps, clamp_kv, normal, kinematics, act,
+                             g_act)
+    if act is not None or g_act is not None:
+        raise ValueError("nablaengine.jax_ffi: act= / g_act= belong to a build with the BAM servo model")
     B = tape.shape[0]
     nq, nv, nu = lib["nq"], lib["nv"], lib["nu"]
     for name, x, shape in (("tape", tape, (B, substeps * lib["rec_words"])), ("friction", friction, (B,)),
-                           ("com", com, (B, 3)), ("g_qpos", g_qpos, (B, nq)), ("g_qvel", g_qvel, (B, nv))):
+                           ("com", com, (B, _com_words())), ("g_qpos", g_qpos, (B, nq)), ("g_qvel", g_qvel, (B, nv))):
         _check(name, x, shape)
     if (int(clamp_kv), int(normal)) not in VARIANTS:
         raise ValueError(f"nablaengine.jax_ffi: no adjoint variant clamp_kv={clamp_kv} normal={normal}")
     soft = _soft(clamp_kv, clamp_soft)
+    sur = _sur(cone_mu, impulse_clip)
+    _sur_lib(lib, sur)
     kin, sfx = (), ""
     if kinematics is not None:
         kin, sfx = tuple(kinematics), "_kin"
@@ -1411,80 +1990,216 @@ def backward(tape, friction, com, g_qpos, g_qvel, *, substeps=SUBSTEPS, clamp_kv
     else:
         kin = (g_qpos, g_qvel)
     f32 = jnp.float32
-    outs = [jax.ShapeDtypeStruct((B, nq), f32), jax.ShapeDtypeStruct((B, nv), f32), jax.ShapeDtypeStruct((B, nu), f32),
-            jax.ShapeDtypeStruct((B,), jnp.int32)]
-    if soft is not None:
+    npw = int(lib.get("param_words", 0))
+    nov = int(lib.get("obj_vel_words", 0))
+    nom = int(lib.get("obj_mat_words", 0))
+    gw = nu + (npw + 1 if npw else 0) + nov + nom
+    outs = [jax.ShapeDtypeStruct((B, nq), f32), jax.ShapeDtypeStruct((B, nv), f32),
+            jax.ShapeDtypeStruct((B, gw), f32), jax.ShapeDtypeStruct((B,), jnp.int32)]
+    if g_contacts is not None:
+        if not lib.get("contact_grad"):
+            raise ValueError("nablaengine.jax_ffi: g_contacts needs a library built with init(contact_grad=True)")
+        if sur is not None:
+            raise ValueError("nablaengine.jax_ffi: g_contacts with the contact-gradient surrogates")
+        _check("g_contacts", g_contacts, (B, con_width(lib, substeps)))
+        if soft is not None and ctrl is None:
+            raise ValueError("nablaengine.jax_ffi: clamp_kv=2 (the soft clamp) needs the step's ctrl")
+        if ctrl is None:
+            ctrl = jnp.zeros((B, nu), f32)
+        _check("ctrl", ctrl, (B, nu))
+        call = jax.ffi.ffi_call(_STATE["targets"]["bwd_con" + sfx], outs)
+        r = tuple(call(tape, friction, com, ctrl, *kin, g_contacts, substeps=np.int32(substeps),
+                       clamp_kv=np.int32(clamp_kv), normal=np.int32(normal), clamp_soft=np.float32(soft or 0.0)))
+    elif sur is not None:
+        if soft is not None and ctrl is None:
+            raise ValueError("nablaengine.jax_ffi: clamp_kv=2 (the soft clamp) needs the step's ctrl")
+        if ctrl is None:
+            ctrl = jnp.zeros((B, nu), f32)
+        _check("ctrl", ctrl, (B, nu))
+        call = jax.ffi.ffi_call(_STATE["targets"]["bwd_sur" + sfx], outs)
+        r = tuple(call(tape, friction, com, ctrl, *kin, substeps=np.int32(substeps), clamp_kv=np.int32(clamp_kv),
+                       normal=np.int32(normal), clamp_soft=np.float32(soft or 0.0), cone_mu=np.float32(sur[0]),
+                       impulse_clip=np.float32(sur[1])))
+    elif soft is not None:
         if ctrl is None:
             raise ValueError("nablaengine.jax_ffi: clamp_kv=2 (the soft clamp) needs the step's ctrl")
         _check("ctrl", ctrl, (B, nu))
         call = jax.ffi.ffi_call(_STATE["targets"]["bwd_soft" + sfx], outs)
-        return tuple(call(tape, friction, com, ctrl, *kin, substeps=np.int32(substeps), normal=np.int32(normal),
-                          clamp_soft=np.float32(soft)))
-    call = jax.ffi.ffi_call(_STATE["targets"]["bwd" + sfx], outs)
-    return tuple(call(tape, friction, com, *kin, substeps=np.int32(substeps), clamp_kv=np.int32(clamp_kv),
-                      normal=np.int32(normal)))
+        r = tuple(call(tape, friction, com, ctrl, *kin, substeps=np.int32(substeps), normal=np.int32(normal),
+                       clamp_soft=np.float32(soft)))
+    else:
+        call = jax.ffi.ffi_call(_STATE["targets"]["bwd" + sfx], outs)
+        r = tuple(call(tape, friction, com, *kin, substeps=np.int32(substeps), clamp_kv=np.int32(clamp_kv),
+                       normal=np.int32(normal)))
+    ov = (r[2][:, gw - nom - nov:gw - nom],) if nov else ()
+    ov += (r[2][:, gw - nom:],) if nom else ()
+    if npw:
+        return (r[0], r[1], r[2][:, :nu], r[3], r[2][:, nu:nu + npw], r[2][:, nu + npw]) + ov
+    if nov or nom:
+        return (r[0], r[1], r[2][:, :nu], r[3]) + ov
+    return r
+
+
+def _backward_act(lib, tape, friction, com, g_qpos, g_qvel, substeps, clamp_kv, normal, kinematics, act, g_act):
+    import jax
+    import jax.numpy as jnp
+    if kinematics is not None:
+        raise ValueError("nablaengine.jax_ffi: kinematics outputs are not available with the BAM servo model yet")
+    if int(clamp_kv) == 2:
+        raise ValueError("nablaengine.jax_ffi: the BAM servo model's adjoint takes clamp_kv 0 or 1 (the same there: "
+                         "its servo force has no kv), not the soft clamp 2")
+    if act is None:
+        raise ValueError("nablaengine.jax_ffi: this build has the BAM servo model: backward needs the step's input "
+                         "state act= (B, act_words)")
+    B = tape.shape[0]
+    nq, nv, nu, aw = lib["nq"], lib["nv"], lib["nu"], int(lib["act_words"])
+    if g_act is None:
+        g_act = jnp.zeros((B, aw), jnp.float32)
+    for name, x, shape in (("tape", tape, (B, substeps * lib["rec_words"])), ("friction", friction, (B,)),
+                           ("com", com, (B, _com_words())), ("g_qpos", g_qpos, (B, nq)), ("g_qvel", g_qvel, (B, nv)),
+                           ("act", act, (B, aw)), ("g_act", g_act, (B, aw))):
+        _check(name, x, shape)
+    if (int(clamp_kv), int(normal)) not in VARIANTS:
+        raise ValueError(f"nablaengine.jax_ffi: no adjoint variant clamp_kv={clamp_kv} normal={normal}")
+    f32 = jnp.float32
+    outs = [jax.ShapeDtypeStruct((B, nq), f32), jax.ShapeDtypeStruct((B, nv), f32), jax.ShapeDtypeStruct((B, nu), f32),
+            jax.ShapeDtypeStruct((B,), jnp.int32), jax.ShapeDtypeStruct((B, aw), f32)]
+    call = jax.ffi.ffi_call(_STATE["targets"]["bwd_act"], outs)
+    r = tuple(call(tape, friction, com, act, g_qpos, g_qvel, g_act, substeps=np.int32(substeps),
+                   clamp_kv=np.int32(clamp_kv), normal=np.int32(normal)))
+    return r[0], r[1], r[2], r[4], r[3]
 
 
 def make_step(iterations=ITERATIONS, substeps=SUBSTEPS, clamp_kv=CLAMP_KV, normal=NORMAL, clamp_soft=None,
-              grad_decay=GRAD_DECAY, kinematics=False):
+              grad_decay=GRAD_DECAY, kinematics=False, contacts=False, cone_mu=0.0, impulse_clip=None):
     """step(qpos, qvel, warm, ctrl, friction, com) -> (qpos', qvel', warm') with these static options, a
     jax.custom_vjp function (one per option set, so jit caches stay valid: the options are normalized first, so every
     spelling of a set gives the same function). kinematics=True: -> (qpos', qvel', warm', qpos_n, xpos, xquat,
-    cvel, subtree_com), the output state's kinematics in the same call and the same VJP."""
+    cvel, subtree_com), the output state's kinematics in the same call and the same VJP. cone_mu, impulse_clip: the
+    contact-gradient surrogates of the backward (backward(); a contact_surrogate build)."""
     if (int(clamp_kv), int(normal)) not in VARIANTS:
         raise ValueError(f"nablaengine.jax_ffi: no adjoint variant clamp_kv={clamp_kv} normal={normal}")
     gd = float(np.float32(grad_decay))
     if not np.isfinite(gd):
         raise ValueError(f"nablaengine.jax_ffi: grad_decay must be finite, got {grad_decay}")
+    if int(init().get("act_words", 0)):
+        if kinematics:
+            raise ValueError("nablaengine.jax_ffi: kinematics=True is not available with the BAM servo model yet")
+        if int(clamp_kv) == 2:
+            raise ValueError("nablaengine.jax_ffi: the BAM servo model's adjoint takes clamp_kv 0 or 1 (the same "
+                             "there: its servo force has no kv), not the soft clamp 2")
+        return _make_step_act(int(iterations), int(substeps), int(clamp_kv), int(normal), gd, bool(contacts))
+    sur = _sur(cone_mu, impulse_clip)
+    _sur_lib(init(), sur)
     return _make_step(int(iterations), int(substeps), int(clamp_kv), int(normal), _soft(clamp_kv, clamp_soft), gd,
-                      bool(kinematics))
+                      bool(kinematics), bool(contacts), *(sur if sur is not None else ()))
 
 
 @functools.lru_cache(maxsize=None)
-def _make_step(iterations, substeps, clamp_kv, normal, clamp_soft, grad_decay, kin=False):
+def _make_step_act(iterations, substeps, clamp_kv, normal, grad_decay, con=False):
     import jax
     import jax.numpy as jnp
-    soft = clamp_soft is not None  # clamp_kv 2: ctrl is a residual too
+    gd = np.float32(grad_decay)
+
+    @jax.custom_vjp
+    def step_fn(qpos, qvel, warm, ctrl, friction, com, act):
+        r = forward(qpos, qvel, warm, ctrl, friction, com, iterations=iterations, substeps=substeps, contacts=con,
+                    act=act)
+        return tuple(r[:4]) + ((r[5],) if con else ())
+
+    def step_fwd(qpos, qvel, warm, ctrl, friction, com, act):
+        from jax.ad_checkpoint import checkpoint_name
+        r = forward(qpos, qvel, warm, ctrl, friction, com, iterations=iterations, substeps=substeps, tape=True,
+                    contacts=con, act=act)
+        outs = tuple(checkpoint_name(x, OUT_NAME) for x in r[:4]) + ((r[5],) if con else ())
+        return outs, (checkpoint_name(r[-1], TAPE_NAME), friction, com, act)
+
+    def step_bwd(res, cot):
+        tp, friction, com, act = res
+        g_q, g_v, g_a = cot[0], cot[1], cot[3]
+        dq, dv, du, da, _ = backward(tp, friction, com, g_q, g_v, substeps=substeps, clamp_kv=clamp_kv, normal=normal,
+                                     act=act, g_act=g_a)
+        if grad_decay != 1.0:
+            dq, dv, da = dq * gd, dv * gd, da * gd
+        return dq, dv, jnp.zeros_like(dv), du, jnp.zeros_like(friction), jnp.zeros_like(com), da
+
+    step_fn.defvjp(step_fwd, step_bwd)
+    return step_fn
+
+
+@functools.lru_cache(maxsize=None)
+def _make_step(iterations, substeps, clamp_kv, normal, clamp_soft, grad_decay, kin=False, con=False, cone_mu=0.0,
+               impulse_clip=None):
+    import jax
+    import jax.numpy as jnp
+    soft = clamp_soft is not None
     gd = np.float32(grad_decay)
 
     @jax.custom_vjp
     def step_fn(qpos, qvel, warm, ctrl, friction, com):
-        r = forward(qpos, qvel, warm, ctrl, friction, com, iterations=iterations, substeps=substeps, kinematics=kin)
-        return tuple(r[:3]) + tuple(r[4:])  # (info dropped) the kinematics outputs with kin
+        r = forward(qpos, qvel, warm, ctrl, friction, com, iterations=iterations, substeps=substeps, kinematics=kin,
+                    contacts=con)
+        return tuple(r[:3]) + tuple(r[4:])
 
     def step_fwd(qpos, qvel, warm, ctrl, friction, com):
         from jax.ad_checkpoint import checkpoint_name
         r = forward(qpos, qvel, warm, ctrl, friction, com, iterations=iterations, substeps=substeps, tape=True,
-                    kinematics=kin)
-        # named for jax.checkpoint policies (remat_policy): saving the tape alone still reruns dk_step_fwd in the
-        # backward wherever the body's own VJP needs the step's outputs (a loss or kinematics of qpos'), so they are
-        # named too, the kinematics outputs with them (a body's cost or controller may read them); identities without
-        # remat
+                    kinematics=kin, contacts=con)
+        if con:
+            ctab = r[4]
+            r = tuple(r[:4]) + tuple(r[5:])
         outs = tuple(checkpoint_name(x, OUT_NAME) for x in tuple(r[:3]) + tuple(r[5:]))
+        if con:
+            outs = outs[:3] + (ctab,) + outs[3:]
         res = (checkpoint_name(r[4], TAPE_NAME), friction, com) + (outs[:2] if kin else ()) + ((ctrl,) if soft else ())
         return outs, res
 
+    cgrad = con and bool(_STATE["info"].get("contact_grad"))
+
     def step_bwd(res, cot):
         tp, friction, com = res[:3]
-        g_q, g_v = cot[:2]  # the warm start's cotangent (cot[2]) is ignored
-        kc = tuple(res[3:5]) + tuple(cot[3:]) if kin else None  # (qpos', qvel', the kinematics outputs' cotangents)
-        dq, dv, du, _ = backward(tp, friction, com, g_q, g_v, substeps=substeps, clamp_kv=clamp_kv, normal=normal,
-                                 ctrl=res[-1] if soft else None, clamp_soft=clamp_soft, kinematics=kc)
-        if grad_decay != 1.0:  # gradient decay: the state cotangent through this step's physics times it, ctrl's not
+        g_q, g_v = cot[:2]
+        kc = tuple(res[3:5]) + tuple(cot[3 + con:]) if kin else None
+        r = backward(tp, friction, com, g_q, g_v, substeps=substeps, clamp_kv=clamp_kv, normal=normal,
+                     ctrl=res[-1] if soft else None, clamp_soft=clamp_soft, kinematics=kc, cone_mu=cone_mu,
+                     impulse_clip=impulse_clip, **({"g_contacts": cot[3]} if cgrad else {}))
+        dq, dv, du = r[:3]
+        if grad_decay != 1.0:
             dq, dv = dq * gd, dv * gd
-        return dq, dv, jnp.zeros_like(dv), du, jnp.zeros_like(friction), jnp.zeros_like(com)
+        gcom, gfr = jnp.zeros_like(com), jnp.zeros_like(friction)
+        npw, nov = int(_STATE["info"].get("param_words", 0)), int(_STATE["info"].get("obj_vel_words", 0))
+        nom = int(_STATE["info"].get("obj_mat_words", 0))
+        if npw:
+            gcom = gcom.at[:, com.shape[1] - npw:].set(r[4])
+            gfr = r[5]
+        if nov:
+            gcom = gcom.at[:, com.shape[1] - npw - nom - nov:com.shape[1] - npw - nom].set(r[-1 - (nom > 0)])
+        if nom:
+            gcom = gcom.at[:, com.shape[1] - npw - nom:com.shape[1] - npw].set(r[-1])
+        return dq, dv, jnp.zeros_like(dv), du, gfr, gcom
 
     step_fn.defvjp(step_fwd, step_bwd)
     return step_fn
 
 
 def step(qpos, qvel, warm, ctrl, friction, com, *, iterations=ITERATIONS, substeps=SUBSTEPS, clamp_kv=CLAMP_KV,
-         normal=NORMAL, clamp_soft=None, grad_decay=GRAD_DECAY, kinematics=False):
+         normal=NORMAL, clamp_soft=None, grad_decay=GRAD_DECAY, kinematics=False, contacts=False, act=None, cone_mu=0.0,
+         impulse_clip=None):
     """One control step, differentiable (see the module docstring): (qpos', qvel', warm'); kinematics=True:
     (qpos', qvel', warm', qpos_n, xpos, xquat, cvel, subtree_com), the kinematics of the output state (qpos', qvel')
-    computed in the same FFI call after the last substep, their cotangents in the same VJP."""
-    return make_step(iterations, substeps, clamp_kv, normal, clamp_soft, grad_decay, kinematics)(
-        qpos, qvel, warm, ctrl, friction, com)
+    computed in the same FFI call after the last substep, their cotangents in the same VJP; contacts=True: the last
+    substep's contact table after warm' (forward's; not differentiated: its cotangent is ignored). act: the BAM
+    servo model's state (B, info["act_words"]) in a BAM build (required there, refused elsewhere): (qpos', qvel',
+    warm', act'[, contacts]), differentiable in act too (docs/actuators.md). cone_mu, impulse_clip: the backward's
+    contact-gradient surrogates (backward(); a contact_surrogate build)."""
+    fn = make_step(iterations, substeps, clamp_kv, normal, clamp_soft, grad_decay, kinematics, contacts, cone_mu,
+                   impulse_clip)
+    aw = int(init().get("act_words", 0))
+    if aw or act is not None:
+        import jax.numpy as jnp
+        _act_check(init(), None if act is None else jnp.asarray(act), qpos.shape[0])
+        return fn(qpos, qvel, warm, ctrl, friction, com, act)
+    return fn(qpos, qvel, warm, ctrl, friction, com)
 
 
 def scale_grad(tree, gamma):
@@ -1576,18 +2291,34 @@ def decode_diagnostics(arr):
     return d
 
 
-def warn_overflow(d, where="nablaengine"):
+def warn_overflow(d, where="nablaengine", maxcon=None, nefc=None):
     """A RuntimeWarning when the counters d count worlds whose contacts or constraint rows exceeded the per-world
-    capacity (MAXCON = 64 contacts, NEFC = 192 rows): the ones beyond were dropped, so those worlds miss support and
-    friction forces. The worlds of a call: info[:, 3] & OVERFLOW_CONTACTS / OVERFLOW_ROWS of forward()."""
+    capacity (maxcon / nefc, default the loaded library's info["maxcon"] / info["nefc"]): the ones beyond were dropped,
+    so those worlds miss support and friction forces. The worlds of a call: info[:, 3] & OVERFLOW_CONTACTS /
+    OVERFLOW_ROWS of forward(). init(max_contacts=, max_rows=) raises the capacities."""
     import warnings
     nc, nr = d.get("fwd_contact_overflow_worlds", 0), d.get("fwd_row_overflow_worlds", 0)
+    info = _STATE["info"] if _STATE else {}
+    maxcon, nefc = maxcon or info.get("maxcon", 64), nefc or info.get("nefc", 192)
     if nc or nr:
-        warnings.warn(f"{where}: {nc} world-steps exceeded the contact capacity (64 per world) and {nr} the constraint-"
-                      f"row capacity (192); their extra contacts / rows were dropped, so those worlds miss support and "
-                      f"friction forces (e.g. deep interpenetration). See docs/api.md, Diagnostics.", RuntimeWarning,
-                      stacklevel=3)
+        warnings.warn(f"{where}: {nc} world-steps exceeded the contact capacity ({maxcon} per world) and {nr} the "
+                      f"constraint-row capacity ({nefc}); their extra contacts / rows were dropped, so those worlds miss "
+                      f"support and friction forces (e.g. deep interpenetration; init(max_contacts=, max_rows=) raises "
+                      f"the capacities). See docs/api.md, Diagnostics.", RuntimeWarning, stacklevel=3)
     return nc + nr
+
+
+def capacity_counts(info):
+    """(contacts_found, rows_needed), two (B,) int32 arrays, from forward()'s info of a build with
+    init(capacity_diag=True) (info (B, 6)): per world the largest over the call's substeps of the contacts the
+    collision found (those beyond info["maxcon"] included) and of the constraint rows the assembly needed (dof,
+    equality and contact rows, the dropped contacts' rows included), to size max_contacts / max_rows. Where they
+    exceed info["maxcon"] / info["nefc"] the extra contacts / rows were dropped (OVERFLOW_CONTACTS / OVERFLOW_ROWS).
+    Traceable; ValueError for the (B, 4) info of a build without the option (forest_engine.capacity_diag)."""
+    if len(info.shape) != 2 or info.shape[1] != 6:
+        raise ValueError(f"nablaengine.jax_ffi.capacity_counts: info of shape {tuple(info.shape)}; the counts need a "
+                         "build with init(capacity_diag=True), whose forward info is (B, 6)")
+    return info[:, 4], info[:, 5]
 
 
 def set_overflow_warnings(enabled):
@@ -1601,11 +2332,10 @@ def set_overflow_warnings(enabled):
 
 
 def _exit_report():
-    """At exit: the overflow warning for the counts since the last read (no reset), if any; never raises."""
     try:
         if _OVERFLOW_WARN[0] and _STATE and STATS.get("loads"):
             read_diagnostics(reset=False)
-    except Exception:  # noqa: BLE001  (interpreter or backend shutting down)
+    except Exception:
         pass
 
 
@@ -1642,22 +2372,33 @@ def last_forward(nworld=None):
         s = 0
     else:
         hit = np.flatnonzero(slots[1:] == int(nworld))
-        if not len(hit):  # never called with this batch size (or more batch sizes than slots)
+        if not len(hit):
             return {name: 0 for name in LAST}
         s = int(hit[0]) + 1
     return {name: int(rec[s, i]) for i, name in enumerate(LAST)}
 
 
 def check_model(mjm, foot_pairs=None, torso_id=None):
-    """Raise ValueError unless the MjModel mjm (with its foot-floor pair indices and torso body id) is a model the
-    engine supports (nablaengine.model.capability.require, engine scope: UnsupportedModel, a ValueError,
-    lists the failing checks; the packed constants below cannot see physics the engine does not model, such as joint
-    damping or the integrator) and the model whose constants the library holds (init()): nq / nv / nu, the timestep,
-    the foot pairs (in order), the torso id and the packed physics constants (adjoint.engine_constants, compared
+    """Raise ValueError unless the MjModel mjm (with its foot-floor pair indices and torso body id) is a model its
+    engine supports (engines.require: nablaengine.model.capability's G1 engine scope or forest scope, UnsupportedModel,
+    a ValueError, lists the failing checks; the packed constants below cannot see physics the engine does not model,
+    such as joint damping or the integrator) and the model whose constants the library holds (init()): the engine,
+    nq / nv / nu, the timestep, the foot pairs (in order), the torso id (the COM-offset body's; -1 for none) and the
+    packed physics constants (the engine's adjoint.engine_constants with the library's COM-offset body, compared
     bitwise; the solver iterations are an option of the call, not a constant). Returns the library info."""
     info = init()
     fp = info["foot_pairs"] if foot_pairs is None else [int(p) for p in np.asarray(foot_pairs).ravel()]
-    capability.require(mjm, fp, capability.COM_BODY, "engine", "jax_ffi.check_model")
+    if _STATE.get("bam") is not None:
+        from nablaengine._optional import BAM, load
+        _bam = load("nablaengine.actuators", BAM, "bam")
+        mjm = _bam.prepare(mjm, _STATE["bam"])
+    E = engines.modules(mjm)
+    com = info.get("com_body", capability.COM_BODY)
+    if E.name != info.get("engine", engines.G1):
+        raise ValueError(f"nablaengine.jax_ffi: the model is one for the {E.name} engine, the library's is for the "
+                         f"{info.get('engine')} engine (nablaengine.engines; init(model=, foot_pairs=) builds it for "
+                         f"this model)")
+    engines.require(mjm, fp, com, "jax_ffi.check_model")
     msg = []
     if (mjm.nq, mjm.nv, mjm.nu) != (info["nq"], info["nv"], info["nu"]):
         msg.append(f"nq / nv / nu {(mjm.nq, mjm.nv, mjm.nu)} != {(info['nq'], info['nv'], info['nu'])}")
@@ -1669,15 +2410,17 @@ def check_model(mjm, foot_pairs=None, torso_id=None):
         msg.append(f"torso id {int(torso_id)} != {info['torso_id']}")
     if not msg:
         try:
-            consts, lays, sizes = adjoint.engine_constants(mjm, fp)
-        except AssertionError as e:  # a model the engine's constant packing does not support
-            raise ValueError(f"nablaengine.jax_ffi: the model is not the engine's mjlab G1 ({e!r})") from None
+            consts, lays, sizes = (E.adjoint.engine_constants(mjm, fp, com) if E.forest
+                                   else E.adjoint.engine_constants(mjm, fp, None, com))
+        except AssertionError as e:
+            raise ValueError(f"nablaengine.jax_ffi: the {E.name} engine's constant packing rejects the model "
+                             f"({e!r})") from None
         mine = _STATE["consts"]
         if len(consts) != len(mine):
             msg.append(f"{len(consts)} packed constants != {len(mine)}")
         elif not np.array_equal(consts.view(np.uint32), np.asarray(mine, np.float32).view(np.uint32)):
-            names, at = [], 0  # the constant arrays that differ, in packing order
-            for sym, kind, count, width in lays:  # host.loader's packing ("u": two 16-bit halves per value)
+            names, at = [], 0
+            for sym, kind, count, width in lays:
                 n = (sizes[count] if isinstance(count, str) else int(count)) * width * (2 if kind == "u" else 1)
                 if not np.array_equal(consts[at:at + n].view(np.uint32), np.asarray(mine[at:at + n]).view(np.uint32)):
                     names.append(sym)
@@ -1699,20 +2442,47 @@ class EnginePhysics:
     physics-only form of the gradient decay, see the module docstring; kinematics=True: .step also returns the output
     state's qpos_n, xpos, xquat, cvel, subtree_com). The model constants come from the fixtures (init()), and mjm (with
     foot_pairs and torso_id) must then be the same model (check_model, else ValueError), unless use_model=True: then
-    from mjm. Either way a model the engine does not support raises nablaengine.model.capability.UnsupportedModel (a
-    ValueError) before anything runs. Other keyword options (those of a MuJoCo Warp based physics object, such as
+    from mjm, for either engine (nablaengine.engines: the G1 engine or the forest engine, info["engine"]; torso_id is
+    the COM-offset body's id, -1 for none, the forest engine's default). Either way a model its engine does not
+    support raises nablaengine.model.capability.UnsupportedModel (a ValueError) before anything runs. Other keyword options (those of a MuJoCo Warp based physics object, such as
     graph modes, capacities or a warm-started recompute) are accepted and ignored: the engine has none of them, and
-    its tape replaces the recompute."""
+    its tape replaces the recompute. params: per-world physics parameters (nablaengine.params.PhysicsParams or field
+    names, e.g. ("foot_solref", "foot_solimp", "dof_damping")): .step then takes them as rand=, a (B, width) array
+    (.pack_rand(**values); .rand_layout(): {field: (offset, width)}), and com stays (B, com_words - param_words): (B, 3)
+    without engine extras (info["com_layout"]). max_contacts, max_rows:
+    the engine's contact and constraint-row capacity per world (init(); MuJoCo Warp's nconmax / njmax options are
+    still ignored: their meaning differs between versions). actuator: an actuator model (init(); nablaengine.actuators,
+    e.g. "unitree_g1", or "bam": then .step(qpos, qvel, warm, ctrl, friction, com, act) -> (qpos', qvel', warm',
+    act'), .initial_act(); None: off); motor_limits: its permanent alias. contact_forces, foot_wrench, contact_frame: the
+    contact output's options (init()); contacts=True: .step also returns the contact output after warm' (make_step;
+    contact_table() decodes it).
+    cone_mu, impulse_clip: the backward's contact-gradient surrogates (backward(); either set builds the library with
+    init(contact_surrogate=True), the forest engine only)."""
 
     def __init__(self, mjm=None, nworld=None, foot_pairs=None, torso_id=None, *, iterations=None, substeps=SUBSTEPS,
                  clamp_kv=CLAMP_KV, normal=NORMAL, clamp_soft=None, grad_decay=GRAD_DECAY, kinematics=False,
-                 use_model=False, **_ignored):
+                 use_model=False, params=None, max_contacts=None, max_rows=None, motor_limits=None,
+                 contact_forces=False, actuator=None, cone_mu=0.0, impulse_clip=None, foot_wrench=None,
+                 contact_frame=False, contacts=False, **_ignored):
+        from nablaengine.params import as_params
+        self.params = as_params(params)
+        kw = {"params": self.params} if self.params else {}
+        kw.update({k: v for k, v in (("max_contacts", max_contacts), ("max_rows", max_rows),
+                                     ("motor_limits", motor_limits), ("actuator", actuator)) if v is not None})
+        if contact_forces:
+            kw["contact_forces"] = contact_forces
+        if foot_wrench not in (None, False):
+            kw["foot_wrench"] = foot_wrench
+        if contact_frame:
+            kw["contact_frame"] = True
+        if _sur(cone_mu, impulse_clip) is not None:
+            kw["contact_surrogate"] = True
         if use_model:
-            self.info = init(model=mjm, foot_pairs=foot_pairs)
+            self.info = init(model=mjm, foot_pairs=foot_pairs, **kw)
             if torso_id is not None:
                 check_model(mjm, foot_pairs, torso_id)
         else:
-            self.info = init()
+            self.info = init(**kw)
             if mjm is not None:
                 check_model(mjm, foot_pairs, torso_id)
         self.nworld = None if nworld is None else int(nworld)
@@ -1720,9 +2490,38 @@ class EnginePhysics:
         self.iterations = int(iterations or (mjm.opt.iterations if mjm is not None else ITERATIONS))
         self.options = dict(iterations=self.iterations, substeps=int(substeps), clamp_kv=int(clamp_kv),
                             normal=int(normal), clamp_soft=_soft(clamp_kv, clamp_soft),
-                            grad_decay=float(np.float32(grad_decay)), kinematics=bool(kinematics))
+                            grad_decay=float(np.float32(grad_decay)), kinematics=bool(kinematics),
+                            cone_mu=float(np.float32(cone_mu or 0.0)),
+                            impulse_clip=None if impulse_clip is None else float(np.float32(impulse_clip)))
         self.step = make_step(self.iterations, int(substeps), int(clamp_kv), int(normal), clamp_soft, grad_decay,
-                              kinematics)
+                              kinematics, cone_mu=cone_mu, impulse_clip=impulse_clip,
+                              **({"contacts": True} if contacts else {}))
+        if self.params:
+            import jax.numpy as jnp
+            inner = self.step
+
+            def step(qpos, qvel, warm, ctrl, friction, com, rand):
+                return inner(qpos, qvel, warm, ctrl, friction, jnp.concatenate([com, rand], axis=-1))
+            self.step = step
+
+    def initial_act(self, batch=None, vin0=None, drop=0.0):
+        """A BAM build's initial actuator state rows (B, info["act_words"]) float32 (actuators.bam.initial_state):
+        zero torques, supply vin0 (default the servo model's nominal voltage), drop gain drop; .step then takes it as
+        its last argument and returns act' after warm'."""
+        if not self.info.get("act_words"):
+            raise ValueError("nablaengine.jax_ffi.EnginePhysics: this build has no actuator state (actuator='bam')")
+        from nablaengine._optional import BAM, load
+        _bam = load("nablaengine.actuators", BAM, "bam")
+        B = int(batch if batch is not None else self.nworld)
+        return _bam.initial_state(self.info["nv"], B, self.info["bam"]["vin_nom"] if vin0 is None else vin0, drop)
+
+    def rand_layout(self):
+        """{field: (offset, width)} of .step's rand rows (per-world parameters)."""
+        return self.params.layout(int(self.info["nv"]))
+
+    def pack_rand(self, **values):
+        """.step's rand (B, width) float32 from per-field arrays (nablaengine.params.PhysicsParams.pack)."""
+        return self.params.pack(int(self.info["nv"]), **values)
 
     def stats(self):
         """High-water marks of the last forward call with this batch size (host sync; call outside jit), with MuJoCo

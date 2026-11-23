@@ -2,17 +2,7 @@
 affinity / governor / NUMA, OS), the software of an interpreter (Python, package versions with their wheel tags and
 install origin, nvcc, the environment variables that change results), the harness commit, and NablaEngine's own
 provenance block where nablaengine is importable. Standard library only, so it imports in every engine environment;
-every probe is best effort (a missing tool gives None, never an exception).
-
-  from benchmarks.bench import prov
-  prov.machine("rtx_pro_6000")    # {tag, gpu, cpu, os, scheduler_cpus}
-  prov.software()                 # {python, executable, packages, nvcc, env}
-  prov.cpu_load()                 # [1, 5, 15 min load averages]
-  prov.rel(path), prov.scrub(text)  # repository-relative paths; free text without home / host / temp paths
-
-Paths are recorded relative to the repository (or to ~), never with host names, user names or job ids.
-The GPU is the first entry of CUDA_VISIBLE_DEVICES (index or UUID, as nvidia-smi names it), else nvidia-smi's GPU 0.
-"""
+every probe is best effort (a missing tool gives None, never an exception)."""
 
 import hashlib
 import importlib.metadata
@@ -45,7 +35,6 @@ def _run(cmd, timeout=20):
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-# ------------------------------------------------------------------------------------------------- paths and text
 
 def rel(path):
     """path relative to the repository when inside it, else with the home directory as ~, else only its last part
@@ -95,7 +84,6 @@ def sha256(path, chunk=1 << 20):
     return h.hexdigest()
 
 
-# ------------------------------------------------------------------------------------------------- GPU
 
 def visible_gpu():
     """The first visible GPU as nvidia-smi names it: the first entry of $CUDA_VISIBLE_DEVICES, else None (GPU 0)."""
@@ -169,7 +157,6 @@ def process_gpu_mib(pid=None):
     return None
 
 
-# ------------------------------------------------------------------------------------------------- CPU
 
 def _read(path):
     try:
@@ -246,7 +233,6 @@ def default_tag():
     return re.sub(r"[^a-z0-9]+", "-", g["name"].lower()).strip("-")[:48] or "gpu"
 
 
-# ------------------------------------------------------------------------------------------------- software
 
 def package(name):
     """{version, wheel_tags, origin} of an installed distribution, None if absent. origin: the URL it was installed
@@ -339,7 +325,7 @@ def nablaengine_provenance():
     try:
         from nablaengine import provenance as dkp
         return dkp.provenance()
-    except Exception:  # noqa: BLE001  (not installed, or no GPU / nvcc on this machine)
+    except Exception:
         return None
 
 

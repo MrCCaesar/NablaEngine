@@ -1,12 +1,6 @@
 """Shared, dependency-light helpers of the truth package (numpy and the standard library only, so that the native
 MuJoCo Warp labelling process, truth/mjw_labels.py, imports them too): digests of corpus inputs and cotangents, the
-problem a corpus belongs to, the cache directory and its keyed npz files.
-
-  from benchmarks.bench.truth import common
-  prob = common.problem_of(corpus)                 # problem.Problem of a problem.Corpus (Track A or B)
-  common.inputs_digest(corpus.arrays), common.cot_digest(corpus)
-  common.save_cached(path, meta, arrays); common.load_cached(path, meta)   # None unless the meta matches
-"""
+problem a corpus belongs to, the cache directory and its keyed npz files."""
 
 import hashlib
 import json
@@ -16,10 +10,10 @@ import numpy as np
 
 from benchmarks.bench import problem as P
 
-MAXC = 64  # contact slots per substep in the packed contact arrays (truth/fdlib.MAXC)
-CACHE_DEFAULT = "runs/bench/truth"  # --cache-dir of the truth tools: forward truth, labels, FD Jacobians
-TRUTH_SUBDIR = "truth"  # truth files: <data dir>/truth/<corpus>.npz (data dir: $DK_BENCH_DATA, default benchmarks/data)
-VERSION = 1  # of the cached arrays' semantics (part of every cache key)
+MAXC = 64
+CACHE_DEFAULT = "runs/bench/truth"
+TRUTH_SUBDIR = "truth"
+VERSION = 1
 
 
 def inputs_digest(arrays):

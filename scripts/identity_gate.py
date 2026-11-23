@@ -41,9 +41,18 @@ new manifest and new digest entries).
   PYTHONPATH=src python scripts/identity_gate.py --write --out docs/results/identity_g1_mjlab.json --force
       # (re)write the committed manifest's entries of this machine's toolchains (other entries are kept)
 
+--engine forest: the forest engine's gate, the same levels and verdicts on a manifest
+docs/results/identity_forest.json (not included: write one with --write), over the models of FOREST_MODELS (the
+mjlab G1 and the G1-class robot fixture go1 routed with nablaengine.engines.prefer_forest, the G1 with the tree engine's COM-offset body torso_link, the
+robot with its fixture's com_body; two equality / tendon scenes
+of scripts/eq/models): per model <model>/ffi/<unit>.cu as above, and for the G1 g1/check/step.cu (engine_step_check.py's
+forest binary). It proves later forest ports bitwise neutral for builds that do not use them. The tree engine's gate
+routes the G1 with nablaengine.engines.prefer_tree, so $DK_ENGINE does not change it.
+
 cuobjdump: $CUOBJDUMP, else next to nvcc, on PATH or in a conda package cache (nablaengine.identity.find_tool); it must
 know every target it disassembles (sm_120: CUDA 12.8 or newer). Build switches that change units ($DK_SM120_FRONTEND,
-$DK_SM90_REG_CAPS, $DK_SM120_PRE_CAP, $DK_MAXCON, $DK_TEST_*) must be unset (--allow-env to run anyway; not for --write).
+$DK_SM90_REG_CAPS, $DK_SM90_CAPBOX_COOP, $DK_SM90_ADJ_CAP, $DK_SM120_PRE_CAP, $DK_FOREST_POST_CAP, $DK_MAXCON, $DK_TEST_*) must be unset (--allow-env to run
+anyway; not for --write).
 Exit status: 0 identical, 1 a unit differs (or is missing / new), 2 not comparable (no entry for this toolchain, a tool
 missing). Temporary build directories are removed at exit (--keep-work keeps them).
 """
@@ -56,30 +65,44 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import engine_step_check as ESC  # noqa: E402  (binary_source: the forward check binary)
+import engine_step_check as ESC
 
-from nablaengine import checks, cuda, fixtures, identity, jax_ffi, provenance, workdir  # noqa: E402
+from nablaengine import checks, cuda, engines, fixtures, identity, jax_ffi, provenance, workdir
 
 MANIFEST = ROOT / "docs" / "results" / "identity_g1_mjlab.json"
+MANIFEST_FOREST = ROOT / "docs" / "results" / "identity_forest.json"
 TARGETS = ("sm_70", "sm_86", "sm_90", "sm_120")
-INCLUDE = "jax_ffi_include"  # placeholder of the XLA FFI headers' directory (dk_ffi.cu's -I)
-EAC_DEFINES = ("DK_ADJ_CLAMP_KV=1", "DK_ADJ_STAGE=3", "DK_ADJ_NORMAL=0", "DK_ADJ_PARALLEL=0")  # the exact mode
-BUILD_ENV = ("DK_SM120_FRONTEND", "DK_SM120_FORWARD_FRONTEND", "DK_SM90_REG_CAPS", "DK_SM120_PRE_CAP", "DK_MAXCON",
+INCLUDE = "jax_ffi_include"
+EAC_DEFINES = ("DK_ADJ_CLAMP_KV=1", "DK_ADJ_STAGE=3", "DK_ADJ_NORMAL=0", "DK_ADJ_PARALLEL=0")
+BUILD_ENV = ("DK_SM120_FRONTEND", "DK_SM120_FORWARD_FRONTEND", "DK_SM90_REG_CAPS", "DK_SM90_CAPBOX_COOP", "DK_SM90_ADJ_CAP",
+             "DK_SM120_PRE_CAP", "DK_MAXCON",
+             "DK_FOREST_POST_CAP",
              "DK_TEST_FORWARD_VIRTUAL_ARCH", "DK_TEST_VIRTUAL_ARCH")
 ABOUT = ("Identity manifest of the mjlab G1's production build units (scripts/identity_gate.py, nablaengine.identity): "
          "per target and toolchain the L0 / L1 / L2 hashes of every FFI library unit and check binary")
+ABOUT_FOREST = ("Identity manifest of the forest engine's production build units (scripts/identity_gate.py --engine forest, "
+                "nablaengine.identity): per target and toolchain the L0 / L1 / L2 hashes of the FFI library units of each "
+                "model of FOREST_MODELS and of the G1's forest check binary")
+FOREST_MODELS = {
+    "g1": ("g1", None, "torso_link"),
+    "go1": ("robot", "go1/go1_flat", None),
+    "eq_fourbar": ("eq", "c1_fourbar.xml", None),
+    "eq_tendon_fingers": ("eq", "t1_fingers.xml", None),
+}
 
 
-def ffi_units(m, foot, target, include):
-    """The FFI library's units for target (jax_ffi.build_plan, jax_ffi.unit_command)."""
-    plan = jax_ffi.build_plan(m, foot, target)
+def ffi_units(m, foot, target, include, com_body=None, prefix=""):
+    """The FFI library's units for target (jax_ffi.build_plan, jax_ffi.unit_command); prefix: before the unit names."""
+    plan = jax_ffi.build_plan(m, foot, target, com_body=com_body)
     out = []
     for name in sorted(plan["units"]):
         cmd = jax_ffi.unit_command(name, target, plan["defines"], plan["unit_arch"], "{" + INCLUDE + "}")
-        out.append(identity.Unit(name=f"ffi/{name}", file=name, source=plan["units"][name],
+        out.append(identity.Unit(name=f"{prefix}ffi/{name}", file=name, source=plan["units"][name],
                                  command=[*cmd, "-c", "-o", "{out}", "{src}"], defines=list(plan["defines"][name]),
                                  consts=plan["consts"], include={INCLUDE: include} if name == "dk_ffi.cu" else {}))
     return out
@@ -87,7 +110,7 @@ def ffi_units(m, foot, target, include):
 
 def _check_command(extra, unit, target):
     cmd = cuda.compile_command("{src}", "{out}", extra, unit=unit, target=target)
-    return cmd[1:]  # without the nvcc path
+    return cmd[1:]
 
 
 def check_units(m, mt, target):
@@ -111,8 +134,51 @@ def check_units(m, mt, target):
 def model_record(d):
     mjb = Path(d) / "g1_train.mjb"
     m, mt = fixtures.load_model(d)
+    engines.prefer_tree(m)
     return m, mt, dict(mjb=provenance.rel(mjb), sha256=identity.sha256(mjb.read_bytes()),
                        mujoco=mt["mujoco_version"], foot_pairs=[int(p) for p in mt["foot_pairs"]])
+
+
+def forest_models(d):
+    """[(name, MjModel, foot_pairs, com_body, record)] of FOREST_MODELS (record: the source file and the sha256 of the
+    model as built, mj_saveModel's bytes)."""
+    import mujoco
+    out = []
+    for name, (kind, src, com_body) in FOREST_MODELS.items():
+        if kind == "g1":
+            m, mt = fixtures.load_model(d)
+            foot, path = list(mt["foot_pairs"]), Path(d) / "g1_train.mjb"
+        elif kind == "robot":
+            path = ROOT / "fixtures" / "robots" / (src + ".xml")
+            meta = json.loads(path.with_suffix(".json").read_text())
+            m = mujoco.MjModel.from_xml_path(str(path))
+            foot, com_body = list(meta["foot_pairs"]), meta.get("com_body")
+        else:
+            sys.path.insert(0, str(ROOT / "scripts" / "eq"))
+            import eq_check
+            path = ROOT / "scripts" / "eq" / "models" / src
+            m, foot = eq_check.load(path, False)[0].model, []
+        engines.prefer_forest(m)
+        buf = np.zeros(mujoco.mj_sizeModel(m), np.uint8)
+        mujoco.mj_saveModel(m, None, buf)
+        out.append((name, m, [int(p) for p in foot], com_body,
+                    dict(source=provenance.rel(path), sha256=identity.sha256(buf.tobytes()), com_body=com_body,
+                         foot_pairs=[int(p) for p in foot], nbody=int(m.nbody), nv=int(m.nv))))
+    return out
+
+
+def forest_units(models, target, include, kinds):
+    """The forest gate's units for target: per model its FFI units (<model>/ffi/...), the G1's forest check binary."""
+    out = []
+    for name, m, foot, com_body, _ in models:
+        if "ffi" in kinds:
+            out += ffi_units(m, foot, target, include, com_body, prefix=f"{name}/")
+        if "check" in kinds and name == "g1":
+            src, consts = ESC.binary_source(m, foot, "forest", com_body)
+            cmd = _check_command([], "forward", target)
+            out.append(identity.Unit(name="g1/check/step.cu", file="step.cu", source=src, command=cmd,
+                                     defines=[a for a in cmd if a.startswith("-D")], consts=consts))
+    return out
 
 
 def compute(tc, unit, levels, work_root):
@@ -128,7 +194,10 @@ def compute(tc, unit, levels, work_root):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--manifest", default=str(MANIFEST), help="the manifest to check against (default: the committed one)")
+    ap.add_argument("--engine", default="tree", choices=("tree", "forest"),
+                    help="the tree engine's gate (the G1) or the forest engine's (FOREST_MODELS)")
+    ap.add_argument("--manifest", default=None, help="the manifest to check against (default: the committed one of "
+                    "--engine)")
     ap.add_argument("--arch", default=",".join(TARGETS), help="comma-separated build targets")
     ap.add_argument("--units", default="ffi,check", help="ffi, check or both")
     ap.add_argument("--only", default="", help="only the units whose name contains one of these comma-separated "
@@ -145,6 +214,8 @@ def main(argv=None):
     workdir.add_argument(ap)
     args = ap.parse_args(argv)
     workdir.configure(args)
+    committed = MANIFEST_FOREST if args.engine == "forest" else MANIFEST
+    args.manifest = args.manifest or str(committed)
     env = {k: os.environ[k] for k in BUILD_ENV if os.environ.get(k)}
     if env and (args.write or not args.allow_env):
         ap.error(f"build switches set ({env}): unset them (--allow-env to compare anyway; never with --write)")
@@ -153,18 +224,28 @@ def main(argv=None):
     if args.write:
         if not args.out:
             ap.error("--write needs --out")
-        if Path(args.out).resolve() == MANIFEST.resolve() and not args.force:
-            ap.error(f"--out is the committed manifest {provenance.rel(MANIFEST)}: add --force to rewrite its entries")
+        if Path(args.out).resolve() == committed.resolve() and not args.force:
+            ap.error(f"--out is the committed manifest {provenance.rel(committed)}: add --force to rewrite its entries")
     targets = [t.strip() for t in args.arch.split(",") if t.strip()]
     kinds = set(args.units.split(","))
     levels = set(identity.LEVELS) if (args.full or args.write) else set(range(args.level + 1))
     import jax.ffi
     include = jax.ffi.include_dir()
-    m, mt, model = model_record(args.fixtures)
+    if args.engine == "forest":
+        fmodels = forest_models(args.fixtures)
+        model = {name: rec for name, _, _, _, rec in fmodels}
+    else:
+        m, mt, model = model_record(args.fixtures)
     tc = identity.Toolchain()
     old = None if args.write and not Path(args.out).exists() else json.loads(
         Path(args.out if args.write else args.manifest).read_text())
-    if old is not None and old.get("model", {}).get("sha256") != model["sha256"] and not args.write:
+    if args.engine == "forest" and old is not None and not args.write:
+        bad = sorted(n for n, r in model.items() if old.get("models", {}).get(n, {}).get("sha256") != r["sha256"])
+        if bad:
+            print(f"manifest models differ from this tree's: {bad}", file=sys.stderr)
+            return 1
+    elif (args.engine != "forest" and old is not None and not args.write
+          and old.get("model", {}).get("sha256") != model["sha256"]):
         print(f"manifest model {old.get('model')} is not this fixture {model}", file=sys.stderr)
         return 1
     work_root = workdir.work_dir("identity_gate_")
@@ -172,8 +253,11 @@ def main(argv=None):
     report, status = dict(targets={}), 0
     new_targets = {}
     for target in targets:
-        units = ((ffi_units(m, mt["foot_pairs"], target, include) if "ffi" in kinds else [])
-                 + (check_units(m, mt, target) if "check" in kinds else []))
+        if args.engine == "forest":
+            units = forest_units(fmodels, target, include, kinds)
+        else:
+            units = ((ffi_units(m, mt["foot_pairs"], target, include) if "ffi" in kinds else [])
+                     + (check_units(m, mt, target) if "check" in kinds else []))
         only = [x for x in args.only.split(",") if x]
         if only:
             units = [u for u in units if any(x in u.name for x in only)]
@@ -216,7 +300,7 @@ def main(argv=None):
                 return dict(verdict="new", detail="generated, not in the manifest")
             cur = compute(tc, u, {0}, work_root)
             diff = {0: identity.compare(entry, cur)[0]}
-            need = identity.clearing_level(entry, cur)  # the first level that may clear L0's difference (None: none)
+            need = identity.clearing_level(entry, cur)
             todo = [lv for lv in (1, 2) if lv in lv_ok]
             for lv in todo:
                 if not args.full and (need is None or (not diff[lv - 1] and lv - 1 >= need)):
@@ -247,12 +331,17 @@ def main(argv=None):
         if ref is None and lv_ok == {0} and levels - {0}:
             rep["levels_not_comparable"] = sorted(levels - {0})
     if args.write:
-        man = old if old is not None else identity.manifest_skeleton(ABOUT, model)
-        man["model"] = model
+        if args.engine == "forest":
+            man = old if old is not None else identity.manifest_skeleton(ABOUT_FOREST, None)
+            man.pop("model", None)
+            man["models"] = model
+        else:
+            man = old if old is not None else identity.manifest_skeleton(ABOUT, model)
+            man["model"] = model
         man["targets"].update(new_targets)
         man["targets"] = dict(sorted(man["targets"].items()))
         man["provenance"] = provenance.provenance()
-        for k in ("gpu", "mujoco_warp", "environment"):  # compile only: no GPU; build switches are unset (checked)
+        for k in ("gpu", "mujoco_warp", "environment"):
             man["provenance"].pop(k, None)
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(json.dumps(man, indent=1) + "\n")

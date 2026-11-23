@@ -137,17 +137,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "d1d1061a2ba7c0af897aafd94a99053591fca686c55c6a25df84893d148f3a79",
+      "source": "e4260e0bb4d4f91ab8dea50437fe61f38cf5f0bd98870fc27234cd52ce82d4b5",
       "defines": "8c5065ef04151f5876cf2cd820bbacd4890982ba8f6943277f41b49d579e7c46",
       "command": "ad0e8cd88773c0236a2278778c3f94f3674b299026d26634d8b2c8d610051f40",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "c14c11e75184aa0a6cc0c6e01eea9e89feab0ef3114f0ced553b87719d8116c1",
-      "host": "929756abcec7444a72a18dfff44dd8d4445fcdb0cdc9af65a60d96b0550893d3"
+      "device": "dc3c53b97d15b1de16720bb81204dbf563920353eb0a7d12dabd5c7086be322d",
+      "host": "fe1c38a007d1a70bc1627d89eda925200c94e4405351d91721bdb8f9cb74057f"
      },
      "L2": {
       "route": "ptxas",
@@ -167,7 +167,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "0e4939ca2b973b63a8110fdbe429d27de604c8c3a7caaab3413ea8ef0adfcf09"
+      "host": "8cfbde36c2b7d986cd169558059f6d0a6725fbd8e1d6cf1b34e38c59485aca59"
      }
     },
     "ffi/dk_kv0_n1.cu": {
@@ -177,17 +177,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "1639fa8135121df7f2b41ffdf8df5cd13684cddb6c872c388582b75cf6163fbc",
+      "source": "db3a24d71af5092a5d8224d87471833f115e5dcce40efe4cc3cd0f92c2c5c4cb",
       "defines": "8496c7924b10c76a488bb05ab64984020f312adf30f4f8f66ead3eeb20d7e16a",
       "command": "4b9d69401438903950b56f13207f7fa728f1dcc883564df36c7791cb286480f2",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "68c5c70f48ecdb7322e02c972a7d0b04ae833cb73f876bfec65a22a5f7937801",
-      "host": "59b113a933f1d402959d8db897c565bf9ef6af8be81fd5d96beffc2d615d6de2"
+      "device": "604faabfa46abe14760cce039d14ddc24e59c4a088d44eb9e9e184012741d48f",
+      "host": "e89b822393af2b34edd42ef39911215050d5606ff9e7c8355a1548ad3dda0c50"
      },
      "L2": {
       "route": "ptxas",
@@ -207,7 +207,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "968c74820b4caef4b6ba0ad6b13992209600ea0e2d8ed8625a61d979b7d46b2e"
+      "host": "d3fe74d70b0f169a70de9577e73c1509c7e881553d52589e3e74555c9c26a67d"
      }
     },
     "ffi/dk_kv0_n2.cu": {
@@ -217,17 +217,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "9711707f598d2f1c7f9fbfdd52c3f295fa729e112d51f5fcb380336ef1a2bede",
+      "source": "2709c01471ef332cb9b4afb17d97c1ee52c4187ed676423fa30fb98a9526a91c",
       "defines": "3de37a4fad396da9e94b322e17df92c1b4a77b2d65a6c9402ffefabdbcd77572",
       "command": "cc864bc841af6b5ab94cce94e339995ee1696c7f3353d5daa101bf51d9c4ccde",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "e199c4d4df677119c9c4ecc7040f18544cf98be761032c11eead5fc4a9b80caa",
-      "host": "e421e5205d0d536a131c052d8b106cc608815032233f3ea0dd24e47aa9287bab"
+      "device": "7b0787f3fc7f3e8861123cf650e3bba75b861e0a576a14ab5e3205ccbda461c7",
+      "host": "b9c9825fcb831eccead7967b9c60530c7d7651d79fe095babd95f78ad658753e"
      },
      "L2": {
       "route": "ptxas",
@@ -247,7 +247,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "9357cd4bafb2e2c89f4db29b4090ab194dd85770be683188a935c86e7e127cfc"
+      "host": "733f87f74ca5320141c5b9e80ff25ebd7cabad1f77193d4ec6569df5ac61357a"
      }
     },
     "ffi/dk_kv0_n3.cu": {
@@ -258,17 +258,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=3 -DSPLIT_PRE_MINB=16 -c -o {out} {src}",
      "L0": {
-      "source": "cc27fecb5f574cca969b257054d55bf45f3afb50c036c2f0f3f12098c1fda1ff",
+      "source": "0843c85e92d0ec93b5e9376f494065ab05c35e62b0c19542189d7e24d0a56c71",
       "defines": "e671eb1e5dd71147636c8ec9c4b95ca3e0e13790e1079ccad889181d266e6344",
       "command": "db056ac0ab67c8ef054b60bf4a5af6bbce9178b87c6d8d0be248731edfefb423",
-      "source_bytes": 270935,
+      "source_bytes": 274530,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "07f5fa4cbb4bb2289e7ac21874e8c23ec229df26d30f6958486d5c32a0c5ec08",
-      "host": "16bae375952bdc3e39b43ce0e38be2d3f481b29cc367a8c485033ac292aed274"
+      "device": "b08209e426bd5663efde17cd8fd50d124290722fba5b778cac00026e2651d3f4",
+      "host": "59e22e43ad8bd4acd04453f193d7697c5ecbf9bdf2a032edbe1222f4e179eba5"
      },
      "L2": {
       "route": "ptxas",
@@ -338,7 +338,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "6c32f8a734a6f36c98b91ddde663692672e6bb7be1e6472b732d20f072875317"
+      "host": "ce46e1f67f6e6c495e02ab48c554b04465e8146970fec933a0e8e4f33aec4ed9"
      }
     },
     "ffi/dk_kv1_n0.cu": {
@@ -348,17 +348,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "6d3f04a30d4b985936049d64cc612601903b36a59ce6e826b8a6fb5abcd268eb",
+      "source": "7b6d6158b94f3a706c4471fb3a3568534ae35a061f686adf28a3a1e84ec44d34",
       "defines": "b636d6162de2290328b33720293945e3c00a3a00bcfafc72516baf8081f335ca",
       "command": "4af4aeef59c78af9e63af0348ef934e401d8d1b5506f06250ef63f77d6d86516",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "5dbca6ff26a68b43df39ce76139b49ffd760d9fda35d22d57a69bd5d18852a26",
-      "host": "698351ad5dbf7e7820f66747a13ccc2b2e65377f5f5726c9dd0fefa59856d323"
+      "device": "2bd76e3fcc7dfc43392d8a540922bcd7b8b5141a7e7646f09f841b5b5a28c953",
+      "host": "eb0932aca6beaca9f31b6fbc6bfbe3402ea3bf7c52fa453f96e3f0af41c6e1fc"
      },
      "L2": {
       "route": "ptxas",
@@ -378,7 +378,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "58304e63d272ed76961b75da9c622990bf3379a4a5e1d8429586c56c90530a81"
+      "host": "83420a8eaa05fb487d65e3a633206be011a679f81cd481bb860bc5b87bddbdd3"
      }
     },
     "ffi/dk_kv1_n1.cu": {
@@ -388,17 +388,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "8eedf36b9181954abd30f93d658d139e6ab66faf676c2b0d61622278247ac538",
+      "source": "07604bf5cfd6432140f84effe5f1daaef46cabcba116cd001ca5fec438ec30fa",
       "defines": "864ddc919284bf728c1621eb8d2f6ac6359455773b4fc5ed672a11a32e3db05a",
       "command": "756bf3c529a29b70987d485bba89a237a2f3fb9122b59bab9185275c0ce53cad",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "bae683b62984d39c9c4a11fc445cba44cbea5b95b60360054f213b713284a3da",
-      "host": "9729a83ddf10f2eda27f4215530f170e38c95446bd488303704601579145b48f"
+      "device": "cd45ee8fe2e0084bd49d0f1a8ac1df82ca41e1c5a6adadc87b9d180760ebec90",
+      "host": "5f0e2266246849cf524c192b16bd70a6fa6c934e2cfcd11069b2b3b0100535ec"
      },
      "L2": {
       "route": "ptxas",
@@ -418,7 +418,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ea5589e259da20520fd28d346f8c6df43a02a9912c63ba81e14c3c049be6c6bc"
+      "host": "448854d36066f9134577ae63403ce42cf91cb6a2b2f3332b188b5750df254153"
      }
     },
     "ffi/dk_kv1_n2.cu": {
@@ -428,17 +428,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "ade225cafef66c37344dee522c7803a3ba859cf096e0475c16f2ebd0b9445f78",
+      "source": "1f7c372212cbdfd8612cffdd269a0c4c91da3f34a4aa2d6c03425766772e025c",
       "defines": "77e92c03510ed52b83c99a40cebfbc00eda6f15edc494220a2e71dca8185340b",
       "command": "5abc6f15855fe68182fbb47b8bfde807b4c0adefa235b5edfac0ac4c6cc076da",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "096d7f90b9127392deca06af412e9fba7f9535b4e8bf487133a461a82f88b797",
-      "host": "bfdbc09fe2e8ee8fa371085d3aaec2db58ef41de2e1718d4e3b49add234bffa1"
+      "device": "0fac3ddbf226a5c0b6750cd3a70182e97c82a6441d69672a69725ef5f852973f",
+      "host": "b5075399690c1ee8aec05ca8d2fc42a12a4341fa5bd88684b9378ccea658255a"
      },
      "L2": {
       "route": "ptxas",
@@ -458,7 +458,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ca8f156301a3b66cba0ae66d852012bb7aa1fa2bed29c689afe33fc4f0f009c7"
+      "host": "5cca7c3198627e28caed761f3a0b70126a365d84ce1a1945b85c5ba92a43506f"
      }
     },
     "ffi/dk_kv1_n3.cu": {
@@ -468,17 +468,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "20fcb6c0a62dda78577df3406a7b56e1c6aca8a7751ee36868b37fc5e30cb92c",
+      "source": "987d06ba8c2864ca9a3893195b9752fad5f8b2b02c011b10cb0759bdf607f9e9",
       "defines": "4a6c1c9ef899dae62139137720055ce85353e4351365f87fe2482a50a1903b9e",
       "command": "557f7dbaf2cc2f025d59d65a611f6b8aff811a81f31e6cc3f5c255bf73377478",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "de7df505b6f501a207805da9f569e57508851b06de131d63092abf9c93faeb7e",
-      "host": "321a929b0ab6f15a3eca7aab7f5a030dd101c644ee64b5c2d75b747e49a38fae"
+      "device": "c3608d82b74cc7367a89128195e0487dbfe15d1b1fadbe9b0890215c9237f5ec",
+      "host": "d5709bda7a8d9450999a124dc285d39ab13a4a8524627208c86091777d5d2808"
      },
      "L2": {
       "route": "ptxas",
@@ -498,7 +498,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "98ecf11fa5db77d87bb1edcdf22bd8f8b67ae97944b331bf68faf3ee98ee03d0"
+      "host": "b48c46169af02c345fddc8078099d579a2f4c94a2b1b1173a1cd535d2b2d6cd5"
      }
     },
     "ffi/dk_kv2_n0.cu": {
@@ -508,17 +508,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "c484f3b8bc54262eeadaf58400e943e096d1ef94e86bed942e03c1cef3651222",
+      "source": "35c55b2ebccabdeda5df431b6c538ecd4700568e06a33f041cc0d8cb432c719c",
       "defines": "9fbdccbf13146828516685612cd41492c4848be2058da4931a471c4fa48cfbf4",
       "command": "2e997a2bc4e81d031a1d1a466e6d5919f5b36fa6941a2e7d488beee7a0485985",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "863da0e3037ad469e1d8293a15977db99ff800832b68edb72be37f9d4d632198",
-      "host": "44cda8ccdf40c4b12f03a5fc230de9229459894371bde6126b3951fbf0ebd360"
+      "device": "77ae69769702e367b81b88ea2549f5dc216cd571cb14a936973a394b9efa35d5",
+      "host": "98e6487eba39e526001c0a286a56c0a6eb97b1e682c8040ba089320cd7f00d0a"
      },
      "L2": {
       "route": "ptxas",
@@ -538,7 +538,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "69f93688dace6680c0ba60b96df2133124e0e426f1cb7dc7c49c5aaf9cbb6ce3"
+      "host": "36e4e8428fa7edcc7cbb329098286420e8be8d6cbb1bd0c6490c591ada31b3ad"
      }
     },
     "ffi/dk_kv2_n1.cu": {
@@ -548,17 +548,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "e7f6cf3c00df00da72bd2741127fc5cd5d0cf2bfffb4dde92373aeba0541a502",
+      "source": "a3fef6a7bb5644b197f8a2d5f424e6ee6c5435e13f820f2cad0f6295106f140f",
       "defines": "96a0bc4d0e233aa82137f7195a191dffbd17c91b948c835146ee1fc0c40bbf1d",
       "command": "d496c2379b161f78f26d72a55a258b76a3c60dc102a87034bc25f494aab9232c",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "b67d26a4eb164d4463332e7ec9f897a85f74f3d950c67bdcc903ba73b98254e2",
-      "host": "e7582b689ef2db13cd7f4bff8f2a115f4c5fd343eb4bab8286170ed50104a3b8"
+      "device": "8a4d86243211395f487d9f1bcd9804fa3e0af43fae458e4cdc00c9012a13c2ad",
+      "host": "ace8745cf8deb3009e4cf0d2aad433c44d1fbd678e134736de991b392e16686e"
      },
      "L2": {
       "route": "ptxas",
@@ -578,7 +578,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "1bb9c397851b75e080ab97451bea090b08848cfa9f6114f2d8b61615ea57b286"
+      "host": "08cb92a45c50bad7d01e75803d2791e87887305ac43298dbebde8688eda52c64"
      }
     },
     "ffi/dk_kv2_n2.cu": {
@@ -588,17 +588,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "9e7361310c9e0ce45ef83575d073f8345b6c1a79d439bdf43e19acba9fe6db79",
+      "source": "678024eab9dd9c9fc6e59ab4722d71d573a45e41a172525ddb553d2305bf8f2b",
       "defines": "bfe2a96c191113efd4f53042894fc90bd72226747007eaa5b42099f36b7ab29e",
       "command": "17a04994a9e358d76591e2898dd5345568328d075c8a07c92f84e708c8d3fd45",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "cb9f8584ff2e1ed8777d87eb5dda75087b4b89b02b9abdc16631bc67bbfb9e17",
-      "host": "ad1666aa09041dea5d72a595c792afcd8a374baae319be6845c692066557a17d"
+      "device": "c0dc17db25fcbc7920ccac339ac983c9ac428b4a414afaeecd875f44b1b1a96f",
+      "host": "08ea785d9d03a316b0d6fe2be6dc7c1808d376f02712b5c623a9144be3cbb4b8"
      },
      "L2": {
       "route": "ptxas",
@@ -618,7 +618,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "cca1e50d0033781c1fb8dd15a8ad8611328558becd1fff0e271c65c10f14cf79"
+      "host": "2912e459bc68780d3911fc41d3d52e983b4863fce2fe38e84cd28474b40d9e30"
      }
     },
     "ffi/dk_kv2_n3.cu": {
@@ -628,17 +628,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "cf4d2a5a43c953277141851becfad67cb41b5e0072137f7e2170dd5ae2ab6aab",
+      "source": "09482c180da1246ae4225797ef6805ce7a9ccd73ed42e5f250af9976dab1c457",
       "defines": "4e1dfcf9a137e45eb66985b793f2db9c788c4456971ac032b65fc684981b454c",
       "command": "33c53e0cdab7634c905255c9ad8f2d9b1bfd3ecb77ae341427b62b6d281bc55d",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "513c112d3ed4cd1951f4d9fc10f113a0d4fcdd52ddcca6275d0c8a6a34f3c836",
-      "host": "6b094c36793614810920b0becb3db2d186f132d1c72f52a0f416fb7fcc1f4116"
+      "device": "e023edd335656121cdbea53f7bb352711340590d24df00350725e502901b1740",
+      "host": "64dbea113087c818c34f8c711fdfe9f725a7b60fc0e6771131d67f1197a00a21"
      },
      "L2": {
       "route": "ptxas",
@@ -658,7 +658,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "2816612130026489a56d527289ec57c4e6b80a11cadfb6766b556b9df75cc4bf"
+      "host": "de44463ee2bc299cf70d1e5d5e5f72304424f0eb5fa5c031c69f47e48878f9ed"
      }
     },
     "check/step.cu": {
@@ -667,17 +667,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -DSPLIT_PRE_MINB=16 -o {out} {src}",
      "L0": {
-      "source": "b95427a8e42aea86595607089f0caaecdae63046ee45655b8bd650a59a7772b0",
+      "source": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996",
       "defines": "5fa9f5bc4e0fecb6a9ec7265e06d6c5bd83dd3111fdbabb17ba000e065113443",
       "command": "8ff03cfd933d45e0d442282adeb4d58a51cc34445ae2cbefc6523e6a4bbca1e8",
-      "source_bytes": 160142,
+      "source_bytes": 162178,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "40e02380fd4710c152b0e471985ff0f2d46b875a8f52c411c43fda88bb5197a4",
-      "host": "19d924c7ebeced9af7971c11adb665ed952f63f09b8c32337f156e334818392b"
+      "device": "7719dfc13c2b738ed2cd3e985f905528e890ba1b20e7d5fd09caf397bddb0ccb",
+      "host": "710c09cce526e59b6643f01f46bcf9fc6266047498db8e15957506cbae362f4c"
      },
      "L2": {
       "route": "ptxas",
@@ -717,7 +717,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "c36a9abb5d9e0eac082529813887a16786f568ec24be5026f0a2bdb19b8acd98"
+      "host": "478fbff35897febed224eb4e6caed752eb7baa284bfd19a85ecfd4b40cd12b47"
      }
     },
     "check/step_fused.cu": {
@@ -727,17 +727,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -DDK_SPLIT=0 -DSPLIT_PRE_MINB=16 -o {out} {src}",
      "L0": {
-      "source": "b95427a8e42aea86595607089f0caaecdae63046ee45655b8bd650a59a7772b0",
+      "source": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996",
       "defines": "0eb6989f52ad61304ee36c414c115fd72812273d5ed3a5fb47175018b24d92c0",
       "command": "deb33971f158d90e6cf81b6576134d4ec5e94c5f95a35b542fd83fa502c61a9b",
-      "source_bytes": 160142,
+      "source_bytes": 162178,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "3f67166d77d77d55fb11165129bcb283ac1b703b2b1a957f35e68cba15c69902",
-      "host": "3d85f7d275d5b578556307d980610539c3034a755219dd8d2b32e69884073455"
+      "device": "a55623bcef84f7e6df475189df58502592440f3e46a4abd984b25bf8b9c4e4b4",
+      "host": "c69c4f7c006a92a08156f8fd44ec00187a8926134af6ce60861b3830db88eca0"
      },
      "L2": {
       "route": "ptxas",
@@ -777,7 +777,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ac338f2a79bb0dcc01388f5e000321148d7daf19fd5a2e790f4b4af569a8e405"
+      "host": "de33fb0f3f4370d8ba9dfe2d541b7ddea5e59b07d4f48cc58264d758ed9cbfd7"
      }
     },
     "check/adj.cu": {
@@ -790,17 +790,17 @@
      ],
      "command": "nvcc -O3 -arch=compute_90 -code=sm_120 -std=c++17 -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_STAGE=3 -DDK_ADJ_NORMAL=0 -DDK_ADJ_PARALLEL=0 -DSPLIT_PRE_MINB=16 -o {out} {src}",
      "L0": {
-      "source": "0da10aa615a349dda54f981cc3c4644dc20682b3ceabf82b11cc0289064bf3e1",
+      "source": "a0d4a030ebe381e1d8c27ce49c54b1733354da95507849bcca867dc48cfdfa33",
       "defines": "14b8572785f3a4ac98ca441d7450e06ed3b79e59caf569b9e91aa47737bef433",
       "command": "3a95423b002c8fe3ca188d4101e2753f1281d09381ea180ace781057ccc34365",
-      "source_bytes": 258681,
+      "source_bytes": 262276,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "8f0761b4123d7164a495f6437d433281d421944157c22a513d7bb0eaa9adc19e",
-      "host": "310de027c998913841c1ad0a9e488fb41e9ec848adce01594522412ee068cef2"
+      "device": "bbc0624f34599f41c87387c37f5e1a4ac33e881f4b4011eb26fb7652ab303441",
+      "host": "42ce7225d9ddfb247b2759f7ee55b3e20125263a590f70b8428757333c7d958a"
      },
      "L2": {
       "route": "ptxas",
@@ -850,7 +850,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "c7ee094e1ce5e71fe820faa157aef7de31727b7f9ad3a859e9663b6d4be18e74"
+      "host": "46d083050ddaea86b043b8ffb35a9ee6903410d0c0c91a79d1854b66615feaaf"
      }
     }
    }
@@ -950,17 +950,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "d1d1061a2ba7c0af897aafd94a99053591fca686c55c6a25df84893d148f3a79",
+      "source": "e4260e0bb4d4f91ab8dea50437fe61f38cf5f0bd98870fc27234cd52ce82d4b5",
       "defines": "8c5065ef04151f5876cf2cd820bbacd4890982ba8f6943277f41b49d579e7c46",
       "command": "1ed74a5ad3c7b90639c121250887cdf44d37209e7b099740415950f3e2dbf476",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "1eaffabae4acf28ae7c9041bb997501e3e919a1a16a292d8ea5529962a763aae",
-      "host": "929756abcec7444a72a18dfff44dd8d4445fcdb0cdc9af65a60d96b0550893d3"
+      "device": "c67f2738fbec97c955f5e2ed10d25deba845ffc451b4f5a33292ba0c479e5bbd",
+      "host": "fe1c38a007d1a70bc1627d89eda925200c94e4405351d91721bdb8f9cb74057f"
      },
      "L2": {
       "route": "nvcc",
@@ -981,7 +981,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "0e4939ca2b973b63a8110fdbe429d27de604c8c3a7caaab3413ea8ef0adfcf09"
+      "host": "8cfbde36c2b7d986cd169558059f6d0a6725fbd8e1d6cf1b34e38c59485aca59"
      }
     },
     "ffi/dk_kv0_n1.cu": {
@@ -991,17 +991,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "1639fa8135121df7f2b41ffdf8df5cd13684cddb6c872c388582b75cf6163fbc",
+      "source": "db3a24d71af5092a5d8224d87471833f115e5dcce40efe4cc3cd0f92c2c5c4cb",
       "defines": "8496c7924b10c76a488bb05ab64984020f312adf30f4f8f66ead3eeb20d7e16a",
       "command": "af237d2786ccad79165327253b24af5c8229aa866b1f7e8c4d9f4bfcbf65f0b7",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "625854ba27f4aed4818e80f3dddcacd3429974a6ce8916756d60424ec38d1b52",
-      "host": "59b113a933f1d402959d8db897c565bf9ef6af8be81fd5d96beffc2d615d6de2"
+      "device": "65eb28f049172eef305b5b31e2ad05bc7a4bd54ff88121983d39329d46003fd8",
+      "host": "e89b822393af2b34edd42ef39911215050d5606ff9e7c8355a1548ad3dda0c50"
      },
      "L2": {
       "route": "nvcc",
@@ -1022,7 +1022,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "968c74820b4caef4b6ba0ad6b13992209600ea0e2d8ed8625a61d979b7d46b2e"
+      "host": "d3fe74d70b0f169a70de9577e73c1509c7e881553d52589e3e74555c9c26a67d"
      }
     },
     "ffi/dk_kv0_n2.cu": {
@@ -1032,17 +1032,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "9711707f598d2f1c7f9fbfdd52c3f295fa729e112d51f5fcb380336ef1a2bede",
+      "source": "2709c01471ef332cb9b4afb17d97c1ee52c4187ed676423fa30fb98a9526a91c",
       "defines": "3de37a4fad396da9e94b322e17df92c1b4a77b2d65a6c9402ffefabdbcd77572",
       "command": "914c28a523e33b8e4ba8bc3cddfbab4d694131c4394f63983199b6876cf118bb",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "f238f0e296e9ac43a9ebbddd7bad98dfe4d30c75dd3d0a01e47cf3e1c9e9c39d",
-      "host": "e421e5205d0d536a131c052d8b106cc608815032233f3ea0dd24e47aa9287bab"
+      "device": "dbe16b4125ca99a5f9f4b15096924fdfe4356b701667328dc971f61819f4f16e",
+      "host": "b9c9825fcb831eccead7967b9c60530c7d7651d79fe095babd95f78ad658753e"
      },
      "L2": {
       "route": "nvcc",
@@ -1063,7 +1063,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "9357cd4bafb2e2c89f4db29b4090ab194dd85770be683188a935c86e7e127cfc"
+      "host": "733f87f74ca5320141c5b9e80ff25ebd7cabad1f77193d4ec6569df5ac61357a"
      }
     },
     "ffi/dk_kv0_n3.cu": {
@@ -1073,17 +1073,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "cc27fecb5f574cca969b257054d55bf45f3afb50c036c2f0f3f12098c1fda1ff",
+      "source": "0843c85e92d0ec93b5e9376f494065ab05c35e62b0c19542189d7e24d0a56c71",
       "defines": "b4e3c82c3221f752fdf0b95556a74fab216a1db3d4ea53967d2af263ce5f931a",
       "command": "898aa570351e8e0acaecda36c6d2f416c97af8ea2018bd9a0fb1fcfe905cd923",
-      "source_bytes": 270935,
+      "source_bytes": 274530,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "967c255a3787b1362cae098d3474eec3aee83394545dc2c103863c0eec0b6143",
-      "host": "4ff8689492d511cbf08674786419e066ffe1032dd29f803b6839d688d15ebfe0"
+      "device": "36ce35dfd3a1026c51921a1f44e7e9d7afce77b36d1a8700dba0c1cc689ff433",
+      "host": "b7e8c0b9a2be8f3ce27345ae19f1134b0f2753a01be5fac0081724e26d3d3c5c"
      },
      "L2": {
       "route": "nvcc",
@@ -1159,7 +1159,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "6c32f8a734a6f36c98b91ddde663692672e6bb7be1e6472b732d20f072875317"
+      "host": "ce46e1f67f6e6c495e02ab48c554b04465e8146970fec933a0e8e4f33aec4ed9"
      }
     },
     "ffi/dk_kv1_n0.cu": {
@@ -1169,17 +1169,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "6d3f04a30d4b985936049d64cc612601903b36a59ce6e826b8a6fb5abcd268eb",
+      "source": "7b6d6158b94f3a706c4471fb3a3568534ae35a061f686adf28a3a1e84ec44d34",
       "defines": "b636d6162de2290328b33720293945e3c00a3a00bcfafc72516baf8081f335ca",
       "command": "1f23c560898422b772784bb4ec3869a50972ebec4e5f3d0a65d96d970791289b",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "81cd0b4148752373ec008486c8da65b3088d76cc86bbbf9d16ea307cb7733cdb",
-      "host": "698351ad5dbf7e7820f66747a13ccc2b2e65377f5f5726c9dd0fefa59856d323"
+      "device": "168145b11f4f2bb05e1dcf8c761ccc8cc66c5ec740d7b85037d4d74465ff158f",
+      "host": "eb0932aca6beaca9f31b6fbc6bfbe3402ea3bf7c52fa453f96e3f0af41c6e1fc"
      },
      "L2": {
       "route": "nvcc",
@@ -1200,7 +1200,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "58304e63d272ed76961b75da9c622990bf3379a4a5e1d8429586c56c90530a81"
+      "host": "83420a8eaa05fb487d65e3a633206be011a679f81cd481bb860bc5b87bddbdd3"
      }
     },
     "ffi/dk_kv1_n1.cu": {
@@ -1210,17 +1210,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "8eedf36b9181954abd30f93d658d139e6ab66faf676c2b0d61622278247ac538",
+      "source": "07604bf5cfd6432140f84effe5f1daaef46cabcba116cd001ca5fec438ec30fa",
       "defines": "864ddc919284bf728c1621eb8d2f6ac6359455773b4fc5ed672a11a32e3db05a",
       "command": "3a03f4575ec130331131e9cfe2ea8866e810399f5547073fc1a3fe30bd8e4279",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "86f4368bab8f8cff7f2dd0c26106c6a600ac0972b342e27d99a73c56b5c5dd70",
-      "host": "9729a83ddf10f2eda27f4215530f170e38c95446bd488303704601579145b48f"
+      "device": "803096c30d9c4a390320a1c2dc66192e03aef1ba0e18c1771ee62aa23851dc68",
+      "host": "5f0e2266246849cf524c192b16bd70a6fa6c934e2cfcd11069b2b3b0100535ec"
      },
      "L2": {
       "route": "nvcc",
@@ -1241,7 +1241,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ea5589e259da20520fd28d346f8c6df43a02a9912c63ba81e14c3c049be6c6bc"
+      "host": "448854d36066f9134577ae63403ce42cf91cb6a2b2f3332b188b5750df254153"
      }
     },
     "ffi/dk_kv1_n2.cu": {
@@ -1251,17 +1251,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "ade225cafef66c37344dee522c7803a3ba859cf096e0475c16f2ebd0b9445f78",
+      "source": "1f7c372212cbdfd8612cffdd269a0c4c91da3f34a4aa2d6c03425766772e025c",
       "defines": "77e92c03510ed52b83c99a40cebfbc00eda6f15edc494220a2e71dca8185340b",
       "command": "af04de791bc918e9c84f9299a2aae86bf5d26ec88a586137aa5283cbfd0942a9",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "685c911e404f24c2e9e7c815e1dd1e47e120f2efc7f6e96fee38292d1e3ca23f",
-      "host": "bfdbc09fe2e8ee8fa371085d3aaec2db58ef41de2e1718d4e3b49add234bffa1"
+      "device": "258b78b14c3cc1b4baebd51eaf091ebe5c13f920b12394afbccd5da586f9bbfb",
+      "host": "b5075399690c1ee8aec05ca8d2fc42a12a4341fa5bd88684b9378ccea658255a"
      },
      "L2": {
       "route": "nvcc",
@@ -1282,7 +1282,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ca8f156301a3b66cba0ae66d852012bb7aa1fa2bed29c689afe33fc4f0f009c7"
+      "host": "5cca7c3198627e28caed761f3a0b70126a365d84ce1a1945b85c5ba92a43506f"
      }
     },
     "ffi/dk_kv1_n3.cu": {
@@ -1292,17 +1292,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "20fcb6c0a62dda78577df3406a7b56e1c6aca8a7751ee36868b37fc5e30cb92c",
+      "source": "987d06ba8c2864ca9a3893195b9752fad5f8b2b02c011b10cb0759bdf607f9e9",
       "defines": "4a6c1c9ef899dae62139137720055ce85353e4351365f87fe2482a50a1903b9e",
       "command": "f8550e2abc3e799ea033b5235d7fb7838511c549c64e3cdf2efa7a3d03fe256f",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "01052070e31f082525f9ffb1704524b078a023402adb6b80dc46b526574d2c32",
-      "host": "321a929b0ab6f15a3eca7aab7f5a030dd101c644ee64b5c2d75b747e49a38fae"
+      "device": "3f6b4dfc5530ee9e4478130ac61e40e511143a7b7899199c21553be6bfa8129d",
+      "host": "d5709bda7a8d9450999a124dc285d39ab13a4a8524627208c86091777d5d2808"
      },
      "L2": {
       "route": "nvcc",
@@ -1323,7 +1323,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "98ecf11fa5db77d87bb1edcdf22bd8f8b67ae97944b331bf68faf3ee98ee03d0"
+      "host": "b48c46169af02c345fddc8078099d579a2f4c94a2b1b1173a1cd535d2b2d6cd5"
      }
     },
     "ffi/dk_kv2_n0.cu": {
@@ -1333,17 +1333,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "c484f3b8bc54262eeadaf58400e943e096d1ef94e86bed942e03c1cef3651222",
+      "source": "35c55b2ebccabdeda5df431b6c538ecd4700568e06a33f041cc0d8cb432c719c",
       "defines": "9fbdccbf13146828516685612cd41492c4848be2058da4931a471c4fa48cfbf4",
       "command": "9ec66b55a74947d22381da79de6b433ad7d83b5fdb37965d48eba0281e4157e1",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "855138d49555ea941aea1ffd662a40cd3c716208559a02d7b74dde60d56a9fbf",
-      "host": "44cda8ccdf40c4b12f03a5fc230de9229459894371bde6126b3951fbf0ebd360"
+      "device": "0f154838e539bb87dadb530d7792eb3f2637849c8db8083b5ec21d43a2c5d0f3",
+      "host": "98e6487eba39e526001c0a286a56c0a6eb97b1e682c8040ba089320cd7f00d0a"
      },
      "L2": {
       "route": "nvcc",
@@ -1364,7 +1364,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "69f93688dace6680c0ba60b96df2133124e0e426f1cb7dc7c49c5aaf9cbb6ce3"
+      "host": "36e4e8428fa7edcc7cbb329098286420e8be8d6cbb1bd0c6490c591ada31b3ad"
      }
     },
     "ffi/dk_kv2_n1.cu": {
@@ -1374,17 +1374,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "e7f6cf3c00df00da72bd2741127fc5cd5d0cf2bfffb4dde92373aeba0541a502",
+      "source": "a3fef6a7bb5644b197f8a2d5f424e6ee6c5435e13f820f2cad0f6295106f140f",
       "defines": "96a0bc4d0e233aa82137f7195a191dffbd17c91b948c835146ee1fc0c40bbf1d",
       "command": "c664ba7ab1de4f46f23e107abbb127992d103c6a7a8d74b7bc3e1d4b4d157a04",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "93dcb3e274a330e81eb7adeaf512edc55b67353206d1eedbd51c1a2d418cbb40",
-      "host": "e7582b689ef2db13cd7f4bff8f2a115f4c5fd343eb4bab8286170ed50104a3b8"
+      "device": "170f2090a793e3b5d660e0d74a444e874c665dc738afd402e41da50a1dd05558",
+      "host": "ace8745cf8deb3009e4cf0d2aad433c44d1fbd678e134736de991b392e16686e"
      },
      "L2": {
       "route": "nvcc",
@@ -1405,7 +1405,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "1bb9c397851b75e080ab97451bea090b08848cfa9f6114f2d8b61615ea57b286"
+      "host": "08cb92a45c50bad7d01e75803d2791e87887305ac43298dbebde8688eda52c64"
      }
     },
     "ffi/dk_kv2_n2.cu": {
@@ -1415,17 +1415,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "9e7361310c9e0ce45ef83575d073f8345b6c1a79d439bdf43e19acba9fe6db79",
+      "source": "678024eab9dd9c9fc6e59ab4722d71d573a45e41a172525ddb553d2305bf8f2b",
       "defines": "bfe2a96c191113efd4f53042894fc90bd72226747007eaa5b42099f36b7ab29e",
       "command": "e4dabedba4890bbb55964c0517798a3761f1683100cf761cc61b58f33190a6a0",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "807f44a88a0811e56c4e0777ce4eac6b8ecc3f4185b9a00b68ac32c299801c99",
-      "host": "ad1666aa09041dea5d72a595c792afcd8a374baae319be6845c692066557a17d"
+      "device": "ea8a74a9d25682395987de3a066ca928b0a607a01537cf4ec97633a0437cb0fa",
+      "host": "08ea785d9d03a316b0d6fe2be6dc7c1808d376f02712b5c623a9144be3cbb4b8"
      },
      "L2": {
       "route": "nvcc",
@@ -1446,7 +1446,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "cca1e50d0033781c1fb8dd15a8ad8611328558becd1fff0e271c65c10f14cf79"
+      "host": "2912e459bc68780d3911fc41d3d52e983b4863fce2fe38e84cd28474b40d9e30"
      }
     },
     "ffi/dk_kv2_n3.cu": {
@@ -1456,17 +1456,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "cf4d2a5a43c953277141851becfad67cb41b5e0072137f7e2170dd5ae2ab6aab",
+      "source": "09482c180da1246ae4225797ef6805ce7a9ccd73ed42e5f250af9976dab1c457",
       "defines": "4e1dfcf9a137e45eb66985b793f2db9c788c4456971ac032b65fc684981b454c",
       "command": "19d61d7d2c80723861b32e6261e283d7e4418885eb063a1eb41f330976640b79",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "99c8fdb6ccf831e6cc096da88950b5e527ab7e024434c2b84a341a61d071a2bc",
-      "host": "6b094c36793614810920b0becb3db2d186f132d1c72f52a0f416fb7fcc1f4116"
+      "device": "398d3173aabf63996d8f4988f0d1618fae96d98e27c4e8dd899a0a9302a74935",
+      "host": "64dbea113087c818c34f8c711fdfe9f725a7b60fc0e6771131d67f1197a00a21"
      },
      "L2": {
       "route": "nvcc",
@@ -1487,24 +1487,24 @@
         "SAMPLER": 0
        }
       },
-      "host": "2816612130026489a56d527289ec57c4e6b80a11cadfb6766b556b9df75cc4bf"
+      "host": "de44463ee2bc299cf70d1e5d5e5f72304424f0eb5fa5c031c69f47e48878f9ed"
      }
     },
     "check/step.cu": {
      "defines": [],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -o {out} {src}",
      "L0": {
-      "source": "b95427a8e42aea86595607089f0caaecdae63046ee45655b8bd650a59a7772b0",
+      "source": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996",
       "defines": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "command": "e39b106e0edaae538041ee8fcfe6f0cbe52c9ae7d50ce3cea9fd710a50f7cfef",
-      "source_bytes": 160142,
+      "source_bytes": 162178,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "5746bf46900e97552431518aa937c6416a6e62551ed3a8cedb7ea6cb7336f0aa",
-      "host": "464d739a1816b9a509fc316dd597ba7a4dd94a1aede978f011283bf3348c3fc4"
+      "device": "0f4a3f63ef87c943ffbf9f012219e20cef64077d2a577aaba3892f3bef98188c",
+      "host": "70a199e53e7a54ffe84f115d4a9dd8d5214d53e590b3b30c0cf005414adafdf4"
      },
      "L2": {
       "route": "nvcc",
@@ -1547,7 +1547,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "c36a9abb5d9e0eac082529813887a16786f568ec24be5026f0a2bdb19b8acd98"
+      "host": "478fbff35897febed224eb4e6caed752eb7baa284bfd19a85ecfd4b40cd12b47"
      }
     },
     "check/step_fused.cu": {
@@ -1556,17 +1556,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -DDK_SPLIT=0 -o {out} {src}",
      "L0": {
-      "source": "b95427a8e42aea86595607089f0caaecdae63046ee45655b8bd650a59a7772b0",
+      "source": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996",
       "defines": "02f4e78ad3b9eb997cf08f15d533568eca2bb6ce27e33a4e000fdb8dfdb407d8",
       "command": "3d1fdd7aed05764ae64fb5e22faac75e6696b8a0c9c46838ef862dbf83e7f761",
-      "source_bytes": 160142,
+      "source_bytes": 162178,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "0f8022a9f8b10c4b093f17fe9ce2d04c649451fec90dddd8792e6a589dbdf053",
-      "host": "a78edce8424ba14ae8e97f1c842ffd17e4f00965b2aebd72dadaf96970d1f52a"
+      "device": "2d9cd88c587075d010e336bd21f14a0182945550304020f02e38de573e3d70a9",
+      "host": "6498849e7bd098c2a37a00ddb58691455a00e719922c540e4a0bac704708c111"
      },
      "L2": {
       "route": "nvcc",
@@ -1609,7 +1609,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ac338f2a79bb0dcc01388f5e000321148d7daf19fd5a2e790f4b4af569a8e405"
+      "host": "de33fb0f3f4370d8ba9dfe2d541b7ddea5e59b07d4f48cc58264d758ed9cbfd7"
      }
     },
     "check/adj.cu": {
@@ -1621,17 +1621,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_70 -std=c++17 -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_STAGE=3 -DDK_ADJ_NORMAL=0 -DDK_ADJ_PARALLEL=0 -o {out} {src}",
      "L0": {
-      "source": "0da10aa615a349dda54f981cc3c4644dc20682b3ceabf82b11cc0289064bf3e1",
+      "source": "a0d4a030ebe381e1d8c27ce49c54b1733354da95507849bcca867dc48cfdfa33",
       "defines": "91289f0a7fe9915bd8396bcb1398b3073c5d38eca6dcf6a484a024f02ce828c6",
       "command": "742e4ae6445d81f9d58e6402ffb13585e1b8d63c4a01658f2636da7dc8dea14d",
-      "source_bytes": 258681,
+      "source_bytes": 262276,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_70",
-      "device": "3c2effaf26a1149b92e6bb658c6af19b1c47f8a18f3989b8217e1ad0e30af053",
-      "host": "1c31ea1b8558fc8643fbc9368af8a5293dddef72d446052cc2040ed557da1d0d"
+      "device": "6b19c1f6de622ed254e63a45c95dcefaae4069b9734bc75a65a315ccb4bbb466",
+      "host": "50df492d727935abb6b6a76b8708904e6428d690d758acb0c31ae514072442b2"
      },
      "L2": {
       "route": "nvcc",
@@ -1685,7 +1685,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "c7ee094e1ce5e71fe820faa157aef7de31727b7f9ad3a859e9663b6d4be18e74"
+      "host": "46d083050ddaea86b043b8ffb35a9ee6903410d0c0c91a79d1854b66615feaaf"
      }
     }
    }
@@ -1785,17 +1785,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "d1d1061a2ba7c0af897aafd94a99053591fca686c55c6a25df84893d148f3a79",
+      "source": "e4260e0bb4d4f91ab8dea50437fe61f38cf5f0bd98870fc27234cd52ce82d4b5",
       "defines": "8c5065ef04151f5876cf2cd820bbacd4890982ba8f6943277f41b49d579e7c46",
       "command": "b5974284d52782ae0909bf24df3a34ee2ab60a3e909cc9814aa0a2e8ede26e72",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "fde7905d2a14f44870dfdc85b70d6f86f7fa025660d9558bf38ff6f8cf42dc8e",
-      "host": "929756abcec7444a72a18dfff44dd8d4445fcdb0cdc9af65a60d96b0550893d3"
+      "device": "6d0bda0289313f77431eb941364748af9d8fed699ce664653519632f97045913",
+      "host": "fe1c38a007d1a70bc1627d89eda925200c94e4405351d91721bdb8f9cb74057f"
      },
      "L2": {
       "route": "nvcc",
@@ -1816,7 +1816,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "0e4939ca2b973b63a8110fdbe429d27de604c8c3a7caaab3413ea8ef0adfcf09"
+      "host": "8cfbde36c2b7d986cd169558059f6d0a6725fbd8e1d6cf1b34e38c59485aca59"
      }
     },
     "ffi/dk_kv0_n1.cu": {
@@ -1826,17 +1826,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "1639fa8135121df7f2b41ffdf8df5cd13684cddb6c872c388582b75cf6163fbc",
+      "source": "db3a24d71af5092a5d8224d87471833f115e5dcce40efe4cc3cd0f92c2c5c4cb",
       "defines": "8496c7924b10c76a488bb05ab64984020f312adf30f4f8f66ead3eeb20d7e16a",
       "command": "5f089d36903812d55e839dd93d53d32e29412a864cc557054166bea842dce4a5",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "5487a88d2647c379a999b1ff98e77196f89b968e4f899b6eb39d82773750b00c",
-      "host": "59b113a933f1d402959d8db897c565bf9ef6af8be81fd5d96beffc2d615d6de2"
+      "device": "120ab7116d551cea8602534f501ee919dd2453e4a15cf3bf658bcb0d4e01409a",
+      "host": "e89b822393af2b34edd42ef39911215050d5606ff9e7c8355a1548ad3dda0c50"
      },
      "L2": {
       "route": "nvcc",
@@ -1857,7 +1857,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "968c74820b4caef4b6ba0ad6b13992209600ea0e2d8ed8625a61d979b7d46b2e"
+      "host": "d3fe74d70b0f169a70de9577e73c1509c7e881553d52589e3e74555c9c26a67d"
      }
     },
     "ffi/dk_kv0_n2.cu": {
@@ -1867,17 +1867,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "9711707f598d2f1c7f9fbfdd52c3f295fa729e112d51f5fcb380336ef1a2bede",
+      "source": "2709c01471ef332cb9b4afb17d97c1ee52c4187ed676423fa30fb98a9526a91c",
       "defines": "3de37a4fad396da9e94b322e17df92c1b4a77b2d65a6c9402ffefabdbcd77572",
       "command": "737c3a94e6a0ff9fbba60b23d3c3ff764376ce44bdd66c9cb8629ea6eb96520c",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "c70246604f0427ce41c21b9f126e84ad577a421aa49fb8dc09596f1ec7b0ee6d",
-      "host": "e421e5205d0d536a131c052d8b106cc608815032233f3ea0dd24e47aa9287bab"
+      "device": "9439cc8c7a0a1df889cc01f7b76e2b65351081b945745a180aa5be9baea775c5",
+      "host": "b9c9825fcb831eccead7967b9c60530c7d7651d79fe095babd95f78ad658753e"
      },
      "L2": {
       "route": "nvcc",
@@ -1898,7 +1898,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "9357cd4bafb2e2c89f4db29b4090ab194dd85770be683188a935c86e7e127cfc"
+      "host": "733f87f74ca5320141c5b9e80ff25ebd7cabad1f77193d4ec6569df5ac61357a"
      }
     },
     "ffi/dk_kv0_n3.cu": {
@@ -1908,17 +1908,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "cc27fecb5f574cca969b257054d55bf45f3afb50c036c2f0f3f12098c1fda1ff",
+      "source": "0843c85e92d0ec93b5e9376f494065ab05c35e62b0c19542189d7e24d0a56c71",
       "defines": "b4e3c82c3221f752fdf0b95556a74fab216a1db3d4ea53967d2af263ce5f931a",
       "command": "8529eea80e8b09c789f9231226f41729bc920547c5642706266063324d190a81",
-      "source_bytes": 270935,
+      "source_bytes": 274530,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "ea8358973e41992d62c24bfc07d735b0b9cfa563310e946e04148befe9bf4fd9",
-      "host": "4ff8689492d511cbf08674786419e066ffe1032dd29f803b6839d688d15ebfe0"
+      "device": "3e6ea03a1bb0aa1d7c0dd6f3768148983cfec01238b736b8663541faa3e22fdc",
+      "host": "b7e8c0b9a2be8f3ce27345ae19f1134b0f2753a01be5fac0081724e26d3d3c5c"
      },
      "L2": {
       "route": "nvcc",
@@ -1994,7 +1994,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "6c32f8a734a6f36c98b91ddde663692672e6bb7be1e6472b732d20f072875317"
+      "host": "ce46e1f67f6e6c495e02ab48c554b04465e8146970fec933a0e8e4f33aec4ed9"
      }
     },
     "ffi/dk_kv1_n0.cu": {
@@ -2004,17 +2004,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "6d3f04a30d4b985936049d64cc612601903b36a59ce6e826b8a6fb5abcd268eb",
+      "source": "7b6d6158b94f3a706c4471fb3a3568534ae35a061f686adf28a3a1e84ec44d34",
       "defines": "b636d6162de2290328b33720293945e3c00a3a00bcfafc72516baf8081f335ca",
       "command": "62af1076057d241a72a34322a69bcdc068f0f7865cb76c58d851cf7684ca8366",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "0138798635f7549624b370d7fc672082f626197eb840cfdbeb9480dd098a47ae",
-      "host": "698351ad5dbf7e7820f66747a13ccc2b2e65377f5f5726c9dd0fefa59856d323"
+      "device": "c00cfe65bcd13dc95df38a655533387cfea5e1bfbe520103fee44759c39406f2",
+      "host": "eb0932aca6beaca9f31b6fbc6bfbe3402ea3bf7c52fa453f96e3f0af41c6e1fc"
      },
      "L2": {
       "route": "nvcc",
@@ -2035,7 +2035,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "58304e63d272ed76961b75da9c622990bf3379a4a5e1d8429586c56c90530a81"
+      "host": "83420a8eaa05fb487d65e3a633206be011a679f81cd481bb860bc5b87bddbdd3"
      }
     },
     "ffi/dk_kv1_n1.cu": {
@@ -2045,17 +2045,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "8eedf36b9181954abd30f93d658d139e6ab66faf676c2b0d61622278247ac538",
+      "source": "07604bf5cfd6432140f84effe5f1daaef46cabcba116cd001ca5fec438ec30fa",
       "defines": "864ddc919284bf728c1621eb8d2f6ac6359455773b4fc5ed672a11a32e3db05a",
       "command": "16371386177592b208fe7971c6f94f91e9e5b07c127fee1f27e5788bf4007009",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "202c53846cece711369f283778f3644426df388fa215fe2da63a210ee9829a8d",
-      "host": "9729a83ddf10f2eda27f4215530f170e38c95446bd488303704601579145b48f"
+      "device": "112d3757d6ca76daf7b819ece8dec9588d2b7e8ed87792475a7f9f1f96173b5b",
+      "host": "5f0e2266246849cf524c192b16bd70a6fa6c934e2cfcd11069b2b3b0100535ec"
      },
      "L2": {
       "route": "nvcc",
@@ -2076,7 +2076,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ea5589e259da20520fd28d346f8c6df43a02a9912c63ba81e14c3c049be6c6bc"
+      "host": "448854d36066f9134577ae63403ce42cf91cb6a2b2f3332b188b5750df254153"
      }
     },
     "ffi/dk_kv1_n2.cu": {
@@ -2086,17 +2086,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "ade225cafef66c37344dee522c7803a3ba859cf096e0475c16f2ebd0b9445f78",
+      "source": "1f7c372212cbdfd8612cffdd269a0c4c91da3f34a4aa2d6c03425766772e025c",
       "defines": "77e92c03510ed52b83c99a40cebfbc00eda6f15edc494220a2e71dca8185340b",
       "command": "2a1e2dfb9226305f87c4c517b9ac254d807a517bbbe4068efade2b4f83001a6b",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "c03467fbfc7edd7658041c907afbaf49abc3dbcd41b157edb7ed82faf762a8a9",
-      "host": "bfdbc09fe2e8ee8fa371085d3aaec2db58ef41de2e1718d4e3b49add234bffa1"
+      "device": "57932d99826c17930f84fb5358edf626eba72e2d1014c83144caed114a5aeff4",
+      "host": "b5075399690c1ee8aec05ca8d2fc42a12a4341fa5bd88684b9378ccea658255a"
      },
      "L2": {
       "route": "nvcc",
@@ -2117,7 +2117,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ca8f156301a3b66cba0ae66d852012bb7aa1fa2bed29c689afe33fc4f0f009c7"
+      "host": "5cca7c3198627e28caed761f3a0b70126a365d84ce1a1945b85c5ba92a43506f"
      }
     },
     "ffi/dk_kv1_n3.cu": {
@@ -2127,17 +2127,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "20fcb6c0a62dda78577df3406a7b56e1c6aca8a7751ee36868b37fc5e30cb92c",
+      "source": "987d06ba8c2864ca9a3893195b9752fad5f8b2b02c011b10cb0759bdf607f9e9",
       "defines": "4a6c1c9ef899dae62139137720055ce85353e4351365f87fe2482a50a1903b9e",
       "command": "c34eee572db41fb062eef6f722ebf111047c718b976d83f438f1922b6adda9dc",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "b2f44177fd5e4d018d5d87b04037dbff9c2a9ce5aa591553c736fa97ef0da60c",
-      "host": "321a929b0ab6f15a3eca7aab7f5a030dd101c644ee64b5c2d75b747e49a38fae"
+      "device": "b0b377f3aa0ce5429ddb1d8c5a3d81fbefad63783da1d20f49e23e6caa4fe531",
+      "host": "d5709bda7a8d9450999a124dc285d39ab13a4a8524627208c86091777d5d2808"
      },
      "L2": {
       "route": "nvcc",
@@ -2158,7 +2158,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "98ecf11fa5db77d87bb1edcdf22bd8f8b67ae97944b331bf68faf3ee98ee03d0"
+      "host": "b48c46169af02c345fddc8078099d579a2f4c94a2b1b1173a1cd535d2b2d6cd5"
      }
     },
     "ffi/dk_kv2_n0.cu": {
@@ -2168,17 +2168,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "c484f3b8bc54262eeadaf58400e943e096d1ef94e86bed942e03c1cef3651222",
+      "source": "35c55b2ebccabdeda5df431b6c538ecd4700568e06a33f041cc0d8cb432c719c",
       "defines": "9fbdccbf13146828516685612cd41492c4848be2058da4931a471c4fa48cfbf4",
       "command": "4420b45901656db97795243c9b98cbd26bab9eff87e6d852e0a54a3660ad9dd4",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "3541b58fb4415c90aa9b9a40368adb344b4f3ca0020396d9141e831c9b72454f",
-      "host": "44cda8ccdf40c4b12f03a5fc230de9229459894371bde6126b3951fbf0ebd360"
+      "device": "2e81e5dcfef4e92d8e319c644eb800cad493d688cdf2c067b97ff5ea5ce3bc39",
+      "host": "98e6487eba39e526001c0a286a56c0a6eb97b1e682c8040ba089320cd7f00d0a"
      },
      "L2": {
       "route": "nvcc",
@@ -2199,7 +2199,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "69f93688dace6680c0ba60b96df2133124e0e426f1cb7dc7c49c5aaf9cbb6ce3"
+      "host": "36e4e8428fa7edcc7cbb329098286420e8be8d6cbb1bd0c6490c591ada31b3ad"
      }
     },
     "ffi/dk_kv2_n1.cu": {
@@ -2209,17 +2209,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "e7f6cf3c00df00da72bd2741127fc5cd5d0cf2bfffb4dde92373aeba0541a502",
+      "source": "a3fef6a7bb5644b197f8a2d5f424e6ee6c5435e13f820f2cad0f6295106f140f",
       "defines": "96a0bc4d0e233aa82137f7195a191dffbd17c91b948c835146ee1fc0c40bbf1d",
       "command": "12f1f6116cca366927fc710c41dd5d0f820988ae264522d4ec8b403901bf33bd",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "f1f1895462a61c4a45c38d84d3b045f8126e45ca70cdbb96ee39ba15734e4588",
-      "host": "e7582b689ef2db13cd7f4bff8f2a115f4c5fd343eb4bab8286170ed50104a3b8"
+      "device": "28ae7366a0cdaf4398aa8679745de875eaac9128af0cae90f2f7a46832661cc9",
+      "host": "ace8745cf8deb3009e4cf0d2aad433c44d1fbd678e134736de991b392e16686e"
      },
      "L2": {
       "route": "nvcc",
@@ -2240,7 +2240,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "1bb9c397851b75e080ab97451bea090b08848cfa9f6114f2d8b61615ea57b286"
+      "host": "08cb92a45c50bad7d01e75803d2791e87887305ac43298dbebde8688eda52c64"
      }
     },
     "ffi/dk_kv2_n2.cu": {
@@ -2250,17 +2250,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "9e7361310c9e0ce45ef83575d073f8345b6c1a79d439bdf43e19acba9fe6db79",
+      "source": "678024eab9dd9c9fc6e59ab4722d71d573a45e41a172525ddb553d2305bf8f2b",
       "defines": "bfe2a96c191113efd4f53042894fc90bd72226747007eaa5b42099f36b7ab29e",
       "command": "25967f5acf1cfbd839a5315f04a4a8d1dd272ac78e6b2a51be028173ef7a840b",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "4f9689f1c5ede0a82e52a5b757acfd6e3af559bff9d848876b8c9aefd12ea0f3",
-      "host": "ad1666aa09041dea5d72a595c792afcd8a374baae319be6845c692066557a17d"
+      "device": "cb8791a424275570173e172dc91598397f1299be0d3bd3b7202c157e117e14dd",
+      "host": "08ea785d9d03a316b0d6fe2be6dc7c1808d376f02712b5c623a9144be3cbb4b8"
      },
      "L2": {
       "route": "nvcc",
@@ -2281,7 +2281,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "cca1e50d0033781c1fb8dd15a8ad8611328558becd1fff0e271c65c10f14cf79"
+      "host": "2912e459bc68780d3911fc41d3d52e983b4863fce2fe38e84cd28474b40d9e30"
      }
     },
     "ffi/dk_kv2_n3.cu": {
@@ -2291,17 +2291,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "cf4d2a5a43c953277141851becfad67cb41b5e0072137f7e2170dd5ae2ab6aab",
+      "source": "09482c180da1246ae4225797ef6805ce7a9ccd73ed42e5f250af9976dab1c457",
       "defines": "4e1dfcf9a137e45eb66985b793f2db9c788c4456971ac032b65fc684981b454c",
       "command": "a73ac2ad71923e2d40673615dc0edbd30d924c76e952b759417bb3e42f2e2412",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "60fafc4f1880f9b9a751f3d409671faf75b7068735074ab4c4d9ff737199eaca",
-      "host": "6b094c36793614810920b0becb3db2d186f132d1c72f52a0f416fb7fcc1f4116"
+      "device": "ba9e2d8a4d0391a2d6d88f836cfda49b05d1a8d75972c4de906de3715d201d52",
+      "host": "64dbea113087c818c34f8c711fdfe9f725a7b60fc0e6771131d67f1197a00a21"
      },
      "L2": {
       "route": "nvcc",
@@ -2322,24 +2322,24 @@
         "SAMPLER": 0
        }
       },
-      "host": "2816612130026489a56d527289ec57c4e6b80a11cadfb6766b556b9df75cc4bf"
+      "host": "de44463ee2bc299cf70d1e5d5e5f72304424f0eb5fa5c031c69f47e48878f9ed"
      }
     },
     "check/step.cu": {
      "defines": [],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -o {out} {src}",
      "L0": {
-      "source": "b95427a8e42aea86595607089f0caaecdae63046ee45655b8bd650a59a7772b0",
+      "source": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996",
       "defines": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "command": "3936dd3bf286061b93847d934ccb1e10253bfbf60707d5a3c70afd91322404e1",
-      "source_bytes": 160142,
+      "source_bytes": 162178,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "e3ea2540a9b602ce226aa2814ff8b0f6357c5348533095535661409d31f33ee4",
-      "host": "464d739a1816b9a509fc316dd597ba7a4dd94a1aede978f011283bf3348c3fc4"
+      "device": "d3da710299877a7a668a490075c4d9b0ef5fed32e2defcedfc84ef27f3ab0358",
+      "host": "70a199e53e7a54ffe84f115d4a9dd8d5214d53e590b3b30c0cf005414adafdf4"
      },
      "L2": {
       "route": "nvcc",
@@ -2382,7 +2382,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "c36a9abb5d9e0eac082529813887a16786f568ec24be5026f0a2bdb19b8acd98"
+      "host": "478fbff35897febed224eb4e6caed752eb7baa284bfd19a85ecfd4b40cd12b47"
      }
     },
     "check/step_fused.cu": {
@@ -2391,17 +2391,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -DDK_SPLIT=0 -o {out} {src}",
      "L0": {
-      "source": "b95427a8e42aea86595607089f0caaecdae63046ee45655b8bd650a59a7772b0",
+      "source": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996",
       "defines": "02f4e78ad3b9eb997cf08f15d533568eca2bb6ce27e33a4e000fdb8dfdb407d8",
       "command": "4801dd55f6019ca8cb615cd45055eaa3e48f15d9443e78682b23af7c96040103",
-      "source_bytes": 160142,
+      "source_bytes": 162178,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "aaa91cd9e059fbc94907478927592080966db929a86371b64790fb08d0459ce9",
-      "host": "a78edce8424ba14ae8e97f1c842ffd17e4f00965b2aebd72dadaf96970d1f52a"
+      "device": "bdae8fd23c71732ad222a881fca338a952e4fce3a7b5135383abf3b4be362a6d",
+      "host": "6498849e7bd098c2a37a00ddb58691455a00e719922c540e4a0bac704708c111"
      },
      "L2": {
       "route": "nvcc",
@@ -2444,7 +2444,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ac338f2a79bb0dcc01388f5e000321148d7daf19fd5a2e790f4b4af569a8e405"
+      "host": "de33fb0f3f4370d8ba9dfe2d541b7ddea5e59b07d4f48cc58264d758ed9cbfd7"
      }
     },
     "check/adj.cu": {
@@ -2456,17 +2456,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_86 -std=c++17 -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_STAGE=3 -DDK_ADJ_NORMAL=0 -DDK_ADJ_PARALLEL=0 -o {out} {src}",
      "L0": {
-      "source": "0da10aa615a349dda54f981cc3c4644dc20682b3ceabf82b11cc0289064bf3e1",
+      "source": "a0d4a030ebe381e1d8c27ce49c54b1733354da95507849bcca867dc48cfdfa33",
       "defines": "91289f0a7fe9915bd8396bcb1398b3073c5d38eca6dcf6a484a024f02ce828c6",
       "command": "142eef445a1e7b337aa15a4dbcd6ff802350a6b894d226456078f88aba568777",
-      "source_bytes": 258681,
+      "source_bytes": 262276,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_86",
-      "device": "e30932946433d70a8baff6b4eb089db9da79fa93c3017fb46cc031ca762898c9",
-      "host": "1c31ea1b8558fc8643fbc9368af8a5293dddef72d446052cc2040ed557da1d0d"
+      "device": "286d9f95ee9ec8cd2e79126272b86735c0c22edb5a7b7ff8ff2b111a121c4c9a",
+      "host": "50df492d727935abb6b6a76b8708904e6428d690d758acb0c31ae514072442b2"
      },
      "L2": {
       "route": "nvcc",
@@ -2520,7 +2520,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "c7ee094e1ce5e71fe820faa157aef7de31727b7f9ad3a859e9663b6d4be18e74"
+      "host": "46d083050ddaea86b043b8ffb35a9ee6903410d0c0c91a79d1854b66615feaaf"
      }
     }
    }
@@ -2618,17 +2618,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "d1d1061a2ba7c0af897aafd94a99053591fca686c55c6a25df84893d148f3a79",
+      "source": "e4260e0bb4d4f91ab8dea50437fe61f38cf5f0bd98870fc27234cd52ce82d4b5",
       "defines": "8c5065ef04151f5876cf2cd820bbacd4890982ba8f6943277f41b49d579e7c46",
       "command": "f85905216880a3df1792c3988e2c164600a71b07501279d6fea476948e6ef2fd",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "c14c11e75184aa0a6cc0c6e01eea9e89feab0ef3114f0ced553b87719d8116c1",
-      "host": "929756abcec7444a72a18dfff44dd8d4445fcdb0cdc9af65a60d96b0550893d3"
+      "device": "dc3c53b97d15b1de16720bb81204dbf563920353eb0a7d12dabd5c7086be322d",
+      "host": "fe1c38a007d1a70bc1627d89eda925200c94e4405351d91721bdb8f9cb74057f"
      },
      "L2": {
       "route": "nvcc",
@@ -2648,7 +2648,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "0e4939ca2b973b63a8110fdbe429d27de604c8c3a7caaab3413ea8ef0adfcf09"
+      "host": "8cfbde36c2b7d986cd169558059f6d0a6725fbd8e1d6cf1b34e38c59485aca59"
      }
     },
     "ffi/dk_kv0_n1.cu": {
@@ -2658,17 +2658,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "1639fa8135121df7f2b41ffdf8df5cd13684cddb6c872c388582b75cf6163fbc",
+      "source": "db3a24d71af5092a5d8224d87471833f115e5dcce40efe4cc3cd0f92c2c5c4cb",
       "defines": "8496c7924b10c76a488bb05ab64984020f312adf30f4f8f66ead3eeb20d7e16a",
       "command": "5db807ff39884e525b63300d988b0c0876c60e4b33d2d1851881e9976b988c35",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "68c5c70f48ecdb7322e02c972a7d0b04ae833cb73f876bfec65a22a5f7937801",
-      "host": "59b113a933f1d402959d8db897c565bf9ef6af8be81fd5d96beffc2d615d6de2"
+      "device": "604faabfa46abe14760cce039d14ddc24e59c4a088d44eb9e9e184012741d48f",
+      "host": "e89b822393af2b34edd42ef39911215050d5606ff9e7c8355a1548ad3dda0c50"
      },
      "L2": {
       "route": "nvcc",
@@ -2688,7 +2688,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "968c74820b4caef4b6ba0ad6b13992209600ea0e2d8ed8625a61d979b7d46b2e"
+      "host": "d3fe74d70b0f169a70de9577e73c1509c7e881553d52589e3e74555c9c26a67d"
      }
     },
     "ffi/dk_kv0_n2.cu": {
@@ -2698,17 +2698,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "9711707f598d2f1c7f9fbfdd52c3f295fa729e112d51f5fcb380336ef1a2bede",
+      "source": "2709c01471ef332cb9b4afb17d97c1ee52c4187ed676423fa30fb98a9526a91c",
       "defines": "3de37a4fad396da9e94b322e17df92c1b4a77b2d65a6c9402ffefabdbcd77572",
       "command": "ab6a811a16cb51df8bab257a3a54af1cffba1a454a04adeaac8c58435d89a5bc",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "e199c4d4df677119c9c4ecc7040f18544cf98be761032c11eead5fc4a9b80caa",
-      "host": "e421e5205d0d536a131c052d8b106cc608815032233f3ea0dd24e47aa9287bab"
+      "device": "7b0787f3fc7f3e8861123cf650e3bba75b861e0a576a14ab5e3205ccbda461c7",
+      "host": "b9c9825fcb831eccead7967b9c60530c7d7651d79fe095babd95f78ad658753e"
      },
      "L2": {
       "route": "nvcc",
@@ -2728,7 +2728,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "9357cd4bafb2e2c89f4db29b4090ab194dd85770be683188a935c86e7e127cfc"
+      "host": "733f87f74ca5320141c5b9e80ff25ebd7cabad1f77193d4ec6569df5ac61357a"
      }
     },
     "ffi/dk_kv0_n3.cu": {
@@ -2740,17 +2740,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=0 -DDK_ADJ_NORMAL=3 -DSPLIT_PRE_MINB=16 -DSPLIT_POST_MAXNREG=128 -c -o {out} {src}",
      "L0": {
-      "source": "cc27fecb5f574cca969b257054d55bf45f3afb50c036c2f0f3f12098c1fda1ff",
+      "source": "0843c85e92d0ec93b5e9376f494065ab05c35e62b0c19542189d7e24d0a56c71",
       "defines": "d32fc80a3d7cb55cb51301f93e645800196ac21fba6b4810de6df06c1a533764",
       "command": "86028e178ce650c70f75068d9716df76756f0e241d72c8e3a3ef705c1a0b685a",
-      "source_bytes": 270935,
+      "source_bytes": 274530,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "23d55734c494316420e802cc24137376ed861a3b14f1375a900e97aa4fd869bf",
-      "host": "58213ccf576183c4c35fe7bc98a8950694bfa26b2af9fd052a4e1c9aba7ecbed"
+      "device": "708cb107bcce76fdc996a2330a82dde0b915c6bee246e851b5f0ddd4a888fdf3",
+      "host": "580b33215b3f65a08bc61a61b81e137cfb2918056c961cab009c55ab1f717a36"
      },
      "L2": {
       "route": "nvcc",
@@ -2820,7 +2820,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "a42941d91b6f8e75a16cca48d15cffbb2634ac8048cff4d53dcfcead6db70bbb"
+      "host": "98ca6b3e77808a7a5302d267e890d8771869ad79de6dae5363d2420f8ac9938e"
      }
     },
     "ffi/dk_kv1_n0.cu": {
@@ -2830,17 +2830,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "6d3f04a30d4b985936049d64cc612601903b36a59ce6e826b8a6fb5abcd268eb",
+      "source": "7b6d6158b94f3a706c4471fb3a3568534ae35a061f686adf28a3a1e84ec44d34",
       "defines": "b636d6162de2290328b33720293945e3c00a3a00bcfafc72516baf8081f335ca",
       "command": "aa928c12ef680de617bda85190abade4dd8201d5c1558c2c54090d1158fa9aee",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "5dbca6ff26a68b43df39ce76139b49ffd760d9fda35d22d57a69bd5d18852a26",
-      "host": "698351ad5dbf7e7820f66747a13ccc2b2e65377f5f5726c9dd0fefa59856d323"
+      "device": "2bd76e3fcc7dfc43392d8a540922bcd7b8b5141a7e7646f09f841b5b5a28c953",
+      "host": "eb0932aca6beaca9f31b6fbc6bfbe3402ea3bf7c52fa453f96e3f0af41c6e1fc"
      },
      "L2": {
       "route": "nvcc",
@@ -2860,7 +2860,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "58304e63d272ed76961b75da9c622990bf3379a4a5e1d8429586c56c90530a81"
+      "host": "83420a8eaa05fb487d65e3a633206be011a679f81cd481bb860bc5b87bddbdd3"
      }
     },
     "ffi/dk_kv1_n1.cu": {
@@ -2870,17 +2870,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "8eedf36b9181954abd30f93d658d139e6ab66faf676c2b0d61622278247ac538",
+      "source": "07604bf5cfd6432140f84effe5f1daaef46cabcba116cd001ca5fec438ec30fa",
       "defines": "864ddc919284bf728c1621eb8d2f6ac6359455773b4fc5ed672a11a32e3db05a",
       "command": "2b1d8b0cf792b4d6e2edc90ab5093bddbd409b583be7da06dc9ed5c47ac4b130",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "bae683b62984d39c9c4a11fc445cba44cbea5b95b60360054f213b713284a3da",
-      "host": "9729a83ddf10f2eda27f4215530f170e38c95446bd488303704601579145b48f"
+      "device": "cd45ee8fe2e0084bd49d0f1a8ac1df82ca41e1c5a6adadc87b9d180760ebec90",
+      "host": "5f0e2266246849cf524c192b16bd70a6fa6c934e2cfcd11069b2b3b0100535ec"
      },
      "L2": {
       "route": "nvcc",
@@ -2900,7 +2900,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ea5589e259da20520fd28d346f8c6df43a02a9912c63ba81e14c3c049be6c6bc"
+      "host": "448854d36066f9134577ae63403ce42cf91cb6a2b2f3332b188b5750df254153"
      }
     },
     "ffi/dk_kv1_n2.cu": {
@@ -2910,17 +2910,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "ade225cafef66c37344dee522c7803a3ba859cf096e0475c16f2ebd0b9445f78",
+      "source": "1f7c372212cbdfd8612cffdd269a0c4c91da3f34a4aa2d6c03425766772e025c",
       "defines": "77e92c03510ed52b83c99a40cebfbc00eda6f15edc494220a2e71dca8185340b",
       "command": "2cb2145b3a98769cc0b146e78b7b352bf27f157c16171b87f1095ff6c9ad204a",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "096d7f90b9127392deca06af412e9fba7f9535b4e8bf487133a461a82f88b797",
-      "host": "bfdbc09fe2e8ee8fa371085d3aaec2db58ef41de2e1718d4e3b49add234bffa1"
+      "device": "0fac3ddbf226a5c0b6750cd3a70182e97c82a6441d69672a69725ef5f852973f",
+      "host": "b5075399690c1ee8aec05ca8d2fc42a12a4341fa5bd88684b9378ccea658255a"
      },
      "L2": {
       "route": "nvcc",
@@ -2940,7 +2940,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "ca8f156301a3b66cba0ae66d852012bb7aa1fa2bed29c689afe33fc4f0f009c7"
+      "host": "5cca7c3198627e28caed761f3a0b70126a365d84ce1a1945b85c5ba92a43506f"
      }
     },
     "ffi/dk_kv1_n3.cu": {
@@ -2950,17 +2950,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "20fcb6c0a62dda78577df3406a7b56e1c6aca8a7751ee36868b37fc5e30cb92c",
+      "source": "987d06ba8c2864ca9a3893195b9752fad5f8b2b02c011b10cb0759bdf607f9e9",
       "defines": "4a6c1c9ef899dae62139137720055ce85353e4351365f87fe2482a50a1903b9e",
       "command": "766cd5ab0ca7f87a8d36c48c8d249f0f1325debf00d1a35241c502ac8e1aa543",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "de7df505b6f501a207805da9f569e57508851b06de131d63092abf9c93faeb7e",
-      "host": "321a929b0ab6f15a3eca7aab7f5a030dd101c644ee64b5c2d75b747e49a38fae"
+      "device": "c3608d82b74cc7367a89128195e0487dbfe15d1b1fadbe9b0890215c9237f5ec",
+      "host": "d5709bda7a8d9450999a124dc285d39ab13a4a8524627208c86091777d5d2808"
      },
      "L2": {
       "route": "nvcc",
@@ -2980,7 +2980,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "98ecf11fa5db77d87bb1edcdf22bd8f8b67ae97944b331bf68faf3ee98ee03d0"
+      "host": "b48c46169af02c345fddc8078099d579a2f4c94a2b1b1173a1cd535d2b2d6cd5"
      }
     },
     "ffi/dk_kv2_n0.cu": {
@@ -2990,17 +2990,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=0 -c -o {out} {src}",
      "L0": {
-      "source": "c484f3b8bc54262eeadaf58400e943e096d1ef94e86bed942e03c1cef3651222",
+      "source": "35c55b2ebccabdeda5df431b6c538ecd4700568e06a33f041cc0d8cb432c719c",
       "defines": "9fbdccbf13146828516685612cd41492c4848be2058da4931a471c4fa48cfbf4",
       "command": "83fa8f6566ffd47e3c5cb8adf47245d82da82df391ecd1c1b1cf742d7ba2eb1a",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "863da0e3037ad469e1d8293a15977db99ff800832b68edb72be37f9d4d632198",
-      "host": "44cda8ccdf40c4b12f03a5fc230de9229459894371bde6126b3951fbf0ebd360"
+      "device": "77ae69769702e367b81b88ea2549f5dc216cd571cb14a936973a394b9efa35d5",
+      "host": "98e6487eba39e526001c0a286a56c0a6eb97b1e682c8040ba089320cd7f00d0a"
      },
      "L2": {
       "route": "nvcc",
@@ -3020,7 +3020,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "69f93688dace6680c0ba60b96df2133124e0e426f1cb7dc7c49c5aaf9cbb6ce3"
+      "host": "36e4e8428fa7edcc7cbb329098286420e8be8d6cbb1bd0c6490c591ada31b3ad"
      }
     },
     "ffi/dk_kv2_n1.cu": {
@@ -3030,17 +3030,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=1 -c -o {out} {src}",
      "L0": {
-      "source": "e7f6cf3c00df00da72bd2741127fc5cd5d0cf2bfffb4dde92373aeba0541a502",
+      "source": "a3fef6a7bb5644b197f8a2d5f424e6ee6c5435e13f820f2cad0f6295106f140f",
       "defines": "96a0bc4d0e233aa82137f7195a191dffbd17c91b948c835146ee1fc0c40bbf1d",
       "command": "b94c1608569ccefc81f48511e8e238d23e71ad80ab0bddbfd9aba7ce6e752cb7",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "b67d26a4eb164d4463332e7ec9f897a85f74f3d950c67bdcc903ba73b98254e2",
-      "host": "e7582b689ef2db13cd7f4bff8f2a115f4c5fd343eb4bab8286170ed50104a3b8"
+      "device": "8a4d86243211395f487d9f1bcd9804fa3e0af43fae458e4cdc00c9012a13c2ad",
+      "host": "ace8745cf8deb3009e4cf0d2aad433c44d1fbd678e134736de991b392e16686e"
      },
      "L2": {
       "route": "nvcc",
@@ -3060,7 +3060,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "1bb9c397851b75e080ab97451bea090b08848cfa9f6114f2d8b61615ea57b286"
+      "host": "08cb92a45c50bad7d01e75803d2791e87887305ac43298dbebde8688eda52c64"
      }
     },
     "ffi/dk_kv2_n2.cu": {
@@ -3070,17 +3070,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=2 -c -o {out} {src}",
      "L0": {
-      "source": "9e7361310c9e0ce45ef83575d073f8345b6c1a79d439bdf43e19acba9fe6db79",
+      "source": "678024eab9dd9c9fc6e59ab4722d71d573a45e41a172525ddb553d2305bf8f2b",
       "defines": "bfe2a96c191113efd4f53042894fc90bd72226747007eaa5b42099f36b7ab29e",
       "command": "5d65f25506ad30fc09cd6f69336ba93fb120c92eaa11dbbb4bb6b69a547bb104",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "cb9f8584ff2e1ed8777d87eb5dda75087b4b89b02b9abdc16631bc67bbfb9e17",
-      "host": "ad1666aa09041dea5d72a595c792afcd8a374baae319be6845c692066557a17d"
+      "device": "c0dc17db25fcbc7920ccac339ac983c9ac428b4a414afaeecd875f44b1b1a96f",
+      "host": "08ea785d9d03a316b0d6fe2be6dc7c1808d376f02712b5c623a9144be3cbb4b8"
      },
      "L2": {
       "route": "nvcc",
@@ -3100,7 +3100,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "cca1e50d0033781c1fb8dd15a8ad8611328558becd1fff0e271c65c10f14cf79"
+      "host": "2912e459bc68780d3911fc41d3d52e983b4863fce2fe38e84cd28474b40d9e30"
      }
     },
     "ffi/dk_kv2_n3.cu": {
@@ -3110,17 +3110,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -Xcompiler -fPIC -DDK_ADJ_CLAMP_KV=2 -DDK_ADJ_NORMAL=3 -c -o {out} {src}",
      "L0": {
-      "source": "cf4d2a5a43c953277141851becfad67cb41b5e0072137f7e2170dd5ae2ab6aab",
+      "source": "09482c180da1246ae4225797ef6805ce7a9ccd73ed42e5f250af9976dab1c457",
       "defines": "4e1dfcf9a137e45eb66985b793f2db9c788c4456971ac032b65fc684981b454c",
       "command": "6ab3ed5748cd6eed2f0fd8c449becdc67853257cc61d98fb3bdacdde89a2fa61",
-      "source_bytes": 235787,
+      "source_bytes": 239246,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "513c112d3ed4cd1951f4d9fc10f113a0d4fcdd52ddcca6275d0c8a6a34f3c836",
-      "host": "6b094c36793614810920b0becb3db2d186f132d1c72f52a0f416fb7fcc1f4116"
+      "device": "e023edd335656121cdbea53f7bb352711340590d24df00350725e502901b1740",
+      "host": "64dbea113087c818c34f8c711fdfe9f725a7b60fc0e6771131d67f1197a00a21"
      },
      "L2": {
       "route": "nvcc",
@@ -3140,7 +3140,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "2816612130026489a56d527289ec57c4e6b80a11cadfb6766b556b9df75cc4bf"
+      "host": "de44463ee2bc299cf70d1e5d5e5f72304424f0eb5fa5c031c69f47e48878f9ed"
      }
     },
     "check/step.cu": {
@@ -3150,17 +3150,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -DSPLIT_PRE_MINB=16 -DSPLIT_POST_MAXNREG=128 -o {out} {src}",
      "L0": {
-      "source": "b95427a8e42aea86595607089f0caaecdae63046ee45655b8bd650a59a7772b0",
+      "source": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996",
       "defines": "3f92ac96bc0cf68afc715de90b69d7eeec3387a006525d9b8baeeb78100a4ee9",
       "command": "936e574e563efe37751eb1c9d51c3b8988f0fea412b2ec3d2fb5fb16c1c46f6e",
-      "source_bytes": 160142,
+      "source_bytes": 162178,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "37740a28bc4807751b34a8196e03c3835989c3415bd8c4392c258dd6f338cd42",
-      "host": "a339963fa9c33e1744e4ac954ee7a68d3efea0fbfcb7751f95847fc59cf48702"
+      "device": "d665088d181664ce0262b43a362486f045b939f5877930bea14a532f92287964",
+      "host": "9c3fd0c95f75ecccb98607b0691bdcd08236d477744e170a5429a2b265d1bb1e"
      },
      "L2": {
       "route": "nvcc",
@@ -3200,7 +3200,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "6118912c0bae2268171909fbecc97c1cc358be5e406e0376b4e65b561e5e3ebb"
+      "host": "14546751b0cbdf777b602aa977dff7289bc6a81d59695f52451d6f65c33fe161"
      }
     },
     "check/step_fused.cu": {
@@ -3211,17 +3211,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -DDK_SPLIT=0 -DSPLIT_PRE_MINB=16 -DSPLIT_POST_MAXNREG=128 -o {out} {src}",
      "L0": {
-      "source": "b95427a8e42aea86595607089f0caaecdae63046ee45655b8bd650a59a7772b0",
+      "source": "b4136bb7cee9a42eda08ada148b698597a9f3038cfb405c2059dbdd23c852996",
       "defines": "a2222227a64eeaac026d4ef42a85decd2c0e2c59f78bc364f539d6fd96fd6d78",
       "command": "06cd3279a1139e7028d03a3c50ff4755980f3106f9f036d5fe921d90cc650718",
-      "source_bytes": 160142,
+      "source_bytes": 162178,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "e400d6133efa563acc3ecd45d3429dee0736547fe80254e2f0650e2ebfc44772",
-      "host": "b3be95dd7de983e4e9f900721ee2e7a831767f7697384ed890361cd907b60b72"
+      "device": "637e342d4f4c316e8fe96151b729c211ab684473112dabbbae1f25442a87da92",
+      "host": "34ec4d63d740fb983cb50715373102df8adf3eb5008bd72f2a3206c35e114f2d"
      },
      "L2": {
       "route": "nvcc",
@@ -3261,7 +3261,7 @@
         "SAMPLER": 0
        }
       },
-      "host": "092a6cf2b90d131a4bc9881d7fc81f4253a73ede977a4c74aeaf53c95095b271"
+      "host": "6867b5e4b196945be96a031048e47c9492fba0f4f2668b47f37d893afbc4262a"
      }
     },
     "check/adj.cu": {
@@ -3275,17 +3275,17 @@
      ],
      "command": "nvcc -O3 -arch=sm_90 -std=c++17 -DDK_ADJ_CLAMP_KV=1 -DDK_ADJ_STAGE=3 -DDK_ADJ_NORMAL=0 -DDK_ADJ_PARALLEL=0 -DSPLIT_PRE_MINB=16 -DSPLIT_POST_MAXNREG=128 -o {out} {src}",
      "L0": {
-      "source": "0da10aa615a349dda54f981cc3c4644dc20682b3ceabf82b11cc0289064bf3e1",
+      "source": "a0d4a030ebe381e1d8c27ce49c54b1733354da95507849bcca867dc48cfdfa33",
       "defines": "c9a36b43c0c048bb254f904c7ad6f6da6e9cbdcf8c92033e1c149300220c8534",
       "command": "d35f2e849ea8fc9f7d8c1babe1973b49582caadc1d7d246603b75ad6d63dda6e",
-      "source_bytes": 258681,
+      "source_bytes": 262276,
       "consts": "695812e392a4ce393d462b8b89efd54f1d564371a37c2ded41d6e542515c4c80",
       "consts_count": 3230
      },
      "L1": {
       "virtual": "compute_90",
-      "device": "60365186574713c500b80e10a3ff53f73cc728c33062d1aedc32547bd08ca749",
-      "host": "e47a9b6a62475189661fe5f5f81e6245ebb2de95c2b8e7b513a917cfa40858ba"
+      "device": "2dd6f96fe68e48507eb94eaeef60749516efbdc65d5a54df26e610c65df881d8",
+      "host": "1337004c4defdcb6bf298d37745c10f83cd2f164c254bc0f63583f011e52b3ae"
      },
      "L2": {
       "route": "nvcc",
@@ -3335,16 +3335,16 @@
         "SAMPLER": 0
        }
       },
-      "host": "f45928c90ba36980931296392db642b930731776b1738697bade678b5ffa70a3"
+      "host": "258707d7741978345b24a071e2c4e3c143e3bf39aa0d246b3c9f9475b0895572"
      }
     }
    }
   }
  },
  "provenance": {
-  "date": "2026-10-31T06:48:31Z",
+  "date": "2026-11-13T20:28:43Z",
   "nablaengine": {
-   "version": "0.1.0",
+   "version": "0.2.0",
    "commit": null,
    "dirty": null,
    "commit_note": "a revision before this repository's history: not recorded"

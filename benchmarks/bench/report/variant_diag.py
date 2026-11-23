@@ -102,7 +102,6 @@ def build(docs, engine, variants, reference, corpus, iterations):
             res["gradient"]["vs_truth"][v] = PA.compact_grad(ent, brief=True)
             if v != reference:
                 res["gradient"]["vs_reference"][v] = grad_diff(d, ref, GT["index"])
-    # run to run of the first variant (process 1 against process 0), when the job ran it in several processes
     later = find_cells(docs, engine, variants[:1], corpus, iterations, process=1)
     if variants[0] in later:
         v = variants[0]

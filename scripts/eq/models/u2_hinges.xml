@@ -1,0 +1,35 @@
+<!-- U2: hinge a coupled to hinge b by a nonlinear joint equality (polycoef c0 .. c4 all nonzero; a is unactuated), hinge
+     a2 held by a single-joint equality (no joint2; solimp width 0.01, power 1) next to its own servo and limit, a
+     floor under the links -->
+<mujoco model="eq_u2_hinges">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <default>
+    <joint damping="0.05" armature="0.005"/>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="1 1 0.1"/>
+    <body name="a" pos="0 0 0.3">
+      <joint name="a" type="hinge" axis="0 1 0"/>
+      <geom name="a" type="capsule" fromto="0 0 0 0.2 0 0" size="0.02" mass="0.3"/>
+      <body name="a2" pos="0.2 0 0">
+        <joint name="a2" type="hinge" axis="0 1 0" range="-1.5 1.5" limited="true"/>
+        <geom name="a2" type="capsule" fromto="0 0 0 0.15 0 0" size="0.02" mass="0.2"/>
+      </body>
+    </body>
+    <body name="b" pos="0 0.2 0.3">
+      <joint name="b" type="hinge" axis="0 1 0"/>
+      <geom name="b" type="capsule" fromto="0 0 0 0.25 0 0" size="0.02" mass="0.3"/>
+    </body>
+  </worldbody>
+  <contact>
+    <exclude body1="a" body2="a2"/>
+  </contact>
+  <equality>
+    <joint name="couple" joint1="a" joint2="b" polycoef="0.1 0.8 0.3 -0.2 0.05"/>
+    <joint name="lock" joint1="a2" polycoef="0.3 0 0 0 0" solref="0.01 1" solimp="0.9 0.95 0.01 0.5 1"/>
+  </equality>
+  <actuator>
+    <position name="b" joint="b" kp="20" kv="1"/>
+    <position name="a2" joint="a2" kp="2" kv="0.1"/>
+  </actuator>
+</mujoco>

@@ -1,18 +1,5 @@
 """Part `ours_bare` (attribution): bare-kernel device times of our engine, without JAX (CUDA events around
-back-to-back launches).
-
-  step      scripts/engine_step_check.py (the forward unit's binary, split forward k_pre / k_post) at --nworld, 10
-            iterations, 4 substeps, from the corpus: tape off and on (its T7 timing: three alternating runs of each,
-            --reps launches per run) plus five more tape-off runs (--sweep-blocks-per-sm 0,..., the production launch,
-            same binary); MuJoCo C check on 64 worlds only (sanity)
-  adjoint   nablaengine.checks build / run (the adjoint check binary): ms_adjoint (k_adjoint on the tape, the
-            corpus's stored cotangent 0) for the exact (clamp_kv 1, normal 0) and interface-default (clamp_kv 0,
-            normal 3) variants, ROUNDS + 1 runs (round 0 dropped); its fused forward with tape (ms_forward_tape,
-            k_substep: not the production forward) is recorded as such
-Corpus: --corpus (default mf_s0; orchestrate.py passes the first corpus), which needs stored cotangents.
-
-  PYTHONPATH=src python scripts/paper_bench/ours_bare.py --out <dir>/ours_bare.json
-"""
+back-to-back launches)."""
 import argparse
 import json
 import os
@@ -21,7 +8,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common as C  # noqa: E402
+import common as C
 
 VARIANTS = {"exact": ["DK_ADJ_CLAMP_KV=1", "DK_ADJ_STAGE=3", "DK_ADJ_NORMAL=0"],
             "interface": ["DK_ADJ_CLAMP_KV=0", "DK_ADJ_STAGE=3", "DK_ADJ_NORMAL=3"]}
@@ -47,7 +34,6 @@ def main():
                    reps=a.reps, env=C.basic_env(("numpy", "mujoco")), provenance=provenance.provenance(),
                    arch_flags=dict(forward=cuda.arch_flags("forward"), adjoint=cuda.arch_flags()))
     reps = max(5, a.reps // 5) if C.QUICK else a.reps
-    # 1. the forward binary, tape off / on
     try:
         sj = raw / f"ours_bare_step_{a.corpus}.json"
         sweep = ",".join(["0"] * (C.ROUNDS))
@@ -71,9 +57,8 @@ def main():
             blocks_per_sm_post=r.get("blocks_per_sm_post"), arch_flags=r.get("arch_flags"),
             forward_defines=r.get("forward_defines"), ours_vs_mjw_qvel=r.get("ours_vs_mjw_qvel"),
             supported_share=r.get("supported_share"), raw=C.rel(sj)))
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         res.error("step", e)
-    # 2. the adjoint binary
     try:
         os.environ["DK_FIXTURES"] = str(C.FIXTURES)
         E = checks
@@ -96,9 +81,9 @@ def main():
                         ms=C.stats_ms(np.asarray([x["ms_forward_tape"] for x in rows]) / 1e3)),
                     worlds_per_sm_adjoint=rows[0].get("blocks_per_sm_adjoint"),
                     sizeof_adj=rows[0].get("sizeof_adj"), forward_build=rows[0].get("forward_build")))
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 res.error(f"adjoint/{name}", e)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         res.error("adjoint", e)
     return 1 if res.data["errors"] else 0
 

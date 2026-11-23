@@ -1,0 +1,37 @@
+<!-- Cylinder-mesh pairs (forest engine): an upright cylinder on a static convex mesh slab (face-face multiccd), a
+     cylinder stacked upright on another free cylinder (cylinder-cylinder face-face), a free mesh on the floor and a
+     tilted cylinder against it. -->
+<mujoco model="cyl_mesh">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <asset>
+    <mesh name="slab" vertex="-0.2 -0.2 -0.03  0.2 -0.2 -0.03  0.2 0.2 -0.03  -0.2 0.2 -0.03
+                              -0.18 -0.18 0.03  0.18 -0.18 0.03  0.18 0.18 0.03  -0.18 0.18 0.03"/>
+    <mesh name="nut" vertex="0.05 0 -0.03  0.025 0.0433 -0.03  -0.025 0.0433 -0.03  -0.05 0 -0.03  -0.025 -0.0433 -0.03
+                             0.025 -0.0433 -0.03  0.05 0 0.03  0.025 0.0433 0.03  -0.025 0.0433 0.03  -0.05 0 0.03
+                             -0.025 -0.0433 0.03  0.025 -0.0433 0.03"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <geom name="slab" type="mesh" mesh="slab" pos="0 0 0.03"/>
+    <body name="can" pos="0.02 0 0.121">
+      <freejoint/>
+      <geom name="can" type="cylinder" size="0.05 0.06" density="500"/>
+    </body>
+    <body name="base" pos="0.6 0 0.06">
+      <freejoint/>
+      <geom name="base" type="cylinder" size="0.06 0.06" density="500"/>
+    </body>
+    <body name="top" pos="0.61 0.01 0.161" euler="3 2 0">
+      <freejoint/>
+      <geom name="top" type="cylinder" size="0.045 0.04" density="500"/>
+    </body>
+    <body name="nut" pos="-0.6 0 0.03">
+      <freejoint/>
+      <geom name="nut" type="mesh" mesh="nut" density="500"/>
+    </body>
+    <body name="pin" pos="-0.6 0.0 0.125" euler="25 0 0">
+      <freejoint/>
+      <geom name="pin" type="cylinder" size="0.02 0.06" density="500"/>
+    </body>
+  </worldbody>
+</mujoco>

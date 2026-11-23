@@ -1,25 +1,5 @@
 """MuJoCo Warp physics of the G1 control step (with the analytic adjoint of MuJoCo Warp pull request 1535) as one
-batched, differentiable JAX op.
-
-  step(qpos, qvel, warm, ctrl, friction, com) -> (qpos', qvel', warm')      all (B, .)
-
-runs SUBSTEPS x mjw.step on the whole batch in one Warp call. Its custom VJP recomputes the
-substeps under a wp.Tape and runs MuJoCo Warp's analytic adjoint, returning d/dqpos, d/dqvel and
-d/dctrl (the warm start and the per-world parameters get no gradient). The per-world parameters are
-those of the engine's control step: the tangential friction of the foot-floor pairs and a torso
-centre-of-mass offset, written into per-world model arrays before every step.
-
-Both FFI callbacks are captured as CUDA graphs (JaxCallableGraphMode.WARP_STAGED). Construct
-WarpPhysics before tracing anything that calls it: that loads every Warp module and runs the
-callbacks once outside any capture. One instance per batch size; one process per GPU.
-
-Notes:
-- a box-box pair (none in the mjlab G1; Menagerie's G1 has one between its box feet) has no collision
-  VJP in MuJoCo Warp's adjoint, so its contact geometry gets no position derivative (the solver part
-  still does), like a stop-gradient;
-- contact / constraint capacity is sized from MJX's static padding (x2), so it cannot overflow
-  for this model; `stats()` reports the high-water marks of the last call.
-"""
+batched, differentiable JAX op."""
 
 import dataclasses
 
@@ -85,7 +65,6 @@ class _Sim:
         self.base_ipos = wp.vec3(*mjm.body_ipos[torso_id].astype(np.float32))
         self.nworld = nworld
         self.nv = int(mjm.nv)
-        # the warm-started recompute runs one solver iteration (same arrays, so DR applies to both views)
         self.m_ws = dataclasses.replace(self.m, opt=dataclasses.replace(self.m.opt, iterations=1))
 
     def _dr(self, friction, com):
@@ -171,7 +150,7 @@ class _Sim:
 
 
 def mjx_capacity(mjm):
-    from mujoco import mjx  # needs JAX; only the JAX wrapper and default capacities use it
+    from mujoco import mjx
 
     """(contacts, constraint rows) per world that MJX pads this model to."""
     d = mjx.make_data(mjm)
@@ -262,7 +241,7 @@ class WarpPhysics:
 
     def _warmup(self, warm_recompute=False):
         s, nw = self.sim, self.sim.nworld
-        z = lambda a: wp.zeros_like(a, requires_grad=False)  # noqa: E731
+        z = lambda a: wp.zeros_like(a, requires_grad=False)
         fr = wp.full(nw, 0.75, dtype=float)
         com = wp.zeros((nw, 3), dtype=float)
         s.forward(s.df.qpos, s.df.qvel, s.df.qacc_warmstart, s.df.ctrl, fr, com,

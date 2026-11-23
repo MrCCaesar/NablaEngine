@@ -19,6 +19,12 @@ qpos1, qvel1, warm1 = torch_ffi.step(qpos, qvel, warm, ctrl, friction, com)  # o
 (qvel1 ** 2).sum().backward()            # ctrl.grad: the analytic adjoint
 ```
 
+Per-world physics parameters (`init(params=...)`, `nablaengine.params.PhysicsParams`) work as in JAX (`docs/api.md`
+"Per-world physics parameters"): `com` carries them and `backward` returns `g_params` and `g_friction` as fifth and
+sixth outputs. That includes the forest engine's per-world `gravity` and external wrenches `xfrc`, and the joint dry
+friction fields `dof_frictionloss`, `frictionloss_solref`, `frictionloss_solimp` (bitwise the JAX interface's results;
+`docs/api.md` "Joint dry friction per world").
+
 ## Installation and the build artifact
 
 `pip install nablaengine[torch]`: NumPy, MuJoCo 3.17 and PyTorch, no JAX (`nablaengine[jax]` is the JAX interface's
@@ -45,12 +51,13 @@ On a V100 (sm_70) install a PyTorch build that still targets sm_70, e.g. the CUD
 
 | entry | as in jax_ffi | notes |
 |---|---|---|
-| `init(device=None, artifact=None, model_dir=None, model=None, foot_pairs=None, terrain=None, com_body=None)` | `init` | loads the artifact (building it if needed) and uploads the model constants to `device` (default: the current CUDA device); the first call on a device synchronizes it; one architecture per process |
+| `init(device=None, artifact=None, model_dir=None, model=None, foot_pairs=None, terrain=None, com_body=None, ..., contact_forces=False, contact_surrogate=False, foot_wrench=None, contact_frame=False)` | `init` | loads the artifact (building it if needed) and uploads the model constants to `device` (default: the current CUDA device); the first call on a device synchronizes it; one architecture per process; the info has `engine`, `adj_stage`, `com_body`, `com_layout`, `con_words` and `contact_forces` as `jax_ffi.init`'s (`docs/engines.md`); `contact_forces="substeps"`, `foot_wrench=`, `contact_frame=`: the contact output's options, as `jax_ffi.init`'s (`docs/api.md` "Contact forces"); `contact_surrogate=True`: the backward's contact-gradient surrogates (`step` / `backward` `cone_mu=`, `impulse_clip=`, as `jax_ffi`'s, bitwise the same gradients; `docs/api.md`); `contact_grad=True`: the contact output's VJP (forest engine, as `jax_ffi`'s: `step(contacts=True)` returns a differentiable copy of the contact output, `backward(g_contacts=)`; `docs/api.md` "Gradients of the contact output") |
 | `build(arch, ...)`, `python -m nablaengine.torch_ffi build` | | the artifact for an architecture (mujoco and nvcc needed) |
-| `step(qpos, qvel, warm, ctrl, friction, com, *, iterations=10, substeps=4, clamp_kv=0, normal=3, clamp_soft=None, grad_decay=1.0, kinematics=False)` | `step` | a `torch.autograd.Function`; the tape is written only when an input requires grad; `warm'` is not differentiable |
+| `step(qpos, qvel, warm, ctrl, friction, com, *, iterations=10, substeps=4, clamp_kv=0, normal=3, clamp_soft=None, grad_decay=1.0, kinematics=False, contacts=False, cone_mu=0.0, impulse_clip=None)` | `step` | a `torch.autograd.Function`; the tape is written only when an input requires grad; `warm'` is not differentiable; `contacts=True` appends the last substep's contact table after `warm'` (not differentiable; eager mode: the tensor `last_contacts()` reads; with `contact_grad=True` and an input that requires grad: a differentiable copy) |
+| `contact_table(con, substeps=None)`, `last_contacts(device=None)` | `contact_table` | the contact output as a dict (valid, pair, dist, pos, normal; force and force_normal with the forces; per-substep tables, tangents, terrain element and foot wrenches with those options, as `jax_ffi.contact_table`) |
 | `kinematics(qpos, qvel, com)` | `kinematics` | differentiable in `qpos` and `qvel` |
 | `scale_grad(tree, gamma)` | `scale_grad` | on a pytree of tensors (`torch.utils._pytree`); non-floating leaves pass through |
-| `forward(...)`, `backward(...)` | `forward`, `backward` | without autograd; the same outputs, `info` included |
+| `forward(...)`, `backward(...)` | `forward`, `backward` | without autograd; the same outputs, `info` included; `forward(contacts=True)` as JAX's |
 | `diagnostics(device=None)`, `read_diagnostics(device=None, reset=True)` | `diagnostics`, `read_diagnostics` | the counters of `jax_ffi.DIAG`, kept per device (below) |
 | `set_diagnostics(enabled)` | | the counters on (default) or off; returns the previous setting |
 | `tape_bytes(nworld, substeps=4, steps=1)` | `tape_bytes` | |
@@ -85,7 +92,15 @@ gradients or cotangents, replay mismatches; `jax_ffi.DIAG`) to an int64 tensor o
 only. `diagnostics()` returns that tensor without reading it; `read_diagnostics()` copies it to the host (a
 synchronization) and by default resets it. The backward's `info` carries the same per-world bits as `jax_ffi.backward`.
 
-Contacts or constraint rows beyond a world's capacity (64 contacts, 192 rows) are dropped and flagged as in the JAX
+Actuator models and torque-speed limits (`docs/api.md`, Actuator models): `init(actuator="unitree_g1")` or
+`build(..., actuator=...)` (`motor_limits=` is a permanent alias), as `jax_ffi.init` (such an artifact is never made
+current); off by default. With `actuator="bam"` (`docs/actuators.md`), `forward(..., act=)` and `step(..., act=)` take
+and return the servo model's state as in JAX, with autograd through `act` too (`backward(..., act=, g_act=)` as in
+JAX). The results
+are bitwise those of the JAX interface.
+
+Contacts or constraint rows beyond a world's capacity (64 contacts and 192 rows by default for the G1 class, 320 rows for multi-tree models; `init(max_contacts=,
+max_rows=)` and `build(..., max_contacts=, max_rows=)` as `jax_ffi.init`) are dropped and flagged as in the JAX
 interface (`docs/api.md`, Diagnostics, Capacity): `info[:, 3] & OVERFLOW_CONTACTS / OVERFLOW_ROWS` of `forward()`, the
 counters `fwd_contact_overflow_worlds` / `fwd_row_overflow_worlds`, and with `set_overflow_warnings(True)` (or
 `DK_OVERFLOW_WARN=1`; off by default) a `RuntimeWarning` from `read_diagnostics()` and once more at exit for counts

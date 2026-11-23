@@ -1,0 +1,49 @@
+{
+ "robot": "a1",
+ "source": "MuJoCo Menagerie unitree_a1/scene.xml",
+ "feet_only": true,
+ "locomotion": true,
+ "servo": null,
+ "init_qpos": [
+  0.0,
+  0.0,
+  0.27,
+  1.0,
+  0.0,
+  0.0,
+  0.0,
+  0.0,
+  0.9,
+  -1.8,
+  0.0,
+  0.9,
+  -1.8,
+  0.0,
+  0.9,
+  -1.8,
+  0.0,
+  0.9,
+  -1.8
+ ],
+ "foot_pairs": [
+  0,
+  1,
+  2,
+  3
+ ],
+ "foot_geoms": [
+  "FR_calf_foot",
+  "FL_calf_foot",
+  "RR_calf_foot",
+  "RL_calf_foot"
+ ],
+ "com_body": "trunk",
+ "substeps_per_control_step": 10,
+ "nq": 19,
+ "nv": 18,
+ "nu": 12,
+ "nbody": 14,
+ "npair": 4,
+ "timestep": 0.002,
+ "mujoco_version": "3.17.0"
+}

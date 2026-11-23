@@ -1,30 +1,4 @@
-"""Per-state labels of one control step with MuJoCo C (float64), for generating and validating benchmark corpora.
-
-For each state (qpos, qvel, qacc_warmstart, ctrl and, for a model with domain randomization, the per-state foot-floor
-friction and torso COM offset) one control step of `substeps` mj_step calls with ctrl held runs on a copy of the model
-from that exact input (float32 corpus values read as float64), as the MuJoCo C baseline and the truth do. Per substep it
-reads the contacts, constraint rows, limit rows, solver iterations and actuator forces and returns, per state:
-
-  ncon_max, nefc_max, nl_max   most contacts / constraint rows / limit rows in any substep            int32
-  ncon0, nefc0                 contacts / rows of substep 0 (the input state's own)                  int32
-  niter_max                    most solver iterations in any substep (and any island)                int32
-  self_contact                 a contact between two geoms of bodies not welded to the world          bool
-  clamped                      an actuated joint's actuator force (the sum of gear * actuator_force
-                               of its joint-transmission actuators) outside its jnt_actfrcrange, or a
-                               force-limited actuator at its forcerange, in some substep              bool
-  limit                        a limit row (joint or tendon) in some substep                          bool
-  nonconv                      solver iterations at the iteration limit in some substep               bool
-  bad                          MuJoCo warned of a bad qpos / qvel / qacc (it then resets the data) or
-                               the result is not finite                                                bool
-  out_qpos, out_qvel           the state after the control step                                       float64
-
-Nothing here depends on the robot's names: the domain randomization takes the pair indices and the body id from the
-caller (g1_meta.json's foot_pairs and torso_body for the G1). Work is spread over Python threads, each with its own
-model copy and MjData; mj_step releases the GIL.
-
-  lab = labels.Labeller(model, substeps=4, dr=(foot_pairs, torso_id), threads=24)
-  out = lab(states, iterations=10)     # states: dict of (S, .) arrays with the corpus keys
-"""
+"""Per-state labels of one control step with MuJoCo C (float64), for generating and validating benchmark corpora."""
 
 import copy
 from concurrent.futures import ThreadPoolExecutor

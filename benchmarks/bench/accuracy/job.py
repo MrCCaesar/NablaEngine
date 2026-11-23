@@ -32,10 +32,8 @@ from benchmarks.bench import prov, schema
 from benchmarks.bench.accuracy import forward as AF
 from benchmarks.bench.accuracy import gradient as AG
 
-# engines whose provenance does not record clamp_kv / normal; mjw_pr1535_fix keeps the actuator damping -kv on the
-# qvel path of clamped dofs (adapters/mjw_pr.py semantics), which is clamp_kv 0
 SEMANTICS = {"dk_iface": dict(clamp_kv=0, normal=3), "mjw_pr1535_fix": dict(clamp_kv=0, normal=0)}
-MJC_VARIANTS = {"default": dict(fd="chain_forward"), "centered": dict(fd="chain_centered")}  # adapters/mjc.py
+MJC_VARIANTS = {"default": dict(fd="chain_forward"), "centered": dict(fd="chain_centered")}
 CELL_KEYS = ("engine", "variant", "label", "native", "iterations", "nworld", "process", "raw")
 PAIRED_REFERENCE = "dk"
 
@@ -83,7 +81,7 @@ def score_job(doc, cache=None, jobs=None, floors=True, run_to_run=True, paired=T
         with np.load(p, allow_pickle=False) as z:
             d = {k: z[k] for k in z.files}
         meta = dict({k: cell.get(k) for k in CELL_KEYS}, cell=cell["id"])
-        tag = dict(cell=cell["id"], nworld=cell["nworld"], process=cell["process"])  # carried by every entry
+        tag = dict(cell=cell["id"], nworld=cell["nworld"], process=cell["process"])
         contents = cell.get("contents") or []
         if "outputs" in contents:
             src = AF.source_from_dump(d, **meta)

@@ -45,7 +45,6 @@ MSG_LIMIT = 4000
 
 
 def _msg(exc):
-    """Exception text for a cell message: type, message and the innermost frames (paths scrubbed)."""
     tb = traceback.extract_tb(exc.__traceback__)[-3:]
     where = " <- ".join(f"{Path(f.filename).name}:{f.lineno} {f.name}" for f in reversed(tb))
     return prov.scrub(f"{type(exc).__name__}: {exc}" + (f" [at {where}]" if where else ""))[:MSG_LIMIT]
@@ -73,7 +72,6 @@ class Worker:
         self.rec = dict(status="running", unit=self.unit["key"], pid=os.getpid(), started=schema.now(),
                         python=platform.python_version(), cells=[], message=None)
 
-    # ------------------------------------------------------------------ records
     def save(self):
         self.rec["elapsed_s"] = round(time.time() - self.t_start, 3)
         tmp = self.out.with_name(self.out.name + ".tmp")
@@ -112,13 +110,12 @@ class Worker:
                     if self.cid(op, mode, s) not in have:
                         self.cell(op, mode, status, message, subset=s)
 
-    # ------------------------------------------------------------------ main
     def run(self):
         u = self.unit
         self.cls_info, self.subset = {}, u["subsets"][0]
         try:
             cls = adapters.load(u["engine"])
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self.rec.update(status="error", message=_msg(e))
             self.fail_all(schema.status("error", "adapter"), _msg(e))
             return 0
@@ -141,7 +138,7 @@ class Worker:
             corpus = P.load_corpus(u["corpus"])
             self.rec["corpus"] = corpus.describe()
             self.rec["problem"] = prob.describe()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self.rec.update(status="error", message=_msg(e))
             self.fail_all(schema.status("error", "corpus"), _msg(e))
             return 0
@@ -159,7 +156,7 @@ class Worker:
         ops = list(u["ops"])
         try:
             states = P.select(corpus, u["nworld"], s, self.prot.get("seed", P.SELECT_SEED))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self.fail_all(schema.status("error", "states"), _msg(e), [s])
             return
         self.rec["states"][str(s)] = states.describe()
@@ -168,7 +165,7 @@ class Worker:
         t0 = time.perf_counter()
         try:
             setup = a.setup(prob, states, u["nworld"], u["iterations"], **opts) or {}
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             st, msg = _status_of(e)
             self.rec["setup"][str(s)] = dict(error=msg, total_s=round(time.perf_counter() - t0, 4))
             self.rec["message"] = msg
@@ -182,12 +179,12 @@ class Worker:
         try:
             fns = a.ops()
             missing = a.not_supported()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             st, msg = _status_of(e)
             self.fail_all(st, msg, [s])
             self._close(a)
             return
-        timed = {}  # op -> (callable, {mode: cell})
+        timed = {}
         n_timed = sum(1 for o in ops if o in fns)
         for i, op in enumerate(ops):
             if op not in fns:
@@ -212,17 +209,16 @@ class Worker:
     def _close(a):
         try:
             a.close()
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     def _engine_info(self, a):
         for k in ("provenance", "semantics"):
             try:
                 self.rec[k] = getattr(a, k)()
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 self.rec[k] = dict(error=_msg(e))
 
-    # ------------------------------------------------------------------ timing
     def remaining(self):
         return self.deadline - time.time()
 
@@ -232,7 +228,7 @@ class Worker:
         modes = list(u["modes"])
         try:
             hints = dict(a.timing_hints(op) or {})
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             hints = dict(error=_msg(e))
         unknown = set(hints) - set(base.HINT_KEYS) - {"error"}
         if unknown:
@@ -250,7 +246,6 @@ class Worker:
             fn()
             a.sync()
             first_call_s = time.perf_counter() - t0
-            # warm-up: groups of k back-to-back calls + one sync, k doubling while a group is short
             calls, k, t_w0, per = 0, 1, time.perf_counter(), first_call_s
             while True:
                 if self.remaining() < 0:
@@ -267,7 +262,6 @@ class Worker:
                 if dt < 0.05:
                     k = min(2 * k, 4096)
             warm = dict(calls=calls, s=round(time.perf_counter() - t_w0, 4), per_call_ms=per * 1e3)
-            # repetitions per round
             if "reps" in hints:
                 n_want = int(hints["reps"])
             else:
@@ -282,7 +276,7 @@ class Worker:
                        f"{share:.1f} s left for it (per-unit timeout)")
                 return {m: self.cell(op, m, schema.status("skipped", "time"), msg, budget=budget) for m in modes}
             N = min(n_want, n_fit)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             st, msg = _status_of(e)
             if isinstance(e, TimeoutError):
                 st = schema.status("skipped", "time")
@@ -291,7 +285,7 @@ class Worker:
         for mode in modes:
             try:
                 rounds_ms, calls_ms, window = self._rounds(a, fn, mode, rounds, N, drop)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 st, msg = _status_of(e)
                 out[mode] = self.cell(op, mode, st, msg, budget=budget)
                 continue
@@ -309,7 +303,6 @@ class Worker:
         return out
 
     def _rounds(self, a, fn, mode, rounds, N, drop):
-        """(per-call ms of every round, kept individual calls (latency), [unix start, end] of the kept rounds)."""
         rounds_ms, calls, window = [], [], [None, None]
         pc = time.perf_counter
         for r in range(rounds):
@@ -334,7 +327,6 @@ class Worker:
         window[1] = time.time()
         return rounds_ms, calls, window
 
-    # ------------------------------------------------------------------ after the ops
     def finish(self, a, states, cells):
         u = self.unit
         diag, outs = {}, None
@@ -343,7 +335,7 @@ class Worker:
             bad = ~np.all(np.isfinite(np.concatenate([np.asarray(outs["qpos"], np.float64),
                                                       np.asarray(outs["qvel"], np.float64)], 1)), 1)
             nonfinite = int(bad.sum())
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             nonfinite = None
             diag["outputs_error"] = _msg(e)
         try:
@@ -351,13 +343,13 @@ class Worker:
             diag.update({k: d.pop(k) for k in list(d) if k in base.DIAG_KEYS})
             if d:
                 diag.setdefault("extra", {}).update(d)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             diag["diagnostics_error"] = _msg(e)
         if diag.get("nonfinite_worlds") is None:
             diag["nonfinite_worlds"] = nonfinite
         try:
             mem = dict(a.memory() or {})
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             mem = dict(error=_msg(e))
         mem["rss_peak_bytes"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
         mib = prov.process_gpu_mib() if self.cls_info.get("device") == "gpu" else None
@@ -368,7 +360,7 @@ class Worker:
             c["diag"], c["mem"] = diag, mem
         self.rec.setdefault("diag", {})[str(states.subset)] = diag
         self.rec.setdefault("mem", {})[str(states.subset)] = mem
-        self._engine_info(a)  # after the run: adapters may record what setup only learned later
+        self._engine_info(a)
         if u.get("dump"):
             self.dump(a, states, outs, diag, mem)
         self.save()
@@ -395,7 +387,7 @@ class Worker:
                         blocks = have
                         for k in have:
                             arrays[f"grad{c}_{k}"] = np.asarray(g[k], np.float64)
-                    if blocks != base.GRAD_BLOCKS:  # a partial gradient: which blocks, and the engine's reasons
+                    if blocks != base.GRAD_BLOCKS:
                         arrays["grad_blocks"] = np.array(blocks)
                         missing = [k for k in base.GRAD_BLOCKS if k not in blocks]
                         why = dict(a.gradient_not_supported() or {})
@@ -405,13 +397,13 @@ class Worker:
                     if report:
                         extra["gradient_report"] = report
                     contents.append("gradient")
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     notes.append(f"gradient: {_status_of(e)[1]}")
         if "jacobian" in want:
             try:
                 arrays["jacobian"] = np.asarray(a.jacobian(), np.float64)
                 contents.append("jacobian")
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 notes.append(f"jacobian: {_status_of(e)[1]}")
         if raw_dir is None:
             self.cell(None, None, schema.status("error", "no_raw_dir"), "dump requested without a raw directory",
@@ -433,7 +425,7 @@ def probe(engine):
         out["adapter"] = cls.describe()
         out["check"] = cls.check_env() or {}
         out["ok"] = True
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         out.update(ok=False, error=_msg(e))
     out["packages"] = prov.packages()
     print("\n" + json.dumps(schema.clean(out)))

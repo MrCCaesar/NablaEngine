@@ -6,8 +6,8 @@ prints one PASS / FAIL line per check; every check is also a script of its own t
 `provenance` block: commit, GPU, driver, nvcc, package versions) and exits with status 1 when a gate fails.
 
 ```bash
-scripts/verify.sh --quick [OUTDIR]   # a few minutes on one GPU: env, one step, one gradient group, FFI bitwise, capability
-scripts/verify.sh [OUTDIR]           # about 15 minutes on a V100: every check on mf_s0 and mf_s1
+scripts/verify.sh --quick [OUTDIR]   # a few minutes on one GPU: env, one step, one gradient group, FFI bitwise, Apollo, capability
+scripts/verify.sh [OUTDIR]           # about 25 minutes on a V100: every check on mf_s0 and mf_s1, terrain, nineteen robot models
 ```
 
 `OUTDIR` defaults to `runs/verify`; each check leaves `<name>.log` and `<name>.json` there.
@@ -116,10 +116,21 @@ own codes by `capability.require` and by `jax_ffi.init(model=...)`, before anyth
   unit at the first identical level that can clear its L0 difference; `--full` requires every level identical.
 - `scripts/engine_check.py`: the smooth dynamics (mass matrix, bias forces) against MuJoCo C.
 - `scripts/make_mjw_reference.py`: regenerates a MuJoCo Warp reference (needs mujoco-warp 3.17.0).
-- `scripts/terrain_check.py`: terrain builds against MuJoCo Warp on the committed scenes
+- `scripts/terrain_check.py`: in `verify.sh` (full), `terrain_analytic` / `terrain_native`: a terrain build of each
+  heightfield mode through the JAX interface against the committed MuJoCo Warp reference
+  `fixtures/mjlab/mjw317_terrain_feet.npz` (`check --gate`: on the stairs and the box obstacle, qvel relative error
+  median below 1e-5, contact counts equal in 99 % of the worlds, no overflow; heightfield worlds are reported, not
+  gated, as the engine's heightfield modes differ from MuJoCo Warp's by construction). Beyond that, against MuJoCo
+  Warp on the committed scenes
   `fixtures/mjlab/g1_terrain_{feet,body}.mjb` (`ref` in the MuJoCo Warp environment, then `check`, `grad`, `raysref` /
   `rays`, `vjp` in the PyTorch / JAX one); results `docs/results/terrain_check_v100.json`, `docs/terrain.md`.
-- `scripts/robots/robot_check.py`: other robots against MuJoCo Warp and float64 MuJoCo (`docs/robots.md`); results
+- `scripts/robots/regress.py`: in `verify.sh`, `robots` (full: the nineteen models of `fixtures/robots`) and
+  `robots_apollo` (`--quick`): per robot, `robot_check.py check` on its 512 committed states against native MuJoCo
+  Warp 3.17.0 (qvel relative p99 at most 3x the recorded one, at least 5e-5; equal contact counts in at least the
+  recorded share minus 0.004; no flagged world) and `robot_check.py grad64` on 64 of them against float64 MuJoCo C
+  central differences (per input block, the median relative error over the worlds whose forward is MuJoCo C's at most
+  3x the recorded one, at least 1e-5), the recorded results being `fixtures/robots/results.json`. Beyond that,
+  `scripts/robots/robot_check.py` on the full 4096-state references (`docs/robots.md`); results
   `docs/results/robots_check_v100.json`, `docs/results/robots_time_rtx6000.json`.
 - The benchmark harness (`benchmarks/README.md`) scores the forward and the gradients of every engine against the
   same truth files: `docs/results/paper_accuracy_heldout_v100.md`.

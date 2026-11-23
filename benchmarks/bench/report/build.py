@@ -39,7 +39,7 @@ def _docs(paths):
     for f in files:
         try:
             doc = schema.read(f)
-        except Exception as e:  # noqa: BLE001  (not a result file, or an invalid one)
+        except Exception as e:
             notes.append(f"skipped {prov.rel(f)}: {type(e).__name__}: {str(e)[:160]}")
             continue
         out.append((f, doc))

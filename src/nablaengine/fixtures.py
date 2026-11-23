@@ -1,25 +1,4 @@
-"""The G1 model and the reference corpora of the checks.
-
-Fixtures directory (the model, and the references of the checks): $DK_FIXTURES when set (and not empty), else DEFAULT,
-<checkout>/fixtures/mjlab, for this module, nablaengine.jax_ffi and every script. It holds the mjlab G1
-(g1_train.mjb, g1_meta.json: foot-floor pairs, torso body, sizes and options) and, per benchmark corpus, the MuJoCo
-Warp reference
-mjw317_<corpus>.npz (scripts/make_mjw_reference.py: native mujoco-warp 3.17.0, one control step at 50 iterations, and
-the contacts at the input states).
-
-Corpora. A name is looked up in this order:
-  1. <fixtures directory>/<name>_fwd.npz (+ <name>_adj.npz): a corpus in the fixture format (inputs, MuJoCo Warp's
-     outputs, and with the adjoint file the cotangents cot{c}_qpos / cot{c}_qvel and reference gradients
-     grad{c}_qpos / qvel / ctrl);
-  2. a benchmark corpus, <bench data>/<name>.npz with <bench data> = $DK_BENCH_DATA (default <checkout>/benchmarks/data):
-     the corpora mf_s0 .. mf_s3 (benchmarks/bench/corpus/gen_mf.py: MuJoCo C rollouts of the G1 under random joint
-     setpoints and pushes; the inputs qpos, qvel, qacc_warmstart, ctrl, friction, com of 4096 states,
-     their stored cotangents cot_qpos (S, 3, nq) / cot_qvel (S, 3, nv), labels label_*). load_corpus maps them to the
-     fixture keys (cot{c}_* = cot_*[:, c], prefall / rollout_step from the labels) and merges the corpus's MuJoCo Warp
-     reference from the fixtures directory when it exists (out_qpos, out_qvel, ncon, nefc, solver_niter per substep,
-     iterations 50). Benchmark corpora have no reference gradients: the gradient checks score against the MuJoCo C
-     float64 finite-difference truth, <bench data>/truth/<name>.npz (load_truth).
-The public defaults are MAIN_CORPORA = (mf_s0, mf_s1)."""
+"""The G1 model and the reference corpora of the checks."""
 
 import json
 import os
@@ -30,11 +9,11 @@ import numpy as np
 
 CHECKOUT = Path(__file__).resolve().parents[2]
 ROOT = CHECKOUT / "fixtures"
-DEFAULT = ROOT / "mjlab"  # the default fixtures directory: the mjlab G1 and the references of the public corpora
-BENCH_DATA = CHECKOUT / "benchmarks" / "data"  # $DK_BENCH_DATA: the benchmark corpora and their truth files
-BENCH_PATTERN = "mf_s*.npz"  # the benchmark corpora of the mjlab G1 that corpora() lists
-MJW_REFERENCE = "mjw317_{name}.npz"  # a corpus's MuJoCo Warp reference in the fixtures directory
-MAIN_CORPORA = ("mf_s0", "mf_s1")  # the public defaults, in order of preference
+DEFAULT = ROOT / "mjlab"
+BENCH_DATA = CHECKOUT / "benchmarks" / "data"
+BENCH_PATTERN = "mf_s*.npz"
+MJW_REFERENCE = "mjw317_{name}.npz"
+MAIN_CORPORA = ("mf_s0", "mf_s1")
 NCOT = 3
 
 
@@ -201,7 +180,6 @@ def load_truth(name=None):
 
 
 def _segment_distance(p0, p1, q0, q1):
-    """Closest distance between segments p0-p1 and q0-q1 (Ericson, Real-Time Collision Detection 5.1.9)."""
     d1, d2, r = p1 - p0, q1 - q0, p0 - q0
     a, e, f = d1 @ d1, d2 @ d2, d2 @ r
     if a <= 1e-15 and e <= 1e-15:

@@ -56,7 +56,7 @@ def _cell(docs, engine, corpus, iterations, variant="default"):
                     (engine, variant, corpus, iterations, 0):
                 continue
             if "gradient" not in (c.get("contents") or []) or (c.get("opts") or {}).get("eps"):
-                continue  # the FD step sweeps carry their step in opts: only the default cell
+                continue
             hits.append((path, doc, c))
     if len(hits) != 1:
         raise SystemExit(f"{engine}~{variant} {corpus} it{iterations}: {len(hits)} dump cells (need exactly one)")
@@ -83,7 +83,6 @@ def dof_names(m):
 
 
 def _corpus_sources(docs, corpus, a):
-    """(truth, GT, block slice, {source: (floored errors (N, C), block VJPs (N, C, ncol_block))}, info, usable (N, C))."""
     from benchmarks.bench.truth import store
     tr = store.load(corpus)
     GT = AG.truth_from_store(tr)
@@ -140,7 +139,7 @@ def main(argv=None):
     dmin, corpus, w, c = best
     tr, GT, sl, per_src, info, _ = per_corpus[corpus]
     m = P.load_model(P.get("mjlab"), iterations=a.iterations)
-    names = dof_names(m) if a.block == "qvel" else None  # the qvel columns are the nv dofs in order
+    names = dof_names(m) if a.block == "qvel" else None
     flo = AG.block_errors(GT["floor"], GT["fd"], GT["bad"] == 0, {a.block: sl})[a.block][0][w, c]
     out = dict(
         kind="gradient_example", created=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),

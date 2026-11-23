@@ -1,0 +1,30 @@
+<!-- Convex (CCD) pairs with a cylinder (forest engine): a capsule, a box and a cylinder dropped on a static lying
+     cylinder (capsule-cylinder, cylinder-box, cylinder-cylinder: multiccd), a cylinder resting on its side on a free box
+     on the floor (two moving bodies), all on a plane. -->
+<mujoco model="cyl_ccd">
+  <option timestep="0.002" integrator="implicitfast"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <geom name="log" type="cylinder" size="0.06 0.6" pos="0 0 0.06" euler="90 0 0"/>
+    <body name="cap" pos="0.01 -0.4 0.16" euler="0 80 10">
+      <freejoint/>
+      <geom name="cap" type="capsule" size="0.03 0.07" density="500"/>
+    </body>
+    <body name="box" pos="0.0 0.0 0.165" euler="5 0 15">
+      <freejoint/>
+      <geom name="box" type="box" size="0.05 0.04 0.045" density="500"/>
+    </body>
+    <body name="can" pos="0.01 0.4 0.17" euler="0 0 0">
+      <freejoint/>
+      <geom name="can" type="cylinder" size="0.05 0.05" density="500"/>
+    </body>
+    <body name="crate" pos="0.6 0 0.05">
+      <freejoint/>
+      <geom name="crate" type="box" size="0.1 0.1 0.05" density="300"/>
+    </body>
+    <body name="roll" pos="0.6 0 0.141" euler="0 90 20">
+      <freejoint/>
+      <geom name="roll" type="cylinder" size="0.04 0.07" density="500"/>
+    </body>
+  </worldbody>
+</mujoco>

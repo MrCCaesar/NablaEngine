@@ -22,34 +22,35 @@ the self-test fails, 1 otherwise. Other gradient modes (--clamp-kv 0 --normal 3,
 (benchmarks/bench/accuracy/gradient.py plan: G4 not evaluated with clamp_kv 0, G1 not with normal != 0) against the
 same thresholds.
 
+--engine forest: the same on the forest engine's build of the fixtures' G1 ($DK_ENGINE=forest for jax_ffi.init:
+nablaengine.engines, the tree engine's default COM-offset body), against the same truth and THRESHOLDS; default
+$DK_ENGINE (nablaengine.engines.default: tree, else forest). The result records the engine the library went to (info["engine"]).
+
   PYTHONPATH=src python scripts/gradient_check.py --out runs/gradient_check.json
   PYTHONPATH=src python scripts/gradient_check.py --corpora mf_s0 --groups G0 --out runs/gradient_quick.json
 """
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))  # the benchmark package (benchmarks/)
+sys.path.insert(0, str(ROOT))
 
-from benchmarks.bench.accuracy import gradient as BG  # noqa: E402
-from benchmarks.bench.truth import store  # noqa: E402
+from benchmarks.bench.accuracy import gradient as BG
+from benchmarks.bench.truth import store
 
-from nablaengine import fixtures, provenance  # noqa: E402
-from nablaengine.reference.adjoint_groups import qpos_tangent  # noqa: E402
+from nablaengine import fixtures, provenance
+from nablaengine.reference.adjoint_groups import qpos_tangent
 
 INPUTS = ("qpos", "qvel", "qacc_warmstart", "ctrl", "friction", "com")
 GROUPS = ("G0", "G4", "G5", "G6")
 BLOCKS = BG.BLOCKS
 SUBSET = "model_ok"
-# per block: the bound of the floored relative error's p99 in every gated group (model_ok), and of the cosine's 1st
-# percentile. Measured (V100, exact mode, 50 iterations; mf_s0 / mf_s1, the largest over G0, G4, G5, G6): p99 qpos
-# 5.2e-4 / 6.4e-4, qvel 1.1e-4 / 1.5e-4, ctrl 1.5e-5 / 2.4e-5; max qpos 1.0e-3 / 6.8e-4, qvel 1.3e-4 / 2.1e-4, ctrl
-# 2.3e-5 / 3.2e-5; the smallest cosine 0.9999995 / 0.9999998. The self-test's 3e-3 perturbation exceeds each bound.
 THRESHOLDS = dict(qpos=2e-3, qvel=5e-4, ctrl=1e-4)
 COS_P1 = 0.99999
 
@@ -144,8 +145,12 @@ def main(argv=None):
     ap.add_argument("--clamp-kv", type=int, default=1)
     ap.add_argument("--normal", type=int, default=0)
     ap.add_argument("--perturb", type=float, default=3e-3, help="the self-test's relative perturbation (0: none)")
+    ap.add_argument("--engine", default=None, choices=("tree", "forest"),
+                    help="the engine (default: $DK_ENGINE, nablaengine.engines.default: tree, else forest)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
+    if a.engine:
+        os.environ["DK_ENGINE"] = a.engine
     groups = [g for g in a.groups.split(",") if g]
     sem = dict(clamp_kv=a.clamp_kv, normal=a.normal)
     res = dict(iterations=a.iterations, semantics=sem, gated_groups=groups, subset=SUBSET, thresholds=THRESHOLDS, cos_p1=COS_P1,
@@ -177,6 +182,8 @@ def main(argv=None):
             print(f"{corpus} {g} {SUBSET}: {line or s.get('status')} {verdicts.get(g, {}).get('pass_', 'reported')}",
                   flush=True)
     res["pass"] = bool(ok)
+    from nablaengine import jax_ffi
+    res["engine"] = jax_ffi.init()["engine"]
     res["provenance"] = provenance.provenance()
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(res, indent=1, default=str) + "\n")

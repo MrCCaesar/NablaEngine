@@ -3,8 +3,7 @@ of nablaengine.checks, ...) and the JAX FFI library (nablaengine.jax_ffi): KERNE
 launch per control step of nsub substeps, one block of 32 threads per world, optionally writing the tape), the split
 forward (k_pre / k_post, two launches per substep, dk_forward_split: the production forward when DK_SPLIT is 1, the
 default; bitwise the same results), and loader(), the host code that copies the packed model constants into the
-kernels' DKC arrays (scripts/engine_step_check.py re-exports both).
-"""
+kernels' DKC arrays (scripts/engine_step_check.py re-exports both)."""
 
 
 KERNEL = r"""
@@ -150,6 +149,9 @@ __device__ __forceinline__ void pre_world(SimP& s, Hand& g, int w, int lane, con
   substep_pre(s, ctrl + (size_t)w * (NV - 6), lane, tape ? tape + ((size_t)w * nsub + k) * REC_WORDS : nullptr);
   int ncon = min(s.ncon, MAXCON);
   for (int i = lane; i < NV; i += 32) { g.qsm[i] = s.qsm[i]; g.qacc0[i] = s.qacc0[i]; }
+#if DK_CLAMP_IMPLICIT
+  for (int i = lane; i < NV; i += 32) g.kvi[i] = s.kvi[i];
+#endif
   for (int c = lane; c < ncon; c += 32) {
     g.con_pair[c] = s.con_pair[c]; g.con_dim[c] = s.con_dim[c]; g.con_row[c] = s.con_row[c];
     g.con_nrow[c] = s.con_nrow[c]; g.con_nd[c] = s.con_nd[c]; g.con_mu[c] = s.con_mu[c];
@@ -195,6 +197,9 @@ __device__ __forceinline__ void post_world_on(S& s, const Hand& g, int w, int la
     s.min_nu_bits = g.min_nu_bits;
     s.qpos = q; s.qvel = v; s.qsm = g.qsm; s.qacc0 = g.qacc0; s.con_mu = g.con_mu; s.efc_aref = g.efc_aref;
     s.con_pair = g.con_pair; s.con_J = g.con_J; s.con_dof = g.con_dof; s.con_mask = g.con_mask;
+#if DK_CLAMP_IMPLICIT
+    s.kvi = g.kvi;
+#endif
   }
 #ifdef DK_PROFILE
   if (lane < NPROF) s.prof[lane] = 0;
@@ -342,7 +347,7 @@ def loader(layouts, sizes):
             lines.append(f"  {{ static int t{tmp}[{size}]; for (int i = 0; i < {size}; i++) t{tmp}[i] = (int)p[i]; "
                          f"cudaMemcpyToSymbol({sym}, t{tmp}, {size * 4}); p += {size}; }}")
             tmp += 1
-        elif kind == "u":  # unsigned 32-bit values packed as (low 16 bits, high 16 bits)
+        elif kind == "u":
             n = size
             lines.append(f"  {{ static unsigned int t{tmp}[{n}]; for (int i = 0; i < {n}; i++) "
                          f"t{tmp}[i] = (unsigned int)p[2 * i] | ((unsigned int)p[2 * i + 1] << 16); "

@@ -1,30 +1,14 @@
-"""Part `ours`: our engine through nablaengine.jax_ffi under jax.jit (the main environment).
-
-Per corpus at --nworld (default 4096), 10 iterations, 4 substeps, AOT-compiled (compile time recorded per op):
-  fwd        jax_ffi.step without differentiation (dk_step: the forward, no tape)
-  fwd_tape   jax_ffi.forward(tape=True) (dk_step_fwd: the forward that writes the tape, the forward of a gradient)
-  per gradient mode (exact: clamp_kv=1, normal=0, the headline; interface: clamp_kv=0, normal=3, the interface
-  defaults):
-    bwd      jax_ffi.backward on the tape (the adjoint alone), the corpus's stored cotangent 0
-    vjp      jax.vjp of jax_ffi.step + the pullback, one jit (forward with tape + adjoint)
-    jac_bwd  the Jacobian-equivalent: 71 backward calls on one tape (one-hot cotangents, one per output row of the
-             71 x 99 Jacobian d(qpos' (36), qvel' (35)) / d(qpos tangent, qvel, ctrl)), lax.scan in one jit
-    jac      forward with tape + jac_bwd in one jit (the whole Jacobian from the state); also per world
---sweep: fwd and vjp (exact mode) at each nworld on the first corpus (states tiled past the corpus size).
-Records jax_ffi.init()'s build info (built now or loaded from the cache, its time) and launch_info().
-
-  PYTHONPATH=src XLA_PYTHON_CLIENT_PREALLOCATE=false python scripts/paper_bench/ours.py --out <dir>/ours.json
-"""
+"""Part `ours`: our engine through nablaengine.jax_ffi under jax.jit (the main environment)."""
 import argparse
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import common as C  # noqa: E402
+import common as C
 
 MODES = {"exact": (1, 0), "interface": (0, 3)}
-NOUT = 71  # qpos' (36) + qvel' (35)
+NOUT = 71
 
 
 def main():
@@ -147,9 +131,8 @@ def main():
                 res.cell(f"{name}/nw{a.nworld}", cell)
                 del c_b, c_v
             del tp, o
-        except Exception as e:  # noqa: BLE001  (recorded; the next corpus goes on)
+        except Exception as e:
             res.error(f"{name}/nw{a.nworld}", e)
-    # nworld sweep: fwd and vjp, exact mode, first corpus
     first = next(iter(C.corpora(a.corpora)))
     bwd, vjp, _, _ = make_mode(*MODES["exact"])
     for nw in [int(x) for x in a.sweep.split(",") if x.strip()]:
@@ -163,14 +146,14 @@ def main():
             cell["vjp"], _ = bench(c_v, args + (cq, cv))
             res.cell(f"sweep/{first}/nw{nw}", cell)
             del c_step, c_v, args
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             if C.is_oom(e):
                 C.record_oom(res, f"sweep/{first}/nw{nw}", e, nw)
             else:
                 res.error(f"sweep/{first}/nw{nw}", e)
     try:
         res.data["launch_info"] = F.launch_info()
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:
         res.error("launch_info", e)
     res.save()
     return 1 if res.data["errors"] else 0

@@ -1,11 +1,11 @@
 {
- "description": "Time per control step (CUDA events, median of 30 after warm-up) of the forward and of the forward with the backward, scripts/robots/robot_check.py time (the G1: --g1), 4096 worlds, 10 iterations, the model's substeps (20 ms control steps), states from each robot's reference corpus; the GPU otherwise idle.",
+ "description": "Time per control step (CUDA events, median of 30 after warm-up) of the forward and of the forward with the backward, scripts/robots/robot_check.py time (the G1: --g1), 4096 worlds, 10 iterations, the model's substeps (20 ms control steps), states from each robot's reference corpus; the GPU otherwise idle. 2026-11-11: all 14 robots of fixtures/robots (scripts/robots/robot_check.py time on each fixture's ref.npz, the G1 with --g1) and the G1 with every per-world physics parameter (scripts/params_check.py time on a parameter reference, against the same states without parameters: g1_params / g1_params_plain).",
  "provenance": {
-  "commit": null,
   "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition, driver 595.58.03",
   "nvcc": "Build cuda_12.8.r12.8/compiler.35583870_0",
   "torch": "2.13.0+cu129",
-  "date": "2026-11-06",
+  "date": "2026-11-11",
+  "commit": null,
   "commit_note": "a revision before this repository's history: not recorded"
  },
  "results": [
@@ -15,79 +15,132 @@
    "substeps": 4,
    "iterations": 10,
    "forward_ms": 1.296,
-   "forward_backward_ms": 1.945
-  },
-  {
-   "robot": "go1",
-   "nworld": 4096,
-   "substeps": 4,
-   "iterations": 10,
-   "forward_ms": 0.684,
-   "forward_backward_ms": 1.014
-  },
-  {
-   "robot": "h1",
-   "nworld": 4096,
-   "substeps": 5,
-   "iterations": 10,
-   "forward_ms": 0.852,
-   "forward_backward_ms": 1.316
-  },
-  {
-   "robot": "t1",
-   "nworld": 4096,
-   "substeps": 10,
-   "iterations": 10,
-   "forward_ms": 3.931,
-   "forward_backward_ms": 6.285
-  },
-  {
-   "robot": "spot",
-   "nworld": 4096,
-   "substeps": 5,
-   "iterations": 10,
-   "forward_ms": 0.946,
-   "forward_backward_ms": 1.304
-  },
-  {
-   "robot": "op3",
-   "nworld": 4096,
-   "substeps": 5,
-   "iterations": 10,
-   "forward_ms": 1.871,
-   "forward_backward_ms": 3.48
-  },
-  {
-   "robot": "berkeley_humanoid",
-   "nworld": 4096,
-   "substeps": 10,
-   "iterations": 10,
-   "forward_ms": 2.867,
-   "forward_backward_ms": 4.83
+   "forward_backward_ms": 1.96
   },
   {
    "robot": "a1",
    "nworld": 4096,
    "substeps": 10,
    "iterations": 10,
-   "forward_ms": 1.898,
-   "forward_backward_ms": 2.598
+   "forward_ms": 1.939,
+   "forward_backward_ms": 2.638
   },
   {
-   "robot": "go2",
+   "robot": "adam_lite",
    "nworld": 4096,
    "substeps": 10,
    "iterations": 10,
-   "forward_ms": 1.956,
-   "forward_backward_ms": 2.661
+   "forward_ms": 2.194,
+   "forward_backward_ms": 3.542
+  },
+  {
+   "robot": "adam_lite",
+   "nworld": 4096,
+   "substeps": 10,
+   "iterations": 10,
+   "forward_ms": 6.648,
+   "forward_backward_ms": 62.525
   },
   {
    "robot": "anymal_c",
    "nworld": 4096,
    "substeps": 10,
    "iterations": 10,
-   "forward_ms": 1.861,
-   "forward_backward_ms": 2.563
+   "forward_ms": 1.782,
+   "forward_backward_ms": 2.478
+  },
+  {
+   "robot": "apollo",
+   "nworld": 4096,
+   "substeps": 4,
+   "iterations": 10,
+   "forward_ms": 2.252,
+   "forward_backward_ms": 3.921
+  },
+  {
+   "robot": "berkeley_humanoid",
+   "nworld": 4096,
+   "substeps": 10,
+   "iterations": 10,
+   "forward_ms": 2.818,
+   "forward_backward_ms": 5.092
+  },
+  {
+   "robot": "go1",
+   "nworld": 4096,
+   "substeps": 4,
+   "iterations": 10,
+   "forward_ms": 0.665,
+   "forward_backward_ms": 1.001
+  },
+  {
+   "robot": "go2",
+   "nworld": 4096,
+   "substeps": 10,
+   "iterations": 10,
+   "forward_ms": 1.958,
+   "forward_backward_ms": 2.651
+  },
+  {
+   "robot": "h1",
+   "nworld": 4096,
+   "substeps": 5,
+   "iterations": 10,
+   "forward_ms": 0.839,
+   "forward_backward_ms": 1.282
+  },
+  {
+   "robot": "n1",
+   "nworld": 4096,
+   "substeps": 10,
+   "iterations": 10,
+   "forward_ms": 3.382,
+   "forward_backward_ms": 14.36
+  },
+  {
+   "robot": "n1_full",
+   "nworld": 4096,
+   "substeps": 10,
+   "iterations": 10,
+   "forward_ms": 12.105,
+   "forward_backward_ms": 135.483
+  },
+  {
+   "robot": "op3",
+   "nworld": 4096,
+   "substeps": 5,
+   "iterations": 10,
+   "forward_ms": 1.644,
+   "forward_backward_ms": 3.169
+  },
+  {
+   "robot": "spot",
+   "nworld": 4096,
+   "substeps": 5,
+   "iterations": 10,
+   "forward_ms": 0.92,
+   "forward_backward_ms": 1.31
+  },
+  {
+   "robot": "t1",
+   "nworld": 4096,
+   "substeps": 10,
+   "iterations": 10,
+   "forward_ms": 3.674,
+   "forward_backward_ms": 5.909
+  },
+  {
+   "robot": "g1_params",
+   "nworld": 4096,
+   "forward_ms": 1.277,
+   "forward_backward_ms": 2.012
+  },
+  {
+   "robot": "g1_params_plain",
+   "nworld": 4096,
+   "forward_ms": 1.292,
+   "forward_backward_ms": 1.955
   }
- ]
+ ],
+ "revision_note": "rev A: revisions of the development repository before this repository's history, labelled in order of first mention"
 }

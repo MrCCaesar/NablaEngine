@@ -2,24 +2,7 @@
 wheel where the driver supports CUDA 13, NVIDIA's +cu12 wheel otherwise; the installed tag is recorded), run through
 its public API only (mjw.put_model / put_data / step, wp.ScopedCapture). Forward only: MuJoCo Warp has no backward in
 any release (mjw_common.NO_BACKWARD), so bwd, vjp, fwd_train and jac are not_supported with that citation, and
-tape_evidence() shows what 3.17.0 does under wp.Tape. Environment 'mjw-native' (benchmarks/envs/envs.toml).
-
-Setup and timing are mjw_common.MjwBase's: per-world DR through put_model batch_sizes, opt.warn_overflow without
-ITERATIONS / LS_ITERATIONS as upstream's benchmarks/unitree_g1, graph_conditional on, sensors as the problem sets them
-(off on Track A), and op fwd = the CUDA graph of [copy the corpus inputs into Data; substeps x mjw.step].
-
-Variants (cell ids <engine>~<variant>; any option also with run --opt mjw.<key>=<value>):
-  default    capacity "procedure" (mjw_common: naconmax from the measured mean contacts + margin, njmax the smallest
-             valid size >= the most rows over all corpora; benchmarks/data/mjw_capacity.json)
-  matched    capacity 64 contacts / 192 rows per world (NablaEngine's)
-  warn_all   put_model's default opt.warn_overflow (every warning on: the iteration-limit warnings print)
-Options: capacity (procedure | matched | explicit), capacity_file, nconmax, naconmax, njmax (explicit), warn (bench |
-all | none), tape_evidence (default true: diagnostics() also records tape_evidence() on the first 8 worlds).
-
-  python -m benchmarks.bench run --engines mjw --quick --out runs/bench/test_mjw/
-  # the wp.Tape evidence alone (in the mjw-native environment, repository root on PYTHONPATH):
-  python -m benchmarks.bench.adapters.mjw --tape-evidence --corpus mf_s0 --out runs/bench/test_mjw/mjw_tape.json
-"""
+tape_evidence() shows what 3.17.0 does under wp.Tape. Environment 'mjw-native' (benchmarks/envs/envs.toml)."""
 
 import argparse
 import json
@@ -66,7 +49,7 @@ class MjwAdapter(mjw_common.MjwBase):
         try:
             return dict(tape_evidence=tape_evidence(self.mjw, self.wp, self.mjm, self.problem, self.states,
                                                     min(TAPE_WORLDS, self.nworld), self.substeps))
-        except Exception as e:  # noqa: BLE001  (evidence only; never hides the timed results)
+        except Exception as e:
             return dict(tape_evidence=dict(error=f"{type(e).__name__}: {e}"[:500]))
 
     def semantics(self):
@@ -100,7 +83,7 @@ def tape_evidence(mjw, wp, mjm, prob, states, nworld, substeps):
         m = mjw.put_model(mjm)
     m.opt.warn_overflow = 0
     d = mjw.put_data(mjm, mjd, nworld=n, nconmax=mjw_common.MATCHED["nconmax"], njmax=mjw_common.MATCHED["njmax"])
-    f32 = lambda x: np.ascontiguousarray(np.asarray(x)[:n], np.float32)  # noqa: E731
+    f32 = lambda x: np.ascontiguousarray(np.asarray(x)[:n], np.float32)
     ins = dict(qpos=wp.array(f32(states.qpos), dtype=float, requires_grad=True),
                qvel=wp.array(f32(states.qvel), dtype=float, requires_grad=True),
                qacc_warmstart=wp.array(f32(states.qacc_warmstart), dtype=float, requires_grad=False),
@@ -124,14 +107,14 @@ def tape_evidence(mjw, wp, mjm, prob, states, nworld, substeps):
     d.qvel.grad.assign(cv)
     launches = [x for x in tape.launches if not callable(x)]
     no_bwd = []
-    for x in launches:  # the condition under which Warp's Tape.backward warns (warp/_src/tape.py)
+    for x in launches:
         eb = x[0].options.get("enable_backward")
         if eb is None:
             eb = x[0].module.options.get("enable_backward")
         if eb is False:
             no_bwd.append(x[0].key)
     level = getattr(wp.config, "log_level", None)
-    if level is not None and hasattr(wp, "LOG_ERROR"):  # Warp logs one warning per such launch: counted above instead
+    if level is not None and hasattr(wp, "LOG_ERROR"):
         wp.config.log_level = wp.LOG_ERROR
     try:
         tape.backward()
@@ -158,7 +141,6 @@ def tape_evidence(mjw, wp, mjm, prob, states, nworld, substeps):
 
 
 def _tape_cli(a):
-    """--tape-evidence: tape_evidence() on the first --nworld states of a corpus (mjlab problem)."""
     import mujoco_warp as mjw
     import warp as wp
 

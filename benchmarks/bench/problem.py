@@ -1,40 +1,6 @@
 """The physics problems every adapter solves, the per-world domain randomization (DR) for MuJoCo C, and the corpus
 loader with its fixed seeded state selection. numpy and the standard library at import; mujoco only inside
-load_model / DR (every engine environment has it).
-
-Track A (headline, every engine): the mjlab G1, fixtures/mjlab/g1_train.mjb with g1_meta.json (foot-floor pairs,
-torso body). One control step = 4 x mj_step of 5 ms with ctrl held (qfrc_applied 0); Newton, pyramidal cone,
-implicitfast as stored; iterations set explicitly by every cell (10 headline, 50 reference; the .mjb stores 5, which
-is never used), ls_iterations 8, tolerance 1e-8, sensors off (mjDSBL_SENSOR). Per-world DR from the corpus:
-pair_friction[foot_pairs, 0:2] = friction[w] and body_ipos[torso] = body_ipos0[torso] + com[w], without
-mj_setConst (as nablaengine.reference.warp_physics._set_dr and benchmarks/bench/truth/fdlib._set_dr; MuJoCo Warp keeps
-the compiled invweight0 too).
-Track B (MJX, MJW, MuJoCo C only): MuJoCo Menagerie unitree_g1/scene_mjx.xml at the commit pinned by
-benchmarks/bench/models (its path is an argument), native options, 5 x 4 ms = one 20 ms control step, no DR.
-
-  from benchmarks.bench import problem as P
-  prob = P.get("mjlab")                        # or P.get("menagerie_g1", model_path=...)
-  m = P.load_model(prob, iterations=10)        # MjModel with the problem's options (Track A needs iterations)
-  dr = P.DR(m, prob)
-  dr.apply(m, friction[w], com[w])             # MuJoCo C, one world (in place, relative to the nominal values)
-  pf, bi = dr.batched(friction, com, np.float32)   # (B, npair, 5), (B, nbody, 3) for batched models (None: no DR)
-  corpus = P.load_corpus("mf_s0")              # benchmarks/data/mf_s0.npz
-  states = P.select(corpus, nworld=1024, subset=1)  # a fixed seeded permutation; subsets are disjoint
-
-Corpora. Benchmark corpora (kind "bench", written by benchmarks/bench/corpus): benchmarks/data/<name>.npz (directory:
-$DK_BENCH_DATA, default benchmarks/data) with qpos (S, nq), qvel (S, nv), qacc_warmstart (S, nv), ctrl (S, nu),
-friction (S,) and com (S, 3) (Track A), cot_qpos (S, 3, nq), cot_qvel (S, 3, nv), and metadata (0-d entries; a JSON
-string under `metadata` / `meta` / `meta_json`; other per-state arrays such as label_* are kept in Corpus.extra).
-Corpora in the engine's fixture format (kind "fixture"): <name>_fwd.npz (qpos, qvel, qacc_warmstart, ctrl, friction,
-com, ...) and <name>_adj.npz (cot{c}_qpos, cot{c}_qvel, c = 0..2), looked up by name in $DK_BENCH_FIXTURE_DIR only
-when that variable is set (unset by default: names resolve to benchmark corpora only), or given as a path to the
-_fwd.npz file. "a+b" concatenates corpora (in that order). Inputs keep their stored dtype (float32); engines in
-float64 convert them exactly.
-
-Selection. select(corpus, nworld, subset) takes the states perm[subset * nworld:(subset + 1) * nworld] of
-perm = numpy.random.default_rng(SELECT_SEED).permutation(S): never "the first n", and subsets 0..S // nworld - 1 are
-disjoint. nworld > S tiles the permutation (subset 0 only; States.tiled = nworld / S, recorded).
-"""
+load_model / DR (every engine environment has it)."""
 
 import hashlib
 import json
@@ -47,10 +13,10 @@ import numpy as np
 REPO = Path(__file__).resolve().parents[2]
 TRACK_A_MODEL = "fixtures/mjlab/g1_train.mjb"
 TRACK_A_META = "fixtures/mjlab/g1_meta.json"
-TRACK_B_FILE = "mujoco_menagerie/unitree_g1/scene_mjx.xml"  # under the fetched models' root
-MODELS_ROOT_DEFAULT = "runs/bench/models"  # $DK_BENCH_MODELS: where benchmarks/bench/models fetches the models
-DATA_DEFAULT = "benchmarks/data"  # $DK_BENCH_DATA: the benchmark corpora
-FIXTURE_DIR_VAR = "DK_BENCH_FIXTURE_DIR"  # optional directory of fixture-format corpora (unset: none)
+TRACK_B_FILE = "mujoco_menagerie/unitree_g1/scene_mjx.xml"
+MODELS_ROOT_DEFAULT = "runs/bench/models"
+DATA_DEFAULT = "benchmarks/data"
+FIXTURE_DIR_VAR = "DK_BENCH_FIXTURE_DIR"
 SELECT_SEED = 20261028
 INPUTS = ("qpos", "qvel", "qacc_warmstart", "ctrl", "friction", "com")
 STATE_KEYS = ("qpos", "qvel", "qacc_warmstart", "ctrl")
@@ -68,7 +34,6 @@ def _rel(p):
     return prov.rel(p)
 
 
-# ------------------------------------------------------------------------------------------------- problems
 
 @dataclass(frozen=True)
 class Problem:
@@ -76,18 +41,18 @@ class Problem:
     id: str
     track: str
     label: str
-    model: str  # model file (.mjb / .xml), repository-relative where possible
+    model: str
     substeps: int
-    timestep: float = None  # expected opt.timestep (checked); None: not checked
-    explicit_iterations: bool = True  # load_model refuses iterations=None
-    ls_iterations: int = None  # None: the model's own
-    tolerance: float = None  # None: the model's own
-    sensors: bool = False  # False: mjDSBL_SENSOR
-    dr: bool = False  # per-world foot friction + torso COM from the states
+    timestep: float = None
+    explicit_iterations: bool = True
+    ls_iterations: int = None
+    tolerance: float = None
+    sensors: bool = False
+    dr: bool = False
     foot_pairs: tuple = None
     torso_body: str = None
-    meta: str = None  # g1_meta.json (Track A)
-    source: dict = field(default=None, hash=False, compare=False)  # where the model comes from (repo, commit, file)
+    meta: str = None
+    source: dict = field(default=None, hash=False, compare=False)
 
     def path(self):
         return _abs(self.model)
@@ -150,7 +115,6 @@ def models_root():
 
 
 def _pins():
-    """benchmarks/bench/models/pins.json (owned by the models fetcher) if present: the pinned commits."""
     p = REPO / "benchmarks" / "bench" / "models" / "pins.json"
     try:
         return json.loads(p.read_text())
@@ -167,7 +131,7 @@ def track_b(model_path=None, iterations_native=True, sensors=False):
     pin = None
     if isinstance(pins, dict):
         pin = pins.get("menagerie_g1") or next((v for k, v in pins.items() if "menagerie" in k.lower()), None)
-    if isinstance(pin, dict):  # the per-file hashes stay in pins.json; describe() hashes the model directory
+    if isinstance(pin, dict):
         pin = {k: v for k, v in pin.items() if k != "files"}
     return Problem(id="menagerie_g1", track="B", label="MuJoCo Menagerie unitree_g1/scene_mjx.xml",
                    model=_rel(p), substeps=5, timestep=0.004, explicit_iterations=not iterations_native,
@@ -285,18 +249,17 @@ class DR:
         return out
 
 
-# ------------------------------------------------------------------------------------------------- corpora
 
 @dataclass
 class Corpus:
     name: str
-    kind: str  # "bench" | "fixture"
-    files: list  # [{path (relative), sha256}]
-    arrays: dict  # INPUTS present (stored dtype)
-    cot_qpos: np.ndarray = None  # (S, 3, nq)
-    cot_qvel: np.ndarray = None  # (S, 3, nv)
+    kind: str
+    files: list
+    arrays: dict
+    cot_qpos: np.ndarray = None
+    cot_qvel: np.ndarray = None
     meta: dict = field(default_factory=dict)
-    extra: dict = field(default_factory=dict)  # other per-state arrays (S, ...)
+    extra: dict = field(default_factory=dict)
 
     @property
     def n(self):
@@ -374,7 +337,7 @@ def corpus_size(name):
     for part in name.split("+"):
         _, main, _ = corpus_files(part)
         with np.load(main) as z:
-            n += z["qpos"].shape[0]  # np.load of an npz reads members lazily
+            n += z["qpos"].shape[0]
     return n
 
 
@@ -398,7 +361,7 @@ def _load_one(name):
                 if all(f"cot{c}_qpos" in za.files for c in range(NCOT)):
                     cq = np.stack([za[f"cot{c}_qpos"] for c in range(NCOT)], 1)
                     cv = np.stack([za[f"cot{c}_qvel"] for c in range(NCOT)], 1)
-    for k in ("metadata", "meta", "meta_json"):  # a JSON string (0-d array)
+    for k in ("metadata", "meta", "meta_json"):
         if k in raw and raw[k].ndim == 0:
             text = str(raw.pop(k))
             try:
@@ -446,16 +409,16 @@ class States:
     subset: int
     nworld: int
     seed: int
-    index: np.ndarray  # (nworld,) indices into the corpus
-    tiled: float  # nworld / S when the corpus is tiled, else 1
+    index: np.ndarray
+    tiled: float
     qpos: np.ndarray
     qvel: np.ndarray
     qacc_warmstart: np.ndarray
     ctrl: np.ndarray
-    friction: np.ndarray = None  # (nworld,), None without DR inputs
-    com: np.ndarray = None  # (nworld, 3)
-    cot_qpos: np.ndarray = None  # (nworld, 3, nq)
-    cot_qvel: np.ndarray = None  # (nworld, 3, nv)
+    friction: np.ndarray = None
+    com: np.ndarray = None
+    cot_qpos: np.ndarray = None
+    cot_qvel: np.ndarray = None
 
     @property
     def nq(self):
