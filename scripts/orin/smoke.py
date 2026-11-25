@@ -22,14 +22,92 @@ $DK_FIXTURES, else fixtures/mjlab of this checkout).
 """
 
 import argparse
+import importlib.metadata
 import json
+import os
+import platform
+import subprocess
 import sys
 import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
-import replay_bench as rb
+REPO = Path(__file__).resolve().parents[2]
+
+
+def setup_env(engine):
+    os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+    os.environ["DK_ENGINE"] = engine
+    if not os.environ.get("DK_FIXTURES") and (REPO / "fixtures" / "mjlab").is_dir():
+        os.environ["DK_FIXTURES"] = str(REPO / "fixtures" / "mjlab")
+    try:
+        import nablaengine
+    except ImportError:
+        sys.path.insert(0, str(REPO / "src"))
+
+
+def versions(jax, dev):
+    v = dict(python=platform.python_version(), machine=platform.machine(), jax=jax.__version__)
+    for p in ("jaxlib", "jax-cuda12-plugin", "jax-cuda12-pjrt", "jax-cuda13-plugin", "jax-cuda13-pjrt", "mujoco",
+              "numpy", "nvidia-cuda-runtime-cu12", "nvidia-cuda-nvcc-cu12"):
+        try:
+            v[p] = importlib.metadata.version(p)
+        except importlib.metadata.PackageNotFoundError:
+            pass
+    v["device"] = dev.device_kind
+    v["platform"] = dev.platform
+    v["compute_capability"] = getattr(dev, "compute_capability", None)
+    v["core_count"] = getattr(dev, "core_count", None)
+    try:
+        v["platform_version"] = dev.client.platform_version
+    except Exception:
+        pass
+    try:
+        from jax._src.lib import cuda_versions
+        if cuda_versions is not None:
+            v["cuda_runtime"] = cuda_versions.cuda_runtime_get_version()
+            v["cuda_driver"] = cuda_versions.cuda_driver_get_version()
+    except Exception:
+        pass
+    tegra = Path("/etc/nv_tegra_release")
+    if tegra.exists():
+        v["l4t"] = tegra.read_text().splitlines()[0].strip()
+    try:
+        from nablaengine import cuda, provenance
+        nv = cuda.nvcc()
+        out = subprocess.run([nv, "--version"], stdout=subprocess.PIPE, universal_newlines=True).stdout
+        v["nvcc"] = nv
+        v["nvcc_version"] = out.strip().splitlines()[-1]
+        c, dirty = provenance.source_commit()
+        v["engine_commit"] = f"{c}{'-dirty' if dirty else ''}"
+    except Exception as e:
+        v["nvcc"] = f"unavailable: {e}"
+    return v
+
+
+def initial_state(m, fp, B, com_words, seed):
+    """Per-world inputs: the keyframe knees_bent (else home, else qpos0) with uniform joint perturbations of +-0.05 rad,
+    root height +-1 cm, velocities N(0, 0.1); ctrl0 the keyframe's joint positions; the model's foot friction; no COM
+    offset; zero warm start."""
+    import mujoco
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    names = [m.key(i).name for i in range(m.nkey)]
+    k = names.index("knees_bent") if "knees_bent" in names else (names.index("home") if "home" in names else None)
+    q = (m.key_qpos[k] if k is not None else m.qpos0).astype(np.float64).copy()
+    qpos = np.tile(q, (B, 1))
+    qpos[:, 7:] += rng.uniform(-0.05, 0.05, (B, m.nq - 7))
+    qpos[:, 2] += rng.uniform(-0.01, 0.01, B)
+    lo, hi = m.jnt_range[1:, 0], m.jnt_range[1:, 1]
+    lim = m.jnt_limited[1:].astype(bool)
+    qpos[:, 7:] = np.where(lim, np.clip(qpos[:, 7:], lo, hi), qpos[:, 7:])
+    qvel = rng.normal(0, 0.1, (B, m.nv))
+    ctrl0 = np.tile(q[7:7 + m.nu], (B, 1))
+    if k is not None and m.key_ctrl.shape[1] == m.nu and np.any(m.key_ctrl[k]):
+        ctrl0 = np.tile(m.key_ctrl[k], (B, 1))
+    f = np.float32
+    return dict(qpos=qpos.astype(f), qvel=qvel.astype(f), warm=np.zeros((B, m.nv), f), ctrl0=ctrl0.astype(f),
+                friction=np.full(B, m.pair_friction[fp[0], 0], f), com=np.zeros((B, com_words), f))
 
 TOL = dict(step1_qpos=1e-4, step1_qvel=1e-2, vjp1_rel=1e-2)
 B, H = 64, 15
@@ -60,7 +138,7 @@ def main():
     ap.add_argument("--write", action="store_true", help="record the reference on this GPU instead of checking")
     ap.add_argument("--json", default=None)
     args = ap.parse_args()
-    rb.setup_env(args.engine)
+    setup_env(args.engine)
     ref_path = Path(args.ref or HERE / "data" / f"smoke_{args.engine}_g1.npz")
 
     import numpy as np
@@ -69,7 +147,7 @@ def main():
     from nablaengine import fixtures, jax_ffi as F
 
     dev = jax.devices()[0]
-    ver = rb.versions(jax, dev)
+    ver = versions(jax, dev)
     print("versions:", json.dumps(ver))
     t = time.perf_counter()
     info = F.init()
@@ -79,7 +157,7 @@ def main():
     m, _ = fixtures.load_model(check=None)
     S = int(mt.get("substeps_per_control_step", 4))
     if args.write:
-        s = rb.initial_state(m, mt["foot_pairs"], B, int(info.get("com_words", 3)), seed=123)
+        s = initial_state(m, mt["foot_pairs"], B, int(info.get("com_words", 3)), seed=123)
         rng = np.random.default_rng(7)
         s["cot_qpos"] = rng.standard_normal((B, m.nq)).astype(np.float32)
         s["cot_qvel"] = rng.standard_normal((B, m.nv)).astype(np.float32)

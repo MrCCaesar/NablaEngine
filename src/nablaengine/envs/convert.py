@@ -265,11 +265,7 @@ def _keep_bounded_inertia(spec, m0):
 
 
 def _margin_ok(m, g1, g2, margin, gap):
-    from nablaengine._optional import FOREST, NotInRelease, load
-    try:
-        mg = load("nablaengine.forest_engine", FOREST, "margin")
-    except NotInRelease:
-        return False
+    from nablaengine.forest_engine import margin as mg
     return margin >= 0 and gap >= 0 and mg.supported_types(m.geom_type[g1], m.geom_type[g2])
 
 
@@ -285,7 +281,7 @@ def to_engine(xml, assets=None, keep=(), drop_types=(), cone="source", invweight
     condim as the source has it, so a condim-6 pair (rolling friction, which the engines do not have) stays condim 6
     and capability.check_forest refuses the model (H17); 3 turns the condim-6 pairs into condim-3 pairs (a change to
     the dynamics: the rolling and torsional friction dropped; listed in notes, with a RuntimeWarning), an explicit
-    opt-in for reproducing runs made before the forest engine checked condim (2026-11-13)."""
+    opt-in for reproducing runs made before the forest engine checked condim."""
     if condim6_to not in (None, 3):
         raise ValueError(f"condim6_to={condim6_to!r}: None or 3")
     if cone not in ("source", "pyramidal"):

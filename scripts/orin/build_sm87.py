@@ -9,7 +9,7 @@ target (default sm_86, the closest one with a known-good build) for a side-by-si
 
 The library this produces holds sm_87 device code and a host part for THIS machine's CPU: on an x86 host it proves that
 the device code compiles and links for sm_87, not that it runs. On the Orin itself the same command (or simply the
-first jax_ffi.init / replay_bench.py run) builds the aarch64 library that the engine loads.
+first jax_ffi.init) builds the aarch64 library that the engine loads.
 
   PYTHONPATH=src python scripts/orin/build_sm87.py [--arch sm_87] [--compare sm_86] [--engine forest|tree]
       [--cache DIR] [--out result.json] [--cross-nvcc NVCC --cross-ccbin G++ --cross-target-dir DIR]

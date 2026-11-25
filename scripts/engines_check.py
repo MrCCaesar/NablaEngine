@@ -3,7 +3,7 @@ and the generated text of the conventions' opt-ins.
 
   routing     ($DK_ENGINE unset) the mjlab G1 and the arm scene (an arm with a gripper and a free box,
               scripts/collision/models/midphase_arm_box.xml) go to the forest engine
-              (the default since 2026-11-16); engines.prefer_tree routes a G1-class model to the tree engine and
+              (the default); engines.prefer_tree routes a G1-class model to the tree engine and
               prefer_forest to the forest engine, held weakly (a model freed and a new one at its address is not
               routed by it)
   forest      capability.check_forest: the arm scene has no errors; each modified copy raises exactly its own code
@@ -33,7 +33,7 @@ and the generated text of the conventions' opt-ins.
               margin_convex): a margin (and gap) on the arm scene's plane-box, plane-capsule or box-box pair (a
               convex pair) none, a negative margin T10, a box-box margin with $DK_CCD_FLOAT=1 T10
   switch      the explicit routing switch: $DK_ENGINE=tree routes the G1 to the tree engine, forest / auto / unset to
-              the forest engine (the default since 2026-11-16), another value raises; prefer_tree beats $DK_ENGINE=forest, prefer_forest beats
+              the forest engine (the default), another value raises; prefer_tree beats $DK_ENGINE=forest, prefer_forest beats
               $DK_ENGINE=tree, the last of the two calls wins, prefer_tree of a multi-tree model raises; the tree
               engine's defaults on the forest engine (F6): jax_ffi._model gives a G1-class model routed by $DK_ENGINE
               the COM-offset body torso_link, one routed by prefer_forest none, and the forest library's constants

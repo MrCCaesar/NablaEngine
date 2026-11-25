@@ -923,7 +923,7 @@ def tree_chol_device(m):
     if tree_chol_emit() == "straight":
         return tree_chol_device_straight(m)
     t = tree_tables(m)
-    out = ("// tree-sparse Cholesky (DK_TREE_CHOL, docs/tree_sparse_cholesky.md): A = R' R on the tree pattern, the\n"
+    out = ("// tree-sparse Cholesky (DK_TREE_CHOL): A = R' R on the tree pattern, the\n"
            "// schedule from dof_parentid (source.tree_tables)\n"
            f"#define TC_STEPS {t['steps']}\n#define TC_LEVELS {t['levels']}\n#define TC_NZERO {len(t['zero'])}\n")
     for k in TREE_TABLES:
@@ -1034,7 +1034,7 @@ def tree_chol_device_straight(m):
     o.append("  __syncwarp();")
     o.append("}")
     rtr = TREE_CHOL_DEVICE[TREE_CHOL_DEVICE.index("// out = R' (R x)"):]
-    return ("// tree-sparse Cholesky (DK_TREE_CHOL, docs/tree_sparse_cholesky.md): A = R' R on the tree pattern, the\n"
+    return ("// tree-sparse Cholesky (DK_TREE_CHOL): A = R' R on the tree pattern, the\n"
             "// schedule from dof_parentid, as straight-line code (source.tree_chol_device_straight)\n"
             + "\n".join(o) + "\n" + rtr)
 

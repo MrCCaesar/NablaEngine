@@ -188,7 +188,7 @@ class Task:
         """envs.kin.Frames of state (qpos, qvel): the ones step / reset attached to this state object if they still
         match it, else computed (the same arrays either way). The attached frames are one autograd graph shared by every
         reader of the state (torch): two separate backward passes that both stop at the state need retain_graph=True
-        for the first; $DK_ENVS_REUSE_FRAMES=0 recomputes per call (the behaviour before 2026-11-12)."""
+        for the first; $DK_ENVS_REUSE_FRAMES=0 recomputes per call (the earlier behaviour)."""
         d = getattr(state, "__dict__", None) if _REUSE_FRAMES else None
         c = d.get("_frames") if d else None
         if c is not None and c[0] is self and c[1] is not None and c[1] == self._key(state):

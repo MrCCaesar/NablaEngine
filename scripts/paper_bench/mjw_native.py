@@ -17,7 +17,7 @@ def procedure_capacity(nworld):
     """nconmax / naconmax / njmax of the documented sizing rule at nworld (see the module docstring)."""
     import json
     import math
-    src, v = "embedded (benchmarks/data/mjw_capacity.json of 2026-10-29)", dict(PROCEDURE_DEFAULT)
+    src, v = "embedded (benchmarks/data/mjw_capacity.json)", dict(PROCEDURE_DEFAULT)
     f = C.REPO / CAPACITY_FILE
     if f.exists():
         try:

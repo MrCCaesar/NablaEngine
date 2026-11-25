@@ -72,7 +72,7 @@ class SchemaError(ValueError):
 
 
 def now():
-    """UTC time as 2026-11-02T10:00:00Z."""
+    """UTC time as YYYY-MM-DDTHH:MM:SSZ."""
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

@@ -1414,7 +1414,7 @@ def init(model_dir=None, model=None, foot_pairs=None, terrain=None, com_body=Non
     the forward unit gets for the target, e.g. sm_90's register caps, [] elsewhere; forward_unit: the prefix of the
     library's forward / kinematics entries, <forward_unit>_forward / _kinematics / _kinematics_vjp: dk_fwd where that
     unit has flags of its own, else FWD_VARIANT's unit dk_kv0_n3). terrain: a nablaengine.terrain.TerrainConfig for a
-    terrain build (work in progress; set_terrain() uploads the terrain, raycast() measures it). com_body: the body that
+    terrain build (set_terrain() uploads the terrain, raycast() measures it). com_body: the body that
     takes the per-world COM offset (default torso_link, or a fixtures directory's torso_body, for a G1-class model on
     either engine unless routed with engines.prefer_forest; none for the forest engine's other models). params: per-world
     physics parameters (nablaengine.params.PhysicsParams or field names): com is then (B, com_words) with each

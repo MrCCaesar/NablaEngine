@@ -1,4 +1,4 @@
-"""The G1's sensors in JAX (work in progress): G1Sensors casts the D435i depth camera, the MID-360 LiDAR and the
+"""The G1's sensors in JAX: G1Sensors casts the D435i depth camera, the MID-360 LiDAR and the
 height scan on a batch of states (body poses from nablaengine.jax_ffi.kinematics) against the scene (terrain, per-world
 objects, the robot's own visual meshes), with optional noise. Under jit; no gradient by default, first-order
 gradients w.r.t. the body poses and object poses with grad="first_order" (raygrad)."""

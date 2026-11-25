@@ -1,9 +1,12 @@
 # Builds the sdist and the wheel and publishes them to PyPI with Trusted Publishing (OIDC, no token).
-# Run by hand from a release tag: Actions > Publish > Run workflow, "Use workflow from" the tag v<version>.
+# Runs when a GitHub release is published (its tag v<version>), or by hand from a release tag:
+# Actions > Publish > Run workflow, "Use workflow from" the tag v<version>.
 # The environment pypi (required reviewer, tags v* only) must approve the publish job.
 name: Publish
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:

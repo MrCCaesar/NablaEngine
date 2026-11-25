@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Fix: `scripts/orin/smoke.py` runs from the public tree (it imported a script that is not included).
+- Docs: any nonzero `normal` also freezes near-parallel capsule-capsule contacts' segment parameters (`docs/api.md`).
+- The PyPI workflow also runs when a GitHub release is published.
+- Cleanup of docstrings, comments and example output paths.
+
 ## 1.0.2
 
 - Available on PyPI: `pip install nablaengine`; the wheel includes the default fixtures (the G1 model and the corpus

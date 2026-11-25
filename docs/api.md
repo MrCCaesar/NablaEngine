@@ -100,7 +100,7 @@ the step's `ctrl`. `backward` never applies `grad_decay`.
 | option | default | meaning |
 |---|---|---|
 | `clamp_kv` | 0 | dofs whose actuator force is clamped at its limit: 0 keeps the damping term -kv (as MuJoCo Warp's adjoint), 1 drops it (exact), 2 soft clamp of width `clamp_soft` |
-| `normal` | 3 | contact normal of sphere / capsule self contacts: 3 frozen below 1e-3 m (finite gradients), 0 exact, 1 and 2 other approximations |
+| `normal` | 3 | contact normal of sphere / capsule self contacts: 3 frozen below 1e-3 m (finite gradients), 0 exact, 1 and 2 other approximations. Any nonzero value also freezes the segment parameters of near-parallel capsule-capsule contacts, where sin²θ < 1.2e-3 (`DK_ADJ_PARALLEL`, `DK_ADJ_PARALLEL_EPS`) |
 | `clamp_soft` | None | width for `clamp_kv=2` (None: 0.2); must stay None for `clamp_kv` 0 and 1 |
 | `grad_decay` | 1.0 | multiplies the returned qpos / qvel cotangents (1.0: no change) |
 

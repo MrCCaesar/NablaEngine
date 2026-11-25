@@ -1,4 +1,4 @@
-"""envs.kin's batched forward kinematics against the per-body form it replaced (2026-11-12, the reference) and
+"""envs.kin's batched forward kinematics against the per-body form it replaced (the reference) and
 against MuJoCo C (float64 mj_kinematics / mj_comPos / mj_comVel), per model of the envs tasks, on random states:"""
 import argparse
 import json
@@ -13,7 +13,7 @@ J = mujoco.mjtJoint
 
 
 def fk_reference(self, o, qpos, qvel=None):
-    """The per-body forward kinematics envs.kin had before 2026-11-12 (the reference)."""
+    """The per-body forward kinematics envs.kin had before (the reference)."""
     mv = lambda R, x: o.einsum("bij,bj->bi", R, x)
     mm = lambda A, Bm: o.einsum("bij,bjk->bik", A, Bm)
     eye = o.const(np.eye(3))[None] * o.ones_like(qpos[:, :1])[:, :, None]

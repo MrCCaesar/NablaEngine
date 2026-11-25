@@ -920,7 +920,7 @@ __device__ __noinline__ void chol_solve_bcast(const float* A, float* L, float* b
 // column with one broadcast per row: 6.3k)
 // CHOL_BCAST_WIDE: inlined. As a call, ptxas 12.4 (sm_70, sm_86) restored a register the callee needed by recomputing
 // the value one call site had in it (the lane) also for k_post's other site (Hand::big), where it held the upper half
-// of a pointer: an illegal address after the re-use (docs/perf/chol_wide.md)
+// of a pointer: an illegal address after the re-use
 #if CHOL_BCAST_WIDE
 __device__ __forceinline__ void chol_resolve(const float* L, float* b, int lane, float* cb) {
 #else
@@ -1278,9 +1278,9 @@ __device__ __noinline__ void chol_solve_trees(const float* A, float* L, float* b
 #define CHOL_COMPACT 0
 #endif
 #endif
-#ifndef CHOL_SMALL  // chol_solve_small below Ampere (Aloha-AgileX, 22 dofs: the Cholesky phases 3x faster than _compact),
+#ifndef CHOL_SMALL  // chol_solve_small below Ampere (a 22-dof two-arm robot: the Cholesky phases 3x faster than _compact),
 // from Ampere on chol_solve_reg as the tree engine (RTX 3090: forest / tree forward 1.01-1.07 -> 0.91-0.98 on go1, go2, h1,
-// spot; docs/perf/engine_switch.md), except the build targets sm_90 / sm_90a until verified there
+// spot), except the build targets sm_90 / sm_90a until verified there
 // (DK_FOREST_SM90_SMALL: nablaengine.cuda.forest_hold_defines)
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800 && !defined(DK_FOREST_SM90_SMALL)
 #define CHOL_SMALL 0

@@ -1110,8 +1110,8 @@ def cmd_terfoot(a):
     height, no sand fields: every foot contact takes the offset) against float64 MuJoCo C central differences of the
     same split (the last substep's mj_contactForce normal forces, weights from the contact points; each foot contact's
     distance d + s(x), sand_elem_check.c_split), on corpus states whose forward split agrees with C's (--agree). The
-    terrain capsule-box contacts take their VJP in the cooperative pass (cb_coop): 2026-11-21 the toe weight's
-    foot-pose term was missing there (median qpos error 0.06 to 0.4); this is its regression check: exit 1 when a
+    terrain capsule-box contacts take their VJP in the cooperative pass (cb_coop): the toe weight's
+    foot-pose term was once missing there (median qpos error 0.06 to 0.4); this is its regression check: exit 1 when a
     block's median relative error exceeds --accept. One random direction per world and block (qpos with the root
     rotation fixed, qvel, ctrl, offsets)."""
     import jax

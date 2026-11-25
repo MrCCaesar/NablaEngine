@@ -22,9 +22,9 @@ Subcommands (one engine library per process: `run` once per build, `compare` rea
   xengine  the forest engine's full-build dumps against the tree engine's (--tree DIR --forest DIR): per substep the
            matched contacts' forces and the foot wrenches (forward-difference level agreement, not bitwise)
 
-  PYTHONPATH=src python scripts/contact_forces_check.py all --dir runs/foot_forces --out docs/results/contact_forces_v100.json
-  PYTHONPATH=src python scripts/contact_forces_check.py all --engine forest --dir runs/parity_f3/forest --out ...
-  PYTHONPATH=src python scripts/contact_forces_check.py xengine --tree runs/foot_forces --forest runs/parity_f3/forest --out ...
+  PYTHONPATH=src python scripts/contact_forces_check.py all --dir runs/contact_forces/tree --out docs/results/contact_forces_v100.json
+  PYTHONPATH=src python scripts/contact_forces_check.py all --engine forest --dir runs/contact_forces/forest --out ...
+  PYTHONPATH=src python scripts/contact_forces_check.py xengine --tree runs/contact_forces/tree --forest runs/contact_forces/forest --out ...
 """
 import argparse
 import hashlib
@@ -697,7 +697,7 @@ def main():
     c.add_argument("--stepped", action="store_true")
     c.add_argument("--old-last")
     al = sp.add_parser("all")
-    al.add_argument("--dir", default="runs/foot_forces")
+    al.add_argument("--dir", default="runs/contact_forces/tree")
     al.add_argument("--engine", choices=("tree", "forest"), default="tree")
     al.add_argument("--out", required=True)
     al.add_argument("--nworld", type=int, default=512)

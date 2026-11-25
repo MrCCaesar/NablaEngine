@@ -1341,7 +1341,7 @@ def _fsolve_back(nv, ndl, pfx, div, F, ysel):
 CHOL_RESOLVE_DENSE = r"""// (nv128 stage 4) chol_resolve_dense(L, b, lane): b := (L L')^-1 b with chol_solve_dense's factor in L (its two
 // triangular solves, the same text: NEWTON_REUSE's analog for the dense worlds)
 // NV128_REUSE: chol_resolve_dense and chol_resolve_hp inlined. k_post calls them from its SimN and its Hand::big path;
-// as calls, the pattern ptxas miscompiled in chol_resolve (docs/perf/chol_wide.md) could not be ruled out for every
+// as calls, the pattern ptxas miscompiled in chol_resolve could not be ruled out for every
 // target (forest_engine.chol_blk: chol_resolve_blk)
 #define DFMS(a, b, c) __fmaf_rn(-(a), (b), (c))
 #if NV128_REUSE

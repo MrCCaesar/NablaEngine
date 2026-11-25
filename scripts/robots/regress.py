@@ -4,8 +4,8 @@ process per robot, gated on recorded results.
 
 Default: the committed fixtures, fixtures/robots (each robot's exported model, 512 reference states and the
 licence; README.md there), gated on fixtures/robots/results.json, the results recorded on exactly those inputs.
---root runs/robots (private): the full references of docs/results/robots_check_v100.json, gated on that file
-(forward only)."""
+--root DIR: another reference directory of the same layout, e.g. the full references behind
+docs/results/robots_check_v100.json (not included), gated on that file (forward only)."""
 import argparse
 import json
 import os

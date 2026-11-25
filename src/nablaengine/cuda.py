@@ -280,7 +280,7 @@ FOREST_POST_DROP = ("sm_90", "sm_90a")
 def forest_post_cap(target=None):
     """$DK_FOREST_POST_CAP: True for 1 (the forest engine keeps k_post's __maxnreg__ cap), False for 0; unset: the
     target's default, False on sm_90 / sm_90a (ptxas's lane rematerialization, module docstring), True elsewhere
-    (sm_103: bitwise the uncapped forward, B300 G1 4096 worlds k_post 1.260 -> 1.167 ms)."""
+    (sm_103: bitwise the uncapped forward, and a faster k_post)."""
     v = (os.environ.get(FOREST_POST_VAR) or "").strip()
     if v not in ("", "0", "1"):
         raise ValueError(f"${FOREST_POST_VAR}={v!r}: must be 0 or 1")
@@ -317,7 +317,7 @@ def forest_hold_defines(target=None, text="", options=()):
     decided by the target (not __CUDA_ARCH__: sm_120's and sm_103's units from compute_90 PTX see 900 too):
     ['-DDK_FOREST_HESS_UNROLL=0'] for a text with the forest hessian()'s unrolled contact-mask loops (DK_HESS_UNROLLED)
     unless $DK_FOREST_HESS_UNROLL is set (forest_engine.step then defines it in the text, every target); and
-    ['-DDK_FOREST_SM90_SMALL=1'] (chol_solve_small for NV <= 32 as before 2026-11-16 instead of chol_solve_reg) for a
+    ['-DDK_FOREST_SM90_SMALL=1'] (the earlier chol_solve_small for NV <= 32 instead of chol_solve_reg) for a
     text with CHOL_SMALL's choice unless $DK_FOREST_CHOL_REG is 1; ['-DCHOL_BCAST_WIDE=0'] (36 <= NV <= 48: the
     previous CHOL_SOLVE instead of chol_solve_bcast_wide, and with it no NEWTON_REUSE for those sizes) for a text with
     chol_solve_bcast_wide unless $DK_FOREST_CHOL_WIDE is 1; ['-DDK_CCD_COOP=0'] (native-CCD box-box contacts: their VJP
@@ -393,7 +393,7 @@ def tree_adj_cap_defines(target=None, options=(), nvcc_path=None, forest=False, 
     """The tree engine's k_adjoint register cap on sm_90 / sm_90a (TREE_ADJ_CAPS: ['-DADJ_MAXNREG=168']) for a unit that
     launches k_adjoint of a terrain build (terrain) where $DK_SM90_ADJ_CAP is 1 (the default); ['-DADJ_MAXNREG=N'] on
     every tree-engine such unit with N. Forest units (forest): the same for a terrain build's units (the tree engine's
-    terrain VJP device code; since 2026-11-15) only where $DK_SM90_FOREST_ADJ_CAP is 1 (default 0: no cap until
+    terrain VJP device code) only where $DK_SM90_FOREST_ADJ_CAP is 1 (default 0: no cap until
     verified on sm_90), none without terrain. None with 0, for other targets, a caller's own
     -DADJ_MAXNREG, or an nvcc older than 12.4. The unit's text needs with_adj_bounds (g1_engine.adjoint). Register
     allocation only (bitwise unchanged; module docstring)."""
@@ -434,9 +434,8 @@ def forest_adj_light(m):
     $DK_SM103_FOREST_ADJ_CAP=1): every contact pair between planes, spheres and capsules (no box, mesh, cylinder,
     ellipsoid or height-field pair, whose contact VJPs and replays take k_adjoint to 236-255 registers) and the
     pyramidal cone. ptxas 12.9 (NVVM 7 adjoint on sm_103): such models' uncapped k_adjoint stays at about 120-150
-    registers, so the cap at 128 costs a few spilled bytes for up to 16 worlds per SM (B300: G1 on the forest engine
-    backward -12.5%); with box pairs it costs 1.3-2.4 KB of spills and was slower (B300: +7.3% backward on a
-    hand scene)."""
+    registers, so the cap at 128 costs a few spilled bytes for up to 16 worlds per SM (a faster backward for the G1
+    on the forest engine); with box pairs it costs 1.3-2.4 KB of spills and was slower (a hand scene's backward)."""
     import mujoco
     light = {int(mujoco.mjtGeom.mjGEOM_PLANE), int(mujoco.mjtGeom.mjGEOM_SPHERE), int(mujoco.mjtGeom.mjGEOM_CAPSULE)}
     if int(m.opt.cone) != int(mujoco.mjtCone.mjCONE_PYRAMIDAL):

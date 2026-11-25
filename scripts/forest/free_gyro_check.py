@@ -13,8 +13,8 @@ One engine library per process: one scene per run (--scene), or --all (subproces
   fd    the VJP of gq . qpos' + gv . qvel' (exact mode: clamp_kv 1, normal 0) in (qpos tangent, qvel) against MuJoCo C
         central differences (eps 1e-6; tolerance 1e-12, 200 iterations)
 
-  PYTHONPATH=src python scripts/forest/free_gyro_check.py fwd --all --mjw-python <venv>/bin/python --out runs/x/fwd.json
-  PYTHONPATH=src python scripts/forest/free_gyro_check.py fd --all --out runs/x/fd.json
+  PYTHONPATH=src python scripts/forest/free_gyro_check.py fwd --all --mjw-python <venv>/bin/python --out runs/free_gyro/fwd.json
+  PYTHONPATH=src python scripts/forest/free_gyro_check.py fd --all --out runs/free_gyro/fd.json
 
 Exit status 1 when a median exceeds its bound (fwd: engine vs MuJoCo C 1e-5; fd: 1e-4).
 """

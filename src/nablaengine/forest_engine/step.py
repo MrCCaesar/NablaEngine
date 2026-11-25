@@ -41,7 +41,7 @@ def nefc(max_contacts, m=None, max_rows=None):
     up to 1023 (the tape header's 10 bits; rows beyond are dropped, unsupported bit 16). A G1-class model (m None, or
     engines.is_g1_class) without condim-4 pairs keeps 192 rows up to 64 contacts, the tree engine's capacity: its
     contacts (feet, hands) stay well below the 32 that fill 192 rows. Multi-tree models get rows for every contact
-    (before 2026-11-17 they had 192 rows up to 64 contacts too: a G1 in a 9-piece mesh tub ran out of rows at ~48
+    (they once had 192 rows up to 64 contacts too: a G1 in a 9-piece mesh tub ran out of rows at ~48
     contacts and its hand went through the wall)."""
     if max_rows is not None:
         return int(max_rows)
@@ -1779,7 +1779,7 @@ __device__ void rows_jtf(S& s, const float* f, float* out, int lane) {
     const int n = min(32, ncon - c0);
     int i0 = 0;
 #if MAXCON > 64
-    // many contacts (LIBERO's scenes): the loads of JTF_BATCH contacts first, then their sums in contact order (the
+    // many contacts (tabletop scenes): the loads of JTF_BATCH contacts first, then their sums in contact order (the
     // loop below waits on each contact's loads from Hand: some 550 cycles per contact on V100)
     constexpr int JTF_BATCH = 8;
 #pragma unroll 1
@@ -2930,7 +2930,7 @@ __device__ __forceinline__ void substep(S& s, const float* ctrl, int iterations,
 // substep_post).
 // substep_post runs on SimNT<SPLIT_NCON, SPLIT_NEFC> in shared memory when the world's contacts and rows fit (corpora:
 // at most 31 contacts and 122 rows), else on a full-capacity SimN in Hand (global memory, the same code).
-// Beyond 64 contacts (LIBERO's scenes: some 90 contacts at rest), the full capacity (SimN of 17 KB at 128 contacts).
+// Beyond 64 contacts (tabletop scenes: some 90 contacts at rest), the full capacity (SimN of 17 KB at 128 contacts).
 #ifndef SPLIT_NCON
 #define SPLIT_NCON (MAXCON > 64 ? MAXCON : MAXCON < 32 ? MAXCON : 32)  // k_post's shared-memory capacity: contacts
 #endif

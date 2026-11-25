@@ -1,4 +1,4 @@
-"""The ray library's OptiX backend (RT cores; work in progress): the same casts as raycore's software kernels,
+"""The ray library's OptiX backend (RT cores): the same casts as raycore's software kernels,
 with the hardware finding each ray's nearest primitive and the software's exact tests (raycore: MuJoCo Warp's ray_box /
 _ray_triangle, the heightfield cells, the robot's Moller-Trumbore) recomputing its distance, id and normal in the
 original frames.

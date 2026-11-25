@@ -1,7 +1,7 @@
 """Sensor definitions: mount (body, position, roll-pitch-yaw in the body frame, as a URDF fixed joint), ray pattern in
 the sensor frame (x forward, y left, z up: the URDF link convention), range limits. The G1's sensors from Unitree's
 URDF (unitree_ros robots/g1_description/g1_29dof_rev_1_0.urdf: d435_joint, mid360_joint on torso_link; the mjlab G1's
-torso_link frame is the URDF's, checked 2026-11-04). Field of view and ranges after the vendors' datasheets (to be
+torso_link frame is checked to be the URDF's). Field of view and ranges after the vendors' datasheets (to be
 checked against them: the requirements note marks them as from memory)."""
 from dataclasses import dataclass, replace
 

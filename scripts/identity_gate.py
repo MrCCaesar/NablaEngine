@@ -37,14 +37,14 @@ new manifest and new digest entries).
 
   PYTHONPATH=src python scripts/identity_gate.py                                # check (escalating)
   PYTHONPATH=src python scripts/identity_gate.py --full --json runs/identity_check.json
-  PYTHONPATH=src python scripts/identity_gate.py --write --out runs/identity_new.json   # a manifest of this tree
+  PYTHONPATH=src python scripts/identity_gate.py --write --out runs/identity.json   # a manifest of this tree
   PYTHONPATH=src python scripts/identity_gate.py --write --out docs/results/identity_g1_mjlab.json --force
       # (re)write the committed manifest's entries of this machine's toolchains (other entries are kept)
 
 --engine forest: the forest engine's gate, the same levels and verdicts on a manifest
 docs/results/identity_forest.json (not included: write one with --write), over the models of FOREST_MODELS (the
-mjlab G1 and the G1-class robot fixture go1 routed with nablaengine.engines.prefer_forest, the G1 with the tree engine's COM-offset body torso_link, the
-robot with its fixture's com_body; two equality / tendon scenes
+mjlab G1 and the G1-class robot fixtures go1 and microduck routed with nablaengine.engines.prefer_forest, the G1 with the tree engine's COM-offset body torso_link, the
+robots with their fixture's com_body; two equality / tendon scenes
 of scripts/eq/models): per model <model>/ffi/<unit>.cu as above, and for the G1 g1/check/step.cu (engine_step_check.py's
 forest binary). It proves later forest ports bitwise neutral for builds that do not use them. The tree engine's gate
 routes the G1 with nablaengine.engines.prefer_tree, so $DK_ENGINE does not change it.
@@ -91,6 +91,7 @@ ABOUT_FOREST = ("Identity manifest of the forest engine's production build units
 FOREST_MODELS = {
     "g1": ("g1", None, "torso_link"),
     "go1": ("robot", "go1/go1_flat", None),
+    "microduck": ("robot", "microduck/microduck_spheres4", None),
     "eq_fourbar": ("eq", "c1_fourbar.xml", None),
     "eq_tendon_fingers": ("eq", "t1_fingers.xml", None),
 }

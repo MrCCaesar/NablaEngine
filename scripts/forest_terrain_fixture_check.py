@@ -16,7 +16,7 @@ ctrl), per world:
          foot, against the model without the crate with the same object slot: the object words after the fixture
          words (com_layout); expected bitwise equal outputs
 
-  python scripts/forest_terrain_fixture_check.py --ref runs/terrain/robots/apollo_ref.npz --out runs/forest_gaps/fix.json
+  python scripts/forest_terrain_fixture_check.py --ref <ref.npz> --out runs/forest_terrain_fixture.json
 """
 import argparse
 import json
